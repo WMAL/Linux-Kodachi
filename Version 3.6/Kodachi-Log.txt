@@ -1,0 +1,142 @@
+# Linux Kodachi change Log Written by W. Al Maawali  
+# (c) 2016 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# Log starts here:
+
+
+Version 3.6:
+Based on Debian 8.6 XFCE 
+## 30.12.2016
+! Changed default editor from Komodo(slow) to Geany(fast).
+! Improved own VPN script.
+! Improved VPN start stop reconnect now VPN connectivity process is mush faster.
+! Fixed bug in Tor connectivity.
+
+
+
+Version 3.5:
+Based on Debian 8.6 XFCE 
+## 29.12.2016
++ Added Refracta Installer now you can install Kodachi permanently on your PC.
++ Added new tool Mat Meta data anonymization tool.
+! Improved destroy Kodachi script.
+! Improved display script with new CPU/Network Monitor on task bar.
+! Detect screen resolution changes and display accordingly.
++ Introduced banned message if someone misuses the bandwidth or host illegal torrent files using our VPN network.
++ Added Gibru engine to search bookmarks.
++ Added new version notification.
++ Added own VPN tool so now you can use your own VPN all you need is paste your config on the right directory located on Kodachi Desktop.
+! Fixed few bugs.
+! System updated.
+! Firefox /Firefox plugins / Tor / Veracrypt / Komodo edit / Electrum Bitcoin Wallet updated.
+
+ 
+
+Version 3.4:
+Based on Debian 8.6 XFCE 
+## 17.10.2016
+! Fixed bug on Destroy Kodachi script to avoid deleting the content of attached media
+- Replaced Google DNS with Level3 DNS if Main DNSCrypt Fails.
+- Normal Firefox Browser moved to other apps dock.
+- System updated
+ 
+
+
+
+Version 3.3:
+Based on Debian 8.6 XFCE 
+## 13.10.2016
+! Fixed DNS bug.
++ Added firejail app.
+- Updated firefox links.
+- System updated.
+ 
+
+
+Version 3.2:
+Based on Debian 8.6 XFCE 
+## 12.10.2016
+! Fixed DNS bug.
+- Additional show Desktop icon was added to the right.
+- Battery indicator was removed.
+- System updated.
+- Browser plugins updated.
+- Tor Browser updated.
+
+
+
+
+Version 3.1:
+Based on Debian 8.5 XFCE 
+## 17.07.2016
+
+##NEW Features:
+- Sound icon on panel.
+- Sound Mixer on Other apps group.
+- Places shortcat on the panel.
+- Removed Tor from startup.
+- Conky refresh rate reduced from 30 seconds to 15.
+- VPN connection establishment is faster now.
+- Pidgin Messenger updated.
+- Luminosity control and System info added to other apps panel.
+- Battery status added.
+- Moved show desktop icon location to left.
+
+
+Version 3.0:
+Based on Debian 8.5 XFCE 
+## 10.07.2016
+
+##NEW Features:
+- RAM wiped out on shut-down and reboot.
+- Random MAC address generated on boot up.
+- More exit nodes for TOR.
+- Free space wipe.
+- Kill Kodachi shred entire system!.
+- Repair Network feature.
+- Tor browser added.
+- Bitcoin Litecoin wallets added.
+- VeraCrypt added.
+- UFW GUI added.
+- Force all traffic through VPN added if enabled non VPN traffic will be blocked so no leakage!
+- More DNS entries added.
+- Pidgin Messenger added with OTR as well.
+- Transmission client added.
+- fcitx, ibus, smbclient, syslinux-utils, added.
+- Manually generate a random mac address button added.
+- Lock screen button added.
+- Projector or secondary screen display button added.
+- New Themes and Icons.
+- New Firefox plugins on Kodachi Web Browser.
+
+ 
+
+##Fixes and removals:
+- Tor will never connect until we have a valid VPN connection.
+- Conky display fixed.
+- Rearranged all Kodachi custom coding files.
+- Kodachi scripts have been rewritten.
+- Miner removed from the system.
+- Skype, Vmware and many share tools have been removed.
+- Plymouth removed.
+- Nvidia drivers removed.
+- Gnome replaced with XFCE.
+
+
+Version 2.0: 
+Based on Debian with Gnome 
+## 16.11.2013
+
+
+
+Version 1.1:
+Based on Linux Mint 
+## 1.11.2013
+
+
+
+Version 1.0: 
+Based on Linux Mint 
+## 20.10.2013
+
