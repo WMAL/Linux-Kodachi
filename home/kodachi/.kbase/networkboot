@@ -1,0 +1,22 @@
+#! /bin/bash
+# Script written by W. Al Maawali  
+# (c) 2016 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here: 
+### BEGIN INIT INFO
+# Provides:          networkboot
+# Required-Start:     
+# Required-Stop:     
+# Should-Start:       
+# Should-Stop:        
+# Default-Start:      
+# Default-Stop:       
+# Short-Description:  
+# Description:       Start The Network with eth0 dhcp
+#                    network client that provides anonymous
+#                    transport.
+### END INIT INFO
+
+sudo cat /home/kodachi/.kbase/interfaces > /etc/network/interfaces; 
+sudo service network-manager restart;

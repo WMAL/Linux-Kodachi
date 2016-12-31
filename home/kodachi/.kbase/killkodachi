@@ -1,0 +1,50 @@
+#!/bin/bash
+# Script written by W. Al Maawali  
+# (c) 2016 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here: 
+# do dangerous stuff
+	notify-send "Kodachi will be destroyed!!"
+    echo "Wiping /tmp!";
+    sleep 3;
+    sudo chown kodachi.kodachi /tmp -R;
+    sudo find /tmp -type f | xargs shred -v -u -z -f --remove;
+    echo "Wiping logs!";
+	sleep 3;
+	sudo chown kodachi.kodachi /var -R;
+	sudo find /var/log -type f | xargs shred -v -u -z -f --remove;
+    echo "Wiping home!";
+    sleep 3;    
+    sudo find -type f -execdir shred -v -u -z -f '{}' \;
+    echo "Wiping other system folders!";
+    sleep 3;
+    sudo find /var/ -type f | xargs shred -v -u -z -f --remove;
+    sudo chown kodachi.kodachi /root -R;
+    sudo find /root/ -type f | xargs shred -v -u -z -f --remove;
+    sudo chown kodachi.kodachi /srv -R;
+    sudo find /srv/ -type f | xargs shred -v -u -z -f --remove;
+    sudo chown kodachi.kodachi /home -R;
+    sudo find /home/ -type f | xargs shred -v -u -z -f --remove;
+    sudo chown kodachi.kodachi /opt -R;
+    sudo find /opt/ -type f | xargs shred -v -u -z -f --remove;
+    echo "Wiping free space!";
+	sleep 3;
+	sudo sfill -v /
+	echo "Wiping RAM!";
+	sleep 3;a
+	sudo sdmem -v
+	sudo chown kodachi.kodachi /usr -R;
+    sudo find /usr/ -type f | xargs shred -v -u -z -f --remove;
+    sudo chown kodachi.kodachi /etc -R;
+    sudo find /etc/ -type f | xargs shred -v -u -z -f --remove;
+	echo "Bye Bye! I am clean now";
+	sleep 3;
+	sudo shutdown -h now
+	reboot   	
+ 
+	# Never enable it will wipe all your attached medias
+	#cd /
+	#sudo rm -rf *
+ 
+	
