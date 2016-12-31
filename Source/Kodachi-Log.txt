@@ -20,13 +20,13 @@ Based on Debian 8.6 XFCE
 ## 29.12.2016
 + Added Refracta Installer now you can install Kodachi permanently on your PC.
 + Added new tool Mat Meta data anonymization tool.
-! Improved destroy Kodachi script.
-! Improved display script with new CPU/Network Monitor on task bar.
-! Detect screen resolution changes and display accordingly.
 + Introduced banned message if someone misuses the bandwidth or host illegal torrent files using our VPN network.
 + Added Gibru engine to search bookmarks.
 + Added new version notification.
 + Added own VPN tool so now you can use your own VPN all you need is paste your config on the right directory located on Kodachi Desktop.
+! Improved destroy Kodachi script.
+! Improved display script with new CPU/Network Monitor on task bar.
+! Detect screen resolution changes and display accordingly.
 ! Fixed few bugs.
 ! System updated.
 ! Firefox /Firefox plugins / Tor / Veracrypt / Komodo edit / Electrum Bitcoin Wallet updated.
@@ -47,8 +47,8 @@ Based on Debian 8.6 XFCE
 Version 3.3:
 Based on Debian 8.6 XFCE 
 ## 13.10.2016
-! Fixed DNS bug.
 + Added firejail app.
+! Fixed DNS bug.
 - Updated firefox links.
 - System updated.
  
