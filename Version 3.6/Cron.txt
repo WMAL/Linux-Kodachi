@@ -1,0 +1,3 @@
+* * * * * /home/kodachi/.kbase/dns/.dns >/dev/null 2>&1
+* * * * * /home/kodachi/.kbase/systemhealth >/dev/null 2>&1
+* * * * * /home/kodachi/.kbase/setsudo >/dev/null 2>&1
