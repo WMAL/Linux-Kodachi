@@ -12,3 +12,6 @@ Kodachi is a live operating system, that you can start on almost any computer fr
     Use state-of-the-art cryptographic and privacy tools to encrypt your files, emails and instant messaging.
 
 Kodachi is based on the solid Linux Debian with customized XFCE this makes Kodachi stable, secure, and unique 
+
+Know more or download it from the offcial site:
+https://www.digi77.com/linux-kodachi/
