@@ -1,0 +1,16 @@
+#!/bin/bash
+# Script written by W. Al Maawali  
+# (c) 2016 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here:
+
+echo "Killing VPN Process...."
+sudo sed -i 's/\bsecure\b/notsecure/g' /home/kodachi/.kbase/systemhealth 
+sudo kill -9 `ps -ef | grep openvpn | grep -v grep | awk '{print $2}'`
+sudo killall tor;
+sleep 15;
+sudo bash /home/kodachi/.kbase/getips;
+echo "Done"
+
+

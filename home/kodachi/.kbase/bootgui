@@ -1,0 +1,20 @@
+#!/bin/bash
+# Script written by W. Al Maawali  
+# (c) 2016 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here: 
+
+
+# check if user has logged in
+if [[ $(who |grep 'kodachi'|cut -d : -f 1| awk 'NR==1') = *kodachi* ]]; then
+	sudo killall cairo-dock;
+	notify-send "Dock will start in 5 seconds";
+	sleep 5;
+	cairo-dock -c
+	exit;
+fi
+ 
+
+
+

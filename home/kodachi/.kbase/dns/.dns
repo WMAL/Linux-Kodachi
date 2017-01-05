@@ -1,0 +1,47 @@
+#!/bin/bash
+# Script written by W. Al Maawali  
+# (c) 2016 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here: 
+
+
+
+IP_ADDR=$(sudo curl -s -m 30 https://www.digi77.com/software/vpn/ipcheck.php)
+if [ -n "$IP_ADDR" ]     
+then 
+	echo "Found the ip $IP_ADDR setting dns crypt";
+	sudo cat /home/kodachi/.kbase/dns/dns1 > /etc/resolv.conf; 
+	
+else
+	echo "No ip found set level3 dns";
+	sudo cat /home/kodachi/.kbase/dns/dns6 > /etc/resolv.conf;
+	# If internet stops get it back
+	#sudo ifconfig eth0 down;
+	#sudo dhclient eth0;
+fi
+
+
+
+# Old code
+
+#PING=`ping -c 5 google.com | grep packets | awk -F% '{print $1 $4 $6}' | cut -c 36-38`;
+#RASPUNS="20";
+#DNSACT=`sudo tail -n 2 /etc/resolv.conf`;
+#DNNS1=`cat /home/kodachi/.kbase/dns/dns1`;
+#DNNS2=`cat /home/kodachi/.kbase/dns/dns2`;
+
+#if ["$PING" > "$RASPUNS"];
+#then
+#{
+	#sudo cat /home/kodachi/.kbase/dns/dns2 > /etc/resolv.conf;
+#}
+#else
+#{
+    #sudo cat /home/kodachi/.kbase/dns/dns1 > /etc/resolv.conf;
+#}
+#fi
+
+
+#echo "$PING";
+#if [[(" $PING" > "$RASPUNS") || ("$DNSACT" = "$DNS1")]];

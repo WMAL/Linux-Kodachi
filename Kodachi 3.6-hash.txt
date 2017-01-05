@@ -1,0 +1,19 @@
+==================================================
+Filename          : kodachi-3.6-64.iso
+MD5               : ddad26e6dda3599e2abb1fa280487670
+SHA1              : 28a6c95edf7527dd9fb2c75ed49f2ef6929add6f
+CRC32             : e9d6f698
+SHA-256           : b855dba75c948d22f0128e4c68d09968562b7339fda517c59b0c2bcb6ddc06a6
+SHA-512           : 4d319aff681e801d9429ab5c5b4ee410247980c25725d7e3906b91b1eefe0abe6bb2f3acbe10f63af8dfbdd62678ce6c20987d792830172dbf4f4cab0b61fb65
+SHA-384           : b2eaf9e399fb62a3714b1d7df762ed442fc76f14221b74394a3160710df629984b8f39f4d25bf8af3882c1d2073a84c1
+Full Path         : https://www.digi77.com/software/kodachi/kodachi-3.6-64.iso
+Modified Time     : 12/30/2016 12:28:50 PM
+Created Time      : 12/30/2016 12:52:43 PM
+File Size         : 2,167,697,408
+File Version      : 3.6
+Product Version   : 3.6 
+Identical         : 
+Extension         : iso
+File Attributes   : A
+==================================================
+

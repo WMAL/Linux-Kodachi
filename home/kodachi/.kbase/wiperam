@@ -1,0 +1,9 @@
+#!/bin/bash
+# Script written by W. Al Maawali  
+# (c) 2016 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here: 
+notify-send "Wiping the Ram";
+sudo sdmem -v;
+

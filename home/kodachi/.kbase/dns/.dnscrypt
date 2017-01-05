@@ -1,0 +1,14 @@
+#!/bin/bash
+# Script written by W. Al Maawali  
+# (c) 2016 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here
+cat /home/kodachi/.kbase/dns/dns0 > /home/kodachi/.kbase/dns/dns1;
+sudo cat /home/kodachi/.kbase/dns/dns0 > /etc/resolv.conf;
+sudo killall dnscrypt-proxy
+sudo dnscrypt-proxy -d -R ns0.dnscrypt.is -a 127.0.0.2
+sudo dnscrypt-proxy -d -R dnscrypt.eu-dk -a 127.0.0.2
+sudo dnscrypt-proxy -d -R dnscrypt.org-fr -a 127.0.0.2
+sudo dnscrypt-proxy -d -R dns-freedom -a 127.0.0.2
+sudo echo "1" > /home/kodachi/.kbase/dns/autodnscrypt 

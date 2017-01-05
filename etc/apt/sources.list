@@ -1,0 +1,20 @@
+# 
+
+# deb cdrom:[Debian GNU/Linux 8 _Jessie_ - Official Snapshot amd64 LIVE/INSTALL Binary 20160609-11:47]/ jessie main
+
+#deb cdrom:[Debian GNU/Linux 8 _Jessie_ - Official Snapshot amd64 LIVE/INSTALL Binary 20160609-11:47]/ jessie main
+
+#deb http://security.debian.org/ jessie/updates main
+#deb-src http://security.debian.org/ jessie/updates main
+
+
+###### Debian Main Repos
+deb http://ftp.ch.debian.org/debian/ jessie main contrib non-free 
+deb-src http://ftp.ch.debian.org/debian/ jessie main contrib non-free 
+
+###### Debian Update Repos
+deb http://security.debian.org/ jessie/updates main contrib non-free 
+deb-src http://security.debian.org/ jessie/updates main contrib non-free  
+
+
+

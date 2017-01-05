@@ -1,0 +1,8 @@
+#!/bin/bash
+# Script written by W. Al Maawali  
+# (c) 2016 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here: 
+sudo macchanger -r eth0;
+notify-send "New Mac address has been assigned";
