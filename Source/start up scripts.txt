@@ -1,5 +1,0 @@
-/home/kodachi/.kbase/bootgui
-/home/kodachi/.kbase/bootgui2
-/home/kodachi/.kbase/newmac
-/home/kodachi/.kbase/bootnetwork
-/home/kodachi/.kbase/reschangecheck
