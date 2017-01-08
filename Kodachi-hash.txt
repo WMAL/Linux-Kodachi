@@ -1,0 +1,19 @@
+==================================================
+Filename          : kodachi-3.7-64.iso
+MD5               : 73b43f761aeae87aafa1d4b544d78990
+SHA1              : d72c108444a51becea736c9659c102dda98f50f3
+CRC32             : 2342dec7
+SHA-256           : 15668916e5d28108421c32626b164ae3a8d1f231f780728361e6cf4618a04bfd
+SHA-512           : 30931b4e1c206fbab9226e6b195c6a4001d984cb309a571ebec5ec9cc2e9a60c04eece432fecdc4b1ac9f0e0c7fd239dfb10141e7f7a2d29fc96b676e6cac926
+SHA-384           : 658cb29807560d9b45641520b887e4b71e20834c065a2a27673b698a9d4004967cb58d4bded1cbd7bcf7d7d496a9a481
+Full Path         : https://www.digi77.com/software/kodachi/kodachi-3.7-64.iso
+Modified Time     : 1/8/2017 3:07:15 AM
+Created Time      : 1/8/2017 3:07:48 AM
+File Size         : 2,169,288,704
+File Version      : 3.7
+Product Version   : 3.7 
+Identical         : 
+Extension         : iso
+File Attributes   : A
+==================================================
+

@@ -1,8 +1,33 @@
 # Linux Kodachi change Log Written by W. Al Maawali  
-# (c) 2016 Founder of Eagle Eye Digital Solutions
+# (c) 2017 Founder of Eagle Eye Digital Solutions
 # http://www.digi77.com
 # http://www.om77.net
 # Log starts here:
+
+
+
+
+Version 3.7:
+Based on Debian 8.6 XFCE 
+## 8.1.2017
++ Added data-urlencode to Curl post commands.
++ Added MAC address on display screen.
++ Added wlan0 changer works if wifi is disabled.
++ Added Anonymous wallpapers.
+! Changed Panel and Cairo position.
+! Repositioned Kodachi browser and few other icons were updated.
+! Changed Comodo Edit theme.
+! Improved own VPN script if VPN config files are not set it will open the files for you to edit.
+! Improved update notification.
+! Fixed IP resolve issue.
+! Fixed VPN issues.
+! Fixed few other bugs.
+! Fixed version checker.
+- Replaced VPN and Tor scripts with one single script.
+- Disabled mouse scroll on workspaces panel.
+- Kodachi is on Github now :).
+
+
 
 
 Version 3.6:
