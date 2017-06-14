@@ -122,7 +122,7 @@ ${goto 50}${font Ubuntu:size=7,weight:normal}${color3}DNS 1:${color1}${alignr}${
 ${goto 50}${font Ubuntu:size=7,weight:normal}${color3}DNS 2:${color1}${alignr}${exec cat /etc/resolv.conf |grep nameserver|cut -d r -f 3|sed 's/^ *//;s/ *$//'| awk 'NR==2'}
 $else
 
-${goto 50}${font Ubuntu:size=7,weight:bold}${color}DnsCryptt
+${goto 50}${font Ubuntu:size=7,weight:bold}${color}DnsCrypt
 ${goto 50}${font Ubuntu:size=7,weight:normal}${color red}${blink DnsCrypt Off}
 #${goto 50}${font Ubuntu:size=7,weight:normal}${color3}Age: ${color1}${alignr}${exec ps -eo pid,command,etime|grep 'dnscrypt-proxy'|cut -d y -f 4|sed 's/^ *//;s/ *$//'|tr -d " \t\n\r"}
 ${goto 50}${font Ubuntu:size=7,weight:normal}${color3}Provider:${color1}${alignr}${exec cat /etc/resolv.conf |grep Dnsused|cut -d : -f 2|tr -d " \t\n\r"}
