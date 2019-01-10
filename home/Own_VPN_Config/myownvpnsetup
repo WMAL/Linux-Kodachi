@@ -1,0 +1,9 @@
+# Paste your user and password here 
+# Example:
+#ownvpnusrname=my_vpn_username
+#ownvpnpassword=my_password
+
+# Does my own VPN require a user name and password ? If yes set need_user_password to 1
+need_user_password=0 
+ownvpnusrname=my_vpn_username
+ownvpnpassword=my_password

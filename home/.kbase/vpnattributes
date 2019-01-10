@@ -1,0 +1,3 @@
+port=443
+protocolu=udp
+theProfile=kodachi-vpn.ovpn

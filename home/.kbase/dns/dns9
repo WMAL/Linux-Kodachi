@@ -1,0 +1,5 @@
+# Dnsused:Temp
+nameserver 99.192.182.100
+nameserver 172.104.237.57
+nameserver 103.86.96.100
+search localdomain

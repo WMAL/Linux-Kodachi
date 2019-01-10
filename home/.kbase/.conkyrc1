@@ -1,0 +1,85 @@
+
+#==============================================================================
+#                               conkyrc_orange
+#
+#  author  : SLK
+#  version : v2011011601
+#  license : Distributed under the terms of GNU GPL version 2 or later
+#
+#==============================================================================
+
+# Script written by Warith Al Maawali   
+# (c) 2018 Founder of Eagle Eye Digital Solutions      
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here: 
+
+background yes
+update_interval 5
+
+cpu_avg_samples 2
+net_avg_samples 2
+temperature_unit celsius
+
+double_buffer yes
+no_buffers yes
+text_buffer_size 2048
+
+
+gap_x 480
+gap_y 350 
+
+minimum_size 180 200
+maximum_width 260
+
+# — WINDOW — #
+own_window yes
+own_window_type override
+own_window_transparent yes
+own_window_hints undecorate,sticky,skip_taskbar,skip_pager,below   
+
+border_inner_margin 0
+border_outer_margin 0
+alignment tr
+
+draw_shades no
+draw_outline no
+draw_borders no
+draw_graph_borders no
+
+override_utf8_locale yes
+use_xft yes
+xftfont caviar dreams:size=10
+xftalpha 0.5
+uppercase no
+
+ 
+default_color FFFFFF
+color1 FDA455
+color2 666 
+color3 C18C24
+color4 FFFFF 
+color5 0AFF0A
+
+ 
+lua_draw_hook_post main
+
+
+
+TEXT
+${goto 5}${font Impact:size=10:normal}${color2}CPU ${font Impact:size=10:normal}${color3}${alignr}${cpu}% 
+${goto 5}${font Impact:size=10:normal}${color1}${top name 1}${alignr}${top cpu 1}%
+${goto 5}${font Impact:size=10:normal}${color1}${top name 2}${alignr}${top cpu 2}%
+${goto 5}${font Impact:size=10:normal}${color1}${top name 3}${alignr}${top cpu 3}%
+${goto 5}${loadgraph 10,180 666666 666666}
+${voffset 10}
+${goto 5}${font Impact:size=10:normal}${color2}MEM ${color1}${exec free | awk '/Mem/{printf("%.2f%"), $3/$2*100} /buffers\/cache/{printf(", buffers: %.2f%"), $3/$2*100}' }${color1}${alignr}${exec cat /home/$USER/.kbase/Memused}
+${goto 5}${font Impact:size=10:normal}${color1}${top_mem name 1}${alignr}${top_mem mem 1}%
+${goto 5}${font Impact:size=10:normal}${color1}${top_mem name 2}${alignr}${top_mem mem 2}%
+${goto 5}${font Impact:size=10:normal}${color1}${top_mem name 3}${alignr}${top_mem mem 3}%
+${voffset 10}
+${goto 5}${font Impact:size=10:normal}${color2}DISKS
+${goto 5}${font Impact:size=10:normal}${color1}used:${alignr}${fs_used /home}${color2} /home
+${goto 5}${font Impact:size=10:normal}${color1}used:${alignr}${fs_used /}${color2} /
+${goto 5}${diskiograph 10,180 666666 666666}#${voffset -40}
+#${image /home/$USER/.kbase/.conky/eeds.png -p 95,20 -s 57x54}

@@ -1,0 +1,29 @@
+#!/bin/bash
+# Script written by Warith Al Maawali 
+# (c) 2018 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here: 
+# do dangerous stuff
+
+
+
+cd $(dirname $0) 
+source Globalconfig;
+
+
+
+SERVICE='tor-service';
+if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+then
+	notifyIcon="$Mykodachi_path/icons/icons8-shield-48.png";
+	xfce4-terminal -e 'bash -c ". torsocks on; bash"' -T "Torified shell"
+	notify-send -i $notifyIcon "Torified shell started";  
+	exit 1;
+else
+     
+	notify-send -i $notifyIcon "Tor service is not running please run it first";
+	exit 1;
+fi
+exit 1; 
+	

@@ -1,0 +1,71 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2018 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here: 
+
+cd $(dirname $0) 
+source Globalconfig;
+
+
+if [ ! -d $Mykodachi_path/tmp ]; then
+	mkdir $Mykodachi_path/tmp;
+	chown $LOGED_USER.$LOGED_USER $Mykodachi_path/tmp;
+fi;
+
+#NEW_UUID=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)
+NEW_UUID="LFprRJYhIltV5jYzH04tA5d29YUdWoJC@";
+me=$(basename "$(test -L "$0" && readlink "$0" || echo "$0")")
+
+lockdir=$Mykodachi_path/tmp/$NEW_UUID$me
+mkdir $lockdir || {
+    echo "lock directory exists. exiting"
+    exit 1
+}
+# take pains to remove lock directory when script terminates
+trap "rmdir $lockdir" EXIT INT KILL TERM 
+
+# rest of script here
+theChangecounter=0;
+
+
+
+echo "mac change the smart way";	
+for i in $( nmcli device status | awk '{print $1}' );
+do
+	if [[ $i != "DEVICE" ]]
+	then
+		echo "change mac for:$i";
+		if(sudo timeout 10 sudo macchanger -r $i)
+		then
+			notify-send -i $notifyIcon "New Mac address has been assigned to: $i";
+			theChangecounter=$((theChangecounter+1)) 
+		fi
+
+	fi
+done
+
+
+
+
+
+if [[ $theChangecounter == 0 ]]
+then
+	
+	xP=$(id -u $LOGED_USER)
+	if [[ $xP == 990 ]] 
+	then
+		notify-send -i $notifyIcon "Mac address could not be changed";
+	fi
+	
+	if [[ $xP != 990 ]] 
+	then
+		notify-send -i $notifyIcon "Mac address could not be changed
+because your $OS_name OS is not running as live mode";
+	fi
+	
+fi
+
+
+exit 1;

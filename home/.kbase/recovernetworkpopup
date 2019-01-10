@@ -1,0 +1,37 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2018 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here:
+cd $(dirname $0) 
+source Globalconfig;
+
+
+
+
+ 
+goAhead=0;
+
+dialog --backtitle "You lost internet connection do you want me to try and recover it" \
+--title "Recover my Internet" \
+--yes-label "YES!" --no-label "No I know what I am doing" --yesno "Go a head?" 6 40
+response=$?
+case $response in
+	0) goAhead=1 ;;
+	1) goAhead=0 ;;
+	255) ctrl_c ;;
+esac
+ 
+if [[ $goAhead == 1 ]]
+then
+
+bash $Mykodachi_path/networkrestart;
+fi
+ 
+
+exit 1
+
+
+
+

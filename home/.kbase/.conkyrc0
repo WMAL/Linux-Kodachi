@@ -1,0 +1,75 @@
+#==============================================================================
+#                               conkyrc_orange
+#
+#  author  : SLK
+#  version : v2011011601
+#  license : Distributed under the terms of GNU GPL version 2 or later
+#
+#==============================================================================
+
+# Script written by Warith Al Maawali  
+# (c) 2018 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here: 
+
+background yes
+update_interval 2
+
+cpu_avg_samples 2
+net_avg_samples 2
+temperature_unit celsius
+
+double_buffer yes
+no_buffers yes
+text_buffer_size 2048
+
+#gap_x 935
+gap_x 480
+gap_y 30
+
+
+
+minimum_size 180 320
+maximum_width 230
+# — WINDOW — #
+own_window yes
+own_window_type override
+own_window_transparent yes
+own_window_hints undecorate,sticky,skip_taskbar,skip_pager,below
+border_inner_margin 0
+border_outer_margin 0
+alignment tr
+
+draw_shades no
+draw_outline no
+draw_borders no
+draw_graph_borders no
+##
+override_utf8_locale yes
+use_xft yes
+xftfont caviar dreams:size=10
+xftalpha 0.5
+uppercase no
+
+default_color FFFFFF
+color1 FDA455
+color2 666
+color3 666
+color4 FFFFF 
+color5 0AFF0A
+
+lua_load ~/.kbase/conky_orange.lua 
+lua_draw_hook_post main
+
+
+
+
+
+TEXT
+#${image ~/.kbase/icons/icons8-shield-96.png -p 70,1 -s 35x35}
+#${goto 90}${font Impact:size=10,:normal}${color2}${offset -30} Eagle Eye Digital Solutions 
+#${goto 60}${image ~/.kbase/icons/icons8-shield-96.png -p  50,24 -s 20x20}${font Impact:size=104,:normal}${color2}${offset 10} Linux ${color1}Kodachi 
+${goto 5}${font Impact:size=10,:normal}${color2}${color1}Linux ${color2}Kodachi
+${goto 5}${font Impact:size=10,:normal}${color2}${color2}Simplifying ${color1}Anonymity  
+

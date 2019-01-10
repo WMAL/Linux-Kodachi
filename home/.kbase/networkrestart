@@ -1,0 +1,294 @@
+#!/bin/bash
+# Script written by Warith Al Maawali 
+# (c) 2018 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here: 
+
+cd $(dirname $0) 
+source Globalconfig;
+x=$(find /sys/class/net ! -type d | xargs --max-args=1 realpath  | awk -F\/ '/pci/{print $NF}'|head -n1 | sed -e 's/\s.*$//');
+xNet=$(ip route get 8.8.8.8 | sed -nr 's/.*dev ([^\ ]+).*/\1/p');
+
+
+
+
+IP='google.com';
+echo "interface used: $x" ;
+echo "interface used for net: $xNet" ;
+
+# Start up check connection
+ping -c1 -W 2 "$IP" &> /dev/null
+if [ $? -eq 0 ]; 
+then
+  notify-send -i $notifyIcon "Internet found no issues do nothing bye";
+  exit 1;
+else
+	notify-send -i $notifyIcon "I will try to fix by few known methods 
+each will have 30 seconds pause in between
+to give you a chance to reconnect your wifi or ethernet";
+
+	IP='digi77.com';
+	echo "Switch domain from google to digi77.com";
+	echo "Dhcclient the smart way";	
+	for i in $( nmcli device status | awk '{print $1}' );
+	do
+		if [[ $i != "DEVICE" ]]
+		then
+			echo "Dhcp for:$i";
+			sudo timeout 10 sudo dhclient $i;
+
+		fi
+	done
+fi
+sleep 2;
+
+# Method 0
+ping -c1 -W 2 "$IP" &> /dev/null
+if [ $? -eq 0 ]; 
+then
+  notify-send -i $notifyIcon "Internet found no issues do nothing bye";
+  exit 1;
+else
+	#Manual boring way :p
+	echo "Will dhclient the boring way";
+	if !(sudo timeout 10 sudo dhclient $xNet)
+	then
+		if !(sudo timeout 10 sudo dhclient $x)
+		then
+			if !(sudo timeout 10 sudo dhclient wlp2s0)
+			then
+				if !(sudo timeout 10 sudo dhclient wlp3s0)
+				then
+					if !(sudo timeout 10 sudo dhclient wlx18a6f71995d8)
+					then
+						if(sudo timeout 10 sudo dhclient eth0)
+						then
+							sudo timeout 10 sudo dhclient wlan0;
+						fi
+					fi
+				fi
+			fi	
+		fi
+	fi
+fi
+
+ 
+
+
+# Method 1
+ping -c1 -W 2 "$IP" &> /dev/null
+if [ $? -eq 0 ]; 
+then
+  notify-send -i $notifyIcon "Internet found no issues do nothing bye";
+  exit 1;
+else
+	SERVICE='openvpn';
+    if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+    then
+		notify-send -i $notifyIcon "No Internet found trying method 1:  shutdown vpn then
+Restart Network-Manger";
+		sudo killall -SIGINT openvpn;
+		sudo service network-manager restart;	
+		IP='google.com';	
+		echo "Switch domain from digi77.com to google";
+	fi
+fi
+sleep 5
+
+
+# Method 1b
+ping -c1 -W 2 "$IP" &> /dev/null
+if [ $? -eq 0 ]; 
+then
+  notify-send -i $notifyIcon "Internet found no issues do nothing bye";
+  exit 1;
+else
+	notify-send -i $notifyIcon "No Internet found trying method 1B:  Clear firewalls";
+	sudo bash $Mykodachi_path/allowalltraffic;	
+	# clean torify system
+	comment="kodachi_torify_system";
+	sudo iptables -t nat -S | grep "${comment}" | cut -d " " -f 2- | xargs -rL1 iptables -t nat -D
+	sudo iptables -S | grep "${comment}" | cut -d " " -f 2- | xargs -rL1 iptables -D
+
+	# Clean Tor dns
+	comment="kodachi_tor_dns";
+	sudo iptables -t nat -S | grep "${comment}" | cut -d " " -f 2- | xargs -rL1 iptables -t nat -D
+	IP='digi77.com';	
+	
+fi
+sleep 5
+
+
+ 
+
+
+
+# Method 2 
+ping -c1 -W 2 "$IP" &> /dev/null
+if [ $? -eq 0 ]; 
+then
+  notify-send -i $notifyIcon "Internet found no issues do nothing bye";
+  exit 1;
+else
+	notify-send -i $notifyIcon "No Internet found trying method 2: ifconfig down and up for: $x and $xNet" ;
+	sudo ifconfig $x down;
+	sudo ifconfig $x up;
+	sudo ifconfig $xNet down;
+	sudo ifconfig $xNet up;
+	IP='digi77.com';
+	echo "Switch domain from google to digi77.com";	
+fi
+#sleep 3
+
+
+# Method 3 
+ping -c1 -W 2 "$IP" &> /dev/null
+if [ $? -eq 0 ]; 
+then
+  notify-send -i $notifyIcon "Internet found no issues do nothing bye";
+  exit 1;
+else
+	notify-send -i $notifyIcon "No Internet found trying method 3: dhclient $x and $xNet" ;
+	sudo timeout 10 sudo dhclient $x;
+	sudo timeout 10 sudo dhclient $xNet;	
+	IP='google.com';	
+	echo "Switch domain from digi77.com to google";
+fi
+#sleep 3
+
+
+
+
+# Method 4
+ping -c1 -W 2 "$IP" &> /dev/null
+if [ $? -eq 0 ]; 
+then
+  notify-send -i $notifyIcon "Internet found no issues do nothing bye";
+  exit 1;
+else
+	notify-send -i $notifyIcon "No Internet found trying method 4: ifconfig down and up for $x $xNet eth0 and wlan0"
+	# Try to get interface again
+	x=$(find /sys/class/net ! -type d | xargs --max-args=1 realpath  | awk -F\/ '/pci/{print $NF}'|head -n1 | sed -e 's/\s.*$//')
+	sudo ifconfig eth0 down;
+	sudo ifconfig wlan0 down;
+	sudo ifconfig $x down;
+	sudo ifconfig $xNet down;
+	sudo ifconfig wlp3s0 down;
+	sudo ifconfig wlp2s0 down;
+	sudo ifconfig wlx18a6f71995d8 down;
+	sudo ifconfig eth0 up;
+	sudo ifconfig wlan0 up;
+	sudo ifconfig $x up;
+	sudo ifconfig $xNet up;
+	sudo ifconfig wlp3s0 up;
+	sudo ifconfig wlp2s0 up;
+	sudo ifconfig wlx18a6f71995d8 up;
+	IP='digi77.com';
+	echo "Switch domain from google to digi77.com";	
+	
+fi
+#sleep 3
+
+
+
+# Method 5 
+ping -c1 -W 2 "$IP" &> /dev/null
+if [ $? -eq 0 ]; 
+then
+  notify-send -i $notifyIcon "Internet found no issues do nothing bye";
+  exit 1;
+else
+	notify-send -i $notifyIcon "No Internet found trying method 5: dhclient wlan0"
+	sudo timeout 10 sudo dhclient wlan0;	
+	IP='google.com';	
+	echo "Switch domain from digi77.com to google";
+fi
+#sleep 3
+
+
+
+# Method 6
+ping -c1 -W 2 "$IP" &> /dev/null
+if [ $? -eq 0 ]; 
+then
+  notify-send -i $notifyIcon "Internet found no issues do nothing bye";
+  exit 1;
+else
+	notify-send -i $notifyIcon "No Internet found trying method 6: dhclient eth0;"
+	sudo timeout 10 sudo dhclient eth0;	
+	IP='digi77.com';
+	echo "Switch domain from google to digi77.com";	
+fi
+
+
+
+# Method 7
+ping -c1 -W 2 "$IP" &> /dev/null
+if [ $? -eq 0 ]; 
+then
+  notify-send -i $notifyIcon "Internet found no issues do nothing bye";
+  exit 1;
+else
+	notify-send -i $notifyIcon "No Internet found trying method 7: dhclient $x and $xNet";
+	sudo timeout 10 sudo dhclient $x;
+	sudo timeout 10 sudo dhclient $xNet;	
+	IP='google.com';	
+	echo "Switch to ip 1.1.1.1";
+fi
+
+# Method 8
+ping -c1 -W 2 "$IP" &> /dev/null
+if [ $? -eq 0 ]; 
+then
+  notify-send -i $notifyIcon "Internet found no issues do nothing bye";
+  exit 1;
+else
+	notify-send -i $notifyIcon "No Internet found trying method 8: wlp3s0"
+	sudo timeout 10 sudo dhclient wlp3s0;	
+	IP='google.com';	
+	echo "Switch to ip 1.1.1.1";
+fi
+
+# Method 9
+ping -c1 -W 2 "$IP" &> /dev/null
+if [ $? -eq 0 ]; 
+then
+  notify-send -i $notifyIcon "Internet found no issues do nothing bye";
+  exit 1;
+else
+	notify-send -i $notifyIcon "No Internet found trying method 9: wlp2s0"
+	sudo timeout 10 sudo dhclient wlp2s0;	
+	IP='google.com';	
+	echo "Switch to ip 1.1.1.1";
+fi
+
+# Method 10
+ping -c1 -W 2 "$IP" &> /dev/null
+if [ $? -eq 0 ]; 
+then
+  notify-send -i $notifyIcon "Internet found no issues do nothing bye";
+  exit 1;
+else
+	notify-send -i $notifyIcon "No Internet found trying method 10: wlx18a6f71995d8"
+	sudo timeout 10 sudo dhclient wlx18a6f71995d8;	
+	IP='google.com';	
+	echo "Switch to ip 1.1.1.1";
+fi
+
+
+
+
+# Advice 
+ping -c1 -W 2 "$IP" &> /dev/null
+if [ $? -eq 0 ]; 
+then
+	notify-send -i $notifyIcon "Internet found no issues do nothing bye";
+	exit;
+else
+	notify-send -t 20000 "Failed to fix your Internet run the following command on terminal: 
+sudo service network-manager restart;"
+fi
+
+
+exit 1;

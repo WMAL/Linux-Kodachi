@@ -1,0 +1,14 @@
+###### Ubuntu Main Repos
+deb http://archive.ubuntu.com/ubuntu bionic main restricted universe multiverse
+
+###### Ubuntu Update Repos
+deb http://archive.ubuntu.com/ubuntu bionic-security main restricted universe multiverse
+deb http://archive.ubuntu.com/ubuntu bionic-updates main restricted universe multiverse
+deb http://archive.ubuntu.com/ubuntu bionic-proposed main restricted universe multiverse
+deb http://archive.ubuntu.com/ubuntu bionic-backports main restricted universe multiverse
+
+
+
+deb https://deb.torproject.org/torproject.org bionic main
+deb [arch=amd64] https://downloads.iridiumbrowser.de/deb/ stable main
+deb https://dl.bintray.com/hawkeye116477/waterfox-deb release main

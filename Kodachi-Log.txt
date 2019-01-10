@@ -1,15 +1,322 @@
-# Linux Kodachi change Log Written by W. Al Maawali  
-# (c) 2017 Founder of Eagle Eye Digital Solutions
+# Linux Kodachi change log Written by Warith Al Maawali  
+# (c) 2018 Founder of Eagle Eye Digital Solutions
 # http://www.digi77.com
+# https://www.digi77.com/linux-kodachi/
 # http://www.om77.net
 # Log starts here:
 
 
 
 
+
+Version 5.7:
+Based on: Debian 9.5 Xbuntu 18.04 LTS
+Kernel: 4.18.0-13
+System: 64bit
+Release date: 01.01.2019
+Tag: Simplifying Anonymity
++ Proton VPN welcome to Kodachi users now can use free or paid version of ProtonVPN
++ Boradcom drivers added
++ Bettergram added (Telegram replacement)
++ Feature to increase decrease screen font size (conky)
++ Feature to auto adjust screen font size (conky) based on screen resolution
++ Feature to control forced temp DNS
++ Feature to show open local ports
++ Gmerlin video codecs added
++ tlp added for bettter power management
++ noapic  added to boot grub options for old pcs
++ Now you can see live btc,xmr price on your screen display (conky)
++ Added new privacy bookmarks to Kodachi browser
+- System, Exodus, Jaxx Waterfox updated
+- Telegram removed
+! Improved all scripts that work with interface cards including network boot and mac changer
+! Screen conky redesigned to save space on lower resolution screens
+! Fixed nuke issue if password doesn't match then quit
+! Printer cups , force DNS , Nuke , System encryption status where added to screen display (conky)
+! Fixed scoring test script now nuke is counted along with system encryption
+! Fixed printer cups disable script
+! Fixed bug with FSlint search utility shortcut was wrong
+! Fixed bug with Internet force via VPN script
+! Some other system bugs were fixed including permissions and tor start delay
+
+
+Note: For those who had Broadcom, Internet connectivity or graphic cards issues hopefully this version has them fixed
+ 
+
+
+
+Version 5.6:
+Based on: Debian 9.5 Xbuntu 18.04 LTS
+Kernel: 4.18.0-13
+System: 64bit
+Release date: 15.12.2018
+Tag: Simplifying Anonymity
+
++ Nuke system Yes Kodachi can be nuked with a single button! Check website for more information
++ USB persistence support! Tested and it works Check website for more information
++ Light locker settings
++ Startup Disk creator
++ FSlint search utility
++ Force temp dns on and off feature
++ Printer cups port 631 on and off feature
++ Force memory cleaner 
++ Memory watch  
++ Performance tab in Firefox
++ New kernel updated
+- Removed duplicate action buttons
+- Super key assigned to left keyboard super key
+! Fixed performance issue was there since 5.3 
+! Fixed network applet showing twice
+! Fixed right menu thunar directory size calculator
+! Modified memory script
+! Fixed typo mistake with myownvpnauth.txt
+! Fixed Torified shell sudo error message
+! Fixed and improved screen display fonts
+
+
+
+
+
+Version 5.5:
+Based on: Debian 9.5 Xbuntu 18.04 LTS
+Kernel: 4.18.0-12
+System: 64bit
+Release date: 05.12.2018
+
++ Security modeling with scoring system
++ Now you can Torify entire system! Oh Yes I am serious I made it!
++ Kodachi has custom terminal with security info!
++ Hide.me VPN welcome to Kodachi 
++ TOR DNS added (Users request)
++ Nord DNS added
++ Censurfridns added
++ FreeDns added
++ Display of total ovpn files downloaded
++ Test speed any VPN provider nodes
++ Option to enable/disable ipv6 (Users request)
++ Option to enable/disable auto login
++ More ip retrieval urls.
++ VPN,ipv6,auto login,FW info with changes on screen display
++ Kodachi browser has canvas finger print blocker 
++ Kodachi browser blocks fonts finger printing
++ Kodachi browser has new security check sites with blockchain bookmarks
++ Confirmation window before wiping kodachi script is executed
++ New kernel updated
+- Google DNS removed (Users request)
+- Hostname in live iso changed to LIVE-OS (Users request)
+- Background image changed
+! Fixed bugs with ovpn files download of Nord and VPNGate
+! Fixed kodachi browser bugs now binance works :)
+! Fixed many bugs if I name them you won't use earlier version :p
+! No hard coding kodachi name on scripts all based on variables (Users request)
+! Increased file limit and placed open files counter on display screen
+* I have put plenty of hours to improve the code so almost 80% of the code was altered hence version jump from 5.3 to 5.5 
+ 
+ 
+ 
+ 
+ 
+ 
+
+Version 5.3:
+Based on: Debian 9.5 Xbuntu 18.04 LTS
+Kernel: 4.18.0-11
+System: 64bit
+Release date: 21.11.2018
++ Added Jaxx wallet
++ Added VPNGate free VPN service 
++ Added NordVPN Paid VPN service 
++ Added VPNGate profiles download - Daily updated twice
++ Added NordVPN profiles download - Weekly updated
++ Added Ghacks privacy tweaks for Kodachi browser profile better footprint online
++ Added VPN port and protocol on display screen
++ Added ISP IP information on display screen
++ Added Cups printer link on Kodachi browser local bookmarks
++ Added Synaptic software manager
++ Added Print manager 
++ System packages update
+- Kodachi based on Firefox again as Waterfox does not support onion urls
+! Fixed bug when using own VPN
+! Fixed other scripts to make Kodachi more stable
+
+
+
+
+Version 5.2:
+Based on: Debian 9.5 Xbuntu 18.04 LTS
+Kernel: 4.18.0-11
+System: 64bit
+Release date: 13.11.2018
++ System packages update
++ Few more URLS on Kodachi bookmarks
+! Fixed critical issue on Exodus wallet to force new address on every boot for live ISO
+! Fixed persistence install for UEFI now you can install Kodachi on any UEFI bootable device
+- Display changes
+
+* Installation instructions have been updated on the website
+* Kodachi browser won't have Tor enabled by default it is optional from 5.1 if you want the traffic to pass through Tor use the circle shape plugin on the address bar to toggle Tor or i2p traffic this change is to make browsing faster.
+
+Pending issue to be fixed in future:
+%- Kodachi browser is not supporting Tor onion URLS you can use Tor browser instead for that. As I am waiting for waterfox team to reply on te issue.
+
+
+
+
+Version 5.1:
+Based on: Debian 9.5 Xbuntu 18.04 LTS
+Kernel: 4.18.0-11
+System: 64bit
+Release date: 09.11.2018
++ Added Noisy crawler
++ Added Synchting file transfer service
++ Added Tenta DNS
++ Added Opennic DNS
++ Added Boot type on Desktop display Legacy or Uefi
++ Added system persistence or not status on Desktop display
++ Added Iridium-browser
++ Added Waterfox browser (Kodachi browser is based on Waterfox now)
++ Added language-selector-gnome so you can easily change language layout
+- Removed Chromium (Iridium-browser replacement)
+- Removed Firefox (Waterfox replacement)
+- Display changes with logo replacement
+! Fixed Dnscrypt display 
+! Fixed VPN disconnect status
+! Fixed Kodachi installation script
+! Fixed force all traffic via vpn script
+! Fixed few bugs on connectivity script
+
+* Kodachi browser won't have Tor enabled by default it will be optional from 5.1 if you want the traffic to pass by Tor use the circle shape plugin on the address bar to toggle Tor or i2p traffic this change is to make browsing faster.
+
+Pending issue to be fixed in future:
+%- Kodachi browser is not supporting Tor onion URLS you can use Tor browser for that.
+%- Kodachi can boot from Legacy + UEFI as live image but if you want to install it you have to boot from Legacy mode so persistence mode is not supported in UEFI boot for now.
+
+
+
+
+
+
+Version 5.0:
+Based on: Debian 9.5 Xbuntu 18.04 LTS
+Kernel: 4.18.0-11
+System: 64bit
+Release date: 30.10.2018
++ Added Block all Internet traffic feature
++ Added Chromium web browser
++ Added Torified secure shell now u can type all commands via Tor private network!
++ Added Tor on direct Internet feature
++ Added ssh key regeneration
++ Added GNUNET Switch on and Off
++ Added detect and install missing drivers
++ Added Install Kodachi online and offline feature
++ Added Gnome Commander
++ Added Gdebi
++ Added Blender Viewnior and Risrtto light image viewers
++ With a right click of a file you can now get md5,sha256,sha512,wipe,open edit as root
++ With a right click of a directory you can calculate the size of it or open as root
+- Removed Midori (Security concern its not updated!)
+- Removed PeerGuardian (Security concern its not updated!)
+- Removed Atom editor ( Size is too large!)
+- Removed snap installs and replaced with apt
+! Fixed installation script no more hangs !
+! Fixed VPN connection script 
+! GUI improvements new icons new bars
+! Updated many packages
+! Much better driver support
+! Faster boot more stable system don't miss 5.0 with Improved ISO size of 1.94GB!
+
+
+
+
+
+Version 4.3:
+Based on: Debian 9.5 XFCE/ Mint 19 
+Kernel: 4.18.15 
+System: 64bit
+Release date: 20.10.2018
++ New kernel latest stable one!
++ Added Telegram secure messenger.
++ Added Wire secure messenger.
++ Added VLC media player.
++ Added refresh status in Desktop
++ Added custom installation slides.
++ Added more Tor fixed exit nodes.
++ Added snap installer
+- Removed Virtual box not compatible with kernel 4.18.15 
+- Disabled Cairo clipboard monitor ( For better privacy)
+! Fixed bug installer hangs if PC is connected to the Internet.
+! Fixed and improved couple of scripts Distro takes less resources and its much faster.
+! Updated Exudos, Tor and Signal.
+! XFCE panel moved to left side.
+! Rearranged bottom panel icons.
+
+
+Version 4.2:
+Based on: Debian 9.5 XFCE/ Mint 19 
+Kernel: 4.15.0.36 
+System: 64bit
+Release date: 14.10.2018
++ New kernel!
++ New installer with supports of encrypted persistence mode
++ Added Rootkit hunter shortcut
++ Added memory info and resolution on Desktop information
++ Added Midori web browser
++ Added ssh, denyhosts control on services menu
+- Window manager, icons, and theme changed
+! Fixed Redshift bug
+! Fixed and improved couple of scripts
+! ISO is 700MB less than version 4.1
+
+
+Version 4.1:
+Based on Debian 9.5 XFCE kernel 4.9.0.8
+Release date: 6.10.2018
++ Added ntp and rdate now you can sync time on the  running live system
++ Added Screen Fetch
++ Now you can see which network interface is active on Desktop
++ Added Country localization on login
++ Kodachi has 2 new VPN nodes
+- Window manager,icons, and theme changed
+- Xfce panel modification
+! Fixed Exodus wallet shortcut that was missing 
+! Fixed Mac changed bug now u can change your mac address if Kodachi is running on Vmware
+! Fixed boot and network repair scripts
+
+
+
+
+
+Version 4.0:
+Based on Debian 9.5 XFCE kernel 4.9.0.8
+Release date: 3.10.2018
++ Added MenuLibre Gnome Commander Coyim Ring Open Shot Icedove Atom
++ Added Rkhunter Steghide Gnome Nettool GResolver SiriKali Deny hosts signal
++ Added Nvidia Detect Florence i2p Zulucrypt Zulumount Onion Circuits Onion share Gnu Net
++ Added cloud flare DNS over TLS via Dnscrypt
++ Public Ip resolver
++ Firefox plugins
++ Support for persistence encrypted volumes
++ Uefi boot support
+- Replaced Komodo-Edit with Atom
+- Replaced Electrom LTC/BTC with Exodus wallet
+- Removed TrueCrypt Veracrypt still there
+- Improved almost all kodachi scripts its much faster and optimized
+- Themes icons wall paper all new look!
+- Feature to disable tor permanently
+! Fixed Tor bug
+! Fixed Dns Crypt bug
+! Conky enhanced
+! GUI enhanced
+
+
+ 
+
+
+ 
+
 Version 3.7:
 Based on Debian 8.6 XFCE 
-## 8.1.2017
+Release date: 8.1.2017
 + Added data-urlencode to Curl post commands.
 + Added MAC address on display screen.
 + Added wlan0 changer works if wifi is disabled.
@@ -25,14 +332,14 @@ Based on Debian 8.6 XFCE
 ! Fixed version checker.
 - Replaced VPN and Tor scripts with one single script.
 - Disabled mouse scroll on workspaces panel.
-- Kodachi is on Github now :).
+- Kodachi source is on Github now :).
 
 
 
 
 Version 3.6:
 Based on Debian 8.6 XFCE 
-## 30.12.2016
+Release date: 30.12.2016
 ! Changed default editor from Komodo(slow) to Geany(fast).
 ! Improved own VPN script.
 ! Improved VPN start stop reconnect now VPN connectivity process is mush faster.
@@ -42,7 +349,7 @@ Based on Debian 8.6 XFCE
 
 Version 3.5:
 Based on Debian 8.6 XFCE 
-## 29.12.2016
+Release date: 29.12.2016
 + Added Refracta Installer now you can install Kodachi permanently on your PC.
 + Added new tool Mat Meta data anonymization tool.
 + Introduced banned message if someone misuses the bandwidth or host illegal torrent files using our VPN network.
@@ -60,7 +367,7 @@ Based on Debian 8.6 XFCE
 
 Version 3.4:
 Based on Debian 8.6 XFCE 
-## 17.10.2016
+Release date: 17.10.2016
 ! Fixed bug on Destroy Kodachi script to avoid deleting the content of attached media
 - Replaced Google DNS with Level3 DNS if Main DNSCrypt Fails.
 - Normal Firefox Browser moved to other apps dock.
@@ -71,7 +378,7 @@ Based on Debian 8.6 XFCE
 
 Version 3.3:
 Based on Debian 8.6 XFCE 
-## 13.10.2016
+Release date: 13.10.2016
 + Added firejail app.
 ! Fixed DNS bug.
 - Updated firefox links.
@@ -81,7 +388,7 @@ Based on Debian 8.6 XFCE
 
 Version 3.2:
 Based on Debian 8.6 XFCE 
-## 12.10.2016
+Release date: 12.10.2016
 ! Fixed DNS bug.
 - Additional show Desktop icon was added to the right.
 - Battery indicator was removed.
@@ -94,12 +401,12 @@ Based on Debian 8.6 XFCE
 
 Version 3.1:
 Based on Debian 8.5 XFCE 
-## 17.07.2016
+Release date: 17.07.2016
 
-##NEW Features:
+Release date:NEW Features:
 - Sound icon on panel.
 - Sound Mixer on Other apps group.
-- Places shortcat on the panel.
+- Placed shortcut on the panel.
 - Removed Tor from startup.
 - Conky refresh rate reduced from 30 seconds to 15.
 - VPN connection establishment is faster now.
@@ -111,9 +418,9 @@ Based on Debian 8.5 XFCE
 
 Version 3.0:
 Based on Debian 8.5 XFCE 
-## 10.07.2016
+Release date: 10.07.2016
 
-##NEW Features:
+Release date:NEW Features:
 - RAM wiped out on shut-down and reboot.
 - Random MAC address generated on boot up.
 - More exit nodes for TOR.
@@ -137,7 +444,7 @@ Based on Debian 8.5 XFCE
 
  
 
-##Fixes and removals:
+Release date:Fixes and removals:
 - Tor will never connect until we have a valid VPN connection.
 - Conky display fixed.
 - Rearranged all Kodachi custom coding files.
@@ -151,17 +458,17 @@ Based on Debian 8.5 XFCE
 
 Version 2.0: 
 Based on Debian with Gnome 
-## 16.11.2013
+Release date: 16.11.2013
 
 
 
 Version 1.1:
 Based on Linux Mint 
-## 1.11.2013
+Release date: 1.11.2013
 
 
 
 Version 1.0: 
 Based on Linux Mint 
-## 20.10.2013
+Release date: 20.10.2013
 

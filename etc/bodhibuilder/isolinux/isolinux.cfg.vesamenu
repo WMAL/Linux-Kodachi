@@ -1,0 +1,62 @@
+default vesamenu.c32
+prompt 0
+timeout 100
+
+menu title __DISTNAME__ Live Disc Legacy / BIOS Mode Boot Options
+menu background splash.png
+menu color title 1;37;44 #c0ffffff #00000000 std
+menu color sel 1;32;40 #ff4da435 #ff000000 none
+menu color hotsel 1;32;40 #ff4da435 #ff000000 none
+
+label live
+  menu label ^__DISTNAME__ Legacy Live
+  kernel /casper/vmlinuz
+  append  noprompt file=/cdrom/preseed/custom.seed boot=casper initrd=/casper/initrd.lz quiet splash --
+
+label live
+  menu label ^__DISTNAME__ Legacy Live Noapic
+  kernel /casper/vmlinuz
+  append  noprompt file=/cdrom/preseed/custom.seed boot=casper initrd=/casper/initrd.lz noacpi noapic quiet splash --
+
+
+label live
+  menu label ^__DISTNAME__ Legacy Live Persistent 
+  kernel /casper/vmlinuz
+  append  noprompt file=/cdrom/preseed/custom.seed boot=casper initrd=/casper/initrd.lz persistent quiet splash --
+
+
+label live
+  menu label ^__DISTNAME__ Legacy Live Persistent Noapic
+  kernel /casper/vmlinuz
+  append  noprompt file=/cdrom/preseed/custom.seed boot=casper initrd=/casper/initrd.lz noacpi noapic persistent quiet splash --
+
+label xforcevesa
+  menu label ^__DISTNAME__ Legacy Live In Safe Graphics Mode
+  kernel /casper/vmlinuz
+  append  noprompt file=/cdrom/preseed/custom.seed boot=casper nomodeset xforcevesa initrd=/casper/initrd.lz quiet splash --
+#Warith
+#label live-install
+  #menu label ^Legacy/BIOS Direct Install __DISTNAME__
+  #kernel /casper/vmlinuz
+  #append  noprompt file=/cdrom/preseed/custom.seed boot=casper only-ubiquity initrd=/casper/initrd.lz quiet splash ---
+  
+label memtest
+  menu label ^Run memtest
+  kernel /install/memtest
+  append -
+  
+label check
+  menu label ^Check __DISTNAME__ Distro Integrity
+  kernel /casper/vmlinuz
+  append  boot=casper integrity-check initrd=/casper/initrd.lz quiet splash --
+
+label hd
+  menu label ^Boot the First PC Hard Disk
+  localboot 0x80
+  append -
+
+label hdVB
+  menu label ^Boot the First VirtualBox Hard Disk
+  kernel chain.c32
+  append hd0 0
+

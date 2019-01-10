@@ -1,0 +1,99 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2018 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here:
+cd $(dirname $0) 
+source Globalconfig;
+
+
+
+
+
+xP=$(id -u $LOGED_USER);
+if [[ $xP == 1000 ]]  
+then
+
+	if(lsblk|grep _crypt> /dev/null)   
+	then
+		notify-send -i $notifyIcon "Starting $OS_name Nuke process";
+		lsblk
+		getSDA=$(lsblk|egrep crypt|cut -d _ -f 1| sed 's/[^a-zA-Z0-9]//g');
+		echo "${cayn}From the output above your encrypted drive is:$getSDA to verify just execute: lsblk";
+		echo "";		
+		read -n 1 -s -r -p "${reset}Press any key to continue.....";
+		echo -e "\n"
+		
+		echo "${cayn}Ready to install custom crypto packages";
+		read -n 1 -s -r -p "${reset}Press any key to continue.....";
+		echo -e "\n";
+		sudo dpkg -i nukeset/libcryptsetup*.deb
+		sudo dpkg -i nukeset/cryptsetup*.deb
+		sudo apt-mark hold cryptsetup-bin libcryptsetup12
+		echo -e "\n";				
+		echo "${cayn}Creating backup of header file will be saved in: $Myhome_path/Desktop/header-backup";
+		read -n 1 -s -r -p "${reset}Press any key to continue.....";
+		echo -e "\n"
+		sudo cryptsetup luksHeaderBackup /dev/$getSDA --header-backup-file $Myhome_path/Desktop/header-backup;
+		echo "${cayn}Now you will be asked for a password that will be used to encrypt or restore your header file";
+		read -n 1 -s -r -p "${reset}Press any key to continue.....";
+		echo -e "\n"
+		if(sudo openssl enc -aes-256-cbc -salt -in $Myhome_path/Desktop/header-backup -out $Myhome_path/Desktop/header-backup.enc)
+		then   
+			rm -f $Myhome_path/Desktop/header-backup;
+			echo "${cayn}Your header backup file has been encrypted and saved in: $Myhome_path/Desktop/header-backup.enc copy it to a safe place you will need it if you need to restore the headers of your encrypted system"; 
+			read -n 1 -s -r -p "${reset}Press any key to continue.....";
+			echo -e "\n"
+			echo "${cayn}Now first you will be asked for a your normal $OS_name encryption password (The one you enter at bootup time) then you will be asked for the Nuke password that if entered it will trigger to destroy $OS_name if forced to reveal your data";
+			echo "${reset}";
+			read -n 1 -s -r -p "${reset}Press any key to continue.....";
+			echo -e "\n"
+			if(sudo cryptsetup luksAddNuke /dev/$getSDA)
+			then 
+				echo ""; 
+				echo "${green}Done from now on during boot up time you will use your normal password that you have setup on $OS_name installation process but if forced to open $OS_name then use the Nuke password you have just set and $OS_name will be destroyed !";
+				echo "${reset}";
+				read -n 1 -s -r -p "${reset}Press any key to continue.....";
+				echo -e "\n"
+				echo "If you will need to resotre the header file in future just run the following command:";
+				echo "${cayn}sudo openssl aes-256-cbc -d -a -in $Myhome_path/Desktop/header-backup.enc -out $Myhome_path/Desktop/header-backup";
+				echo "${reset}Then run:";
+				echo "${cayn}sudo cryptsetup luksHeaderRestore /dev/$getSDA --header-backup-file $Myhome_path/Desktop/header-backup";	
+				notify-send -i $notifyIcon "$OS_name Nuke process completed";	
+				exit 1;
+			else			
+				notify-send -i $notifyIcon "$OS_name Nuke process for: /dev/$getSDA failed";
+			fi
+		else
+			notify-send -i $notifyIcon "$OS_name header backup file encryption failed for: $Myhome_path/Desktop/header-backup";
+		fi
+		exit 1;
+	else
+
+		notify-send -i $notifyIcon "$OS_name Nuke is for encrypted system only";
+		exit 1;
+	fi
+else
+	notify-send -i $notifyIcon "$OS_name Nuke is for installed system only";
+	exit 1;
+
+fi
+
+
+ 
+
+exit 1;
+
+
+
+
+
+
+ 
+
+exit 1
+
+
+
+

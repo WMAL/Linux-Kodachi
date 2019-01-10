@@ -1,0 +1,128 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2018 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here
+cd $(dirname $0) 
+source Globalconfig;
+autotorvpn=$(cat $Mykodachi_path/torenabled|tr -d ' '); 
+autotornovpn=$(cat $Mykodachi_path/torenablednovpn|tr -d ' '); 
+torifySystem=$(cat $Mykodachi_path/torifysystemstatus);
+
+
+if [[ "$autotorvpn" == *1* ]] && [[ "$autotornovpn" == *0* ]]
+then
+	if [[ "$torifySystem" == *Yes* ]]
+	then
+		echo "Shutdown torified enable tor on vpn only";
+		echo "No" > /home/$LOGED_USER/.kbase/torifysystemstatus;
+		sudo bash /home/$LOGED_USER//.kbase/stoptor;
+		echo "1" > /home/$LOGED_USER/.kbase/torenabled;
+		sudo service tor restart 
+		notify-send -i $notifyIcon "Tor client restarted"; 
+	fi
+fi
+
+
+if [[ "$autotornovpn" == *1* ]] && [[ "$autotorvpn" == *0* ]]
+then
+	if [[ "$torifySystem" == *Yes* ]]
+	then
+		echo "Shutdown torified enable tor all time";
+		echo "No" > /home/$LOGED_USER/.kbase/torifysystemstatus;
+		sudo bash /home/$LOGED_USER//.kbase/stoptor;
+		echo "1" > /home/$LOGED_USER/.kbase/torenablednovpn;
+		sudo service tor restart 
+		notify-send -i $notifyIcon "Tor client restarted"; 
+	fi
+fi
+
+if [[ "$torifySystem" == *Yes* ]] && [[ "$autotorvpn" == *0* ]] && [[ "$autotornovpn" == *0* ]]
+then
+
+	vFS=$
+	if(sudo ufw status|grep inactive)
+	then
+
+
+		# destinations you don't want routed through Tor
+		NON_TOR="192.168.1.0/24 192.168.0.0/24"
+
+		# the UID Tor runs as
+		TOR_UID="debian-tor"
+
+		# Tor's TransPort
+		TRANS_PORT="9051"
+
+		# Clean firewal just for testing
+		#iptables -F
+		#iptables -t nat -F
+
+
+		echo "0" > /home/$LOGED_USER/.kbase/torenablednovpn;	 
+		echo "0" > /home/$LOGED_USER/.kbase/torenabled;
+		SERVICE='tor-service';
+		if !(ps ax | grep -v grep | grep $SERVICE > /dev/null)
+		then
+			
+			sudo /etc/init.d/tor start;
+			notify-send -i $notifyIcon "Tor service started"; 
+			
+		fi
+
+		# Add firewall rediect rules
+		comment="kodachi_torify_system";
+
+		# clean
+		sudo iptables -t nat -S | grep "${comment}" | cut -d " " -f 2- | xargs -rL1 iptables -t nat -D
+		sudo iptables -S | grep "${comment}" | cut -d " " -f 2- | xargs -rL1 iptables -D
+
+
+
+		if !(grep -R Tor $Mykodachi_dns_path/dns1)
+		then
+			cat $Mykodachi_path/dns/dns15 > $Mykodachi_path/dns/dns1;
+			sudo cat $Mykodachi_path/dns/dns15 > /etc/resolv.conf;  
+			# Set DNS to Tor
+			#sudo bash /home/$LOGED_USER/.kbase/dns/.tordns
+			 
+		fi
+
+		iptables -t nat -A OUTPUT -m owner --uid-owner $TOR_UID -j RETURN -m comment --comment $comment
+		iptables -t nat -A OUTPUT -p udp --dport 53 -j REDIRECT --to-ports 9061 -m comment --comment $comment
+		for NET in $NON_TOR 127.0.0.0/9 127.128.0.0/10; do
+		 iptables -t nat -A OUTPUT -d $NET -j RETURN -m comment --comment $comment
+		done
+		iptables -t nat -A OUTPUT -p tcp --syn -j REDIRECT --to-ports $TRANS_PORT -m comment --comment $comment
+		iptables -t nat -A OUTPUT -p icmp -j REDIRECT --to-ports $TRANS_PORT -m comment --comment $comment
+
+		iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT -m comment --comment $comment
+		for NET in $NON_TOR 127.0.0.0/8; do
+		 iptables -A OUTPUT -d $NET -j ACCEPT -m comment --comment $comment
+		done
+		iptables -A OUTPUT -m owner --uid-owner $TOR_UID -j ACCEPT -m comment --comment $comment
+		iptables -A OUTPUT -j REJECT -m comment --comment $comment
+
+		echo "Yes" >  $Mykodachi_path/torifysystemstatus;
+		echo "" > $Mykodachi_path/.eeds-tipinfo;
+		echo "1" > /home/$LOGED_USER/.kbase/actionpicker;
+
+		# Add dns entries
+			
+		echo "0" > $Mykodachi_path/dns/autodnscrypt;
+		# Stop dnscrypt
+		sudo service dnscrypt-proxy stop;
+		notify-send -i $notifyIcon "Tor DNS started"; 
+
+		# Stop dnscrypt
+		sudo service dnscrypt-proxy stop;
+		notify-send -i $notifyIcon "Entire system network will go via TOR network including DNS"; 
+	else
+		notify-send -i $notifyIcon "Force Traffic via VPN is on! Disable it first by clicking on:
+	Allow all Internet Traffic"	
+
+	fi
+
+fi
+exit 1;

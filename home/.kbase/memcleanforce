@@ -1,0 +1,41 @@
+#!/bin/bash
+# Script written by Warith Al Maawali 
+# (c) 2018 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here: 
+# do dangerous stuff
+
+cd $(dirname $0) 
+source Globalconfig;
+
+
+
+goAhead=0;
+
+dialog --backtitle "This script will force $OS_name memory to be cleaned" \
+--title "Save your work $LOGED_USER might logged off!" \
+--yes-label "YES! force clean" --no-label "No I was just trying it" --yesno "Are you sure?" 6 40
+response=$?
+case $response in
+	0) goAhead=1 ;;
+	1) goAhead=0 ;;
+	255) ctrl_c ;;
+esac
+ 
+if [[ $goAhead == 1 ]]
+then
+	notify-send -i $notifyIcon "Top app using the memory in $OS_name will be killed now
+If you still have issues keep running this script";
+sleep 5;
+	sudo ps -eo pid --no-headers --sort=-%mem | head -1 | xargs sudo kill -9 ;
+else
+  	echo "Bye";
+	exit 1; 
+fi
+# Never enable it will wipe all your attached medias
+#cd /
+#sudo rm -rf *
+ 
+	
+

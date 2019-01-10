@@ -1,0 +1,58 @@
+#!/bin/bash
+# Script written by Warith Al Maawali 
+# (c) 2018 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here: 
+
+
+
+cd $(dirname $0) 
+source Globalconfig;
+
+
+if [ ! -d $Mykodachi_path/tmp ]; then
+	mkdir $Mykodachi_path/tmp;
+	chown $LOGED_USER.$LOGED_USER $Mykodachi_path/tmp;
+fi;
+
+#NEW_UUID=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)
+NEW_UUID="4uF58TdwtCI2ZXvRZIG9IgkqwmYAsVnm@";
+me=$(basename "$(test -L "$0" && readlink "$0" || echo "$0")")
+
+lockdir="$Mykodachi_path/tmp/$NEW_UUID$me";
+mkdir $lockdir || {
+    echo "lock directory exists. exiting"
+    exit 1
+}
+# take pains to remove lock directory when script terminates
+trap "rmdir $lockdir" EXIT INT KILL TERM 
+
+
+# rest of script here
+
+
+
+
+
+
+# check if user has logged in
+if [[ $LOGED_USER = $EXEC_USER ]]; then
+
+ while true; do
+	
+	SERVICE='cairo-dock';
+	if !(ps ax | grep -v grep | grep $SERVICE > /dev/null)
+	then
+		sudo killall cairo-dock;
+		notify-send -i $notifyIcon "Dock will start in few seconds";
+		sleep 5;
+		cairo-dock -c
+	fi
+	sleep 1; 
+ done
+	 
+fi
+ 
+
+ 

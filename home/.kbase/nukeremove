@@ -1,0 +1,64 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2018 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here:
+cd $(dirname $0) 
+source Globalconfig;
+
+
+netIP='google.com'; 
+ping -c1 -W 2 "$netIP" &> /dev/null
+if [ $? -eq 0 ]; 
+then
+	if (apt-mark showhold|grep cryptsetup-bin) 
+	then
+
+		goAhead=0;
+
+		dialog --backtitle "Remove $OS_name Nuke setup" \
+		--title "Disable $OS_name Nuke setup" \
+		--yes-label "YES! I don't care about my security" --no-label "No I was just trying it" --yesno "Are you sure?" 6 40
+		response=$?
+		case $response in
+			0) goAhead=1 ;;
+			1) goAhead=0 ;;
+			255) ctrl_c ;;
+		esac
+		 
+		if [[ $goAhead == 1 ]]
+		then
+			sudo apt-mark unhold cryptsetup-bin libcryptsetup12;
+			sudo apt -y update;
+			sudo apt -y --reinstall install cryptsetup-bin libcryptsetup12 cryptsetup;
+			notify-send -i $notifyIcon "$OS_name Nuke setup disabled";
+			echo -e "\n";
+			echo  "${cayn}$OS_name Nuke setup disabled${reset}";
+			exit 1;
+		fi
+
+
+	else
+		notify-send -i $notifyIcon "$OS_name is not setup on Nuke";
+		echo "${cayn}$OS_name is not setup on Nuke${reset}";
+		exit 1;
+	fi 											
+else
+	notify-send -i $notifyIcon "Please connect to Internet first!";
+	echo "${cayn}Please connect to Internet first!${reset}";
+    exit 1;
+fi
+
+
+
+
+
+
+ 
+
+
+
+
+
+

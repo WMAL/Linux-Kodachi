@@ -1,0 +1,26 @@
+#!/bin/bash
+# Script written by Warith Al Maawali
+# (c) 2018 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here: 
+
+cd $(dirname $0) 
+source Globalconfig;
+
+
+
+
+echo "novpn"  > "$Mykodachi_path/vpntype";
+sudo killall -SIGINT openvpn;
+echo "Disabled"  > "$Mykodachi_path/vpntype";
+sleep 1;
+service openvpn stop;
+sleep 1;
+sudo killall openvpn;
+sleep 1;
+sudo systemctl stop openvpn;
+sudo systemctl disable openvpn;
+echo "1" > "$Mykodachi_path/actionpicker";
+notify-send -i $notifyIcon "VPN disabled system wide";
+exit 1;

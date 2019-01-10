@@ -1,0 +1,29 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2018 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here
+
+cd $(dirname $0) 
+source ../Globalconfig;
+
+
+
+torifySystemS=$(cat $Mykodachi_path/torifysystemstatus);
+if [[ "$torifySystemS" == *Yes* ]]
+then
+	notify-send -i $notifyIcon "System is Torified and Tor DNS is used!
+Disable Tor first then you can change the DNS"; 
+else
+	# Disable Tor DNS
+	comment="kodachi_tor_dns";
+	sudo iptables -t nat -S | grep "${comment}" | cut -d " " -f 2- | xargs -rL1 iptables -t nat -D
+
+	sudo service dnscrypt-proxy stop;
+	cat $Mykodachi_path/dns/dns8 > $Mykodachi_path/dns/dns1;
+	sudo cat $Mykodachi_path/dns/dns8 > /etc/resolv.conf; 
+	echo "0" > $Mykodachi_path/dns/autodnscrypt;
+	notify-send -i $notifyIcon "DNS Watch started";
+fi
+exit 1;

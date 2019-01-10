@@ -1,20 +1,16 @@
-# 
+###### Ubuntu Main Repos
+deb http://archive.ubuntu.com/ubuntu bionic main restricted universe multiverse
 
-# deb cdrom:[Debian GNU/Linux 8 _Jessie_ - Official Snapshot amd64 LIVE/INSTALL Binary 20160609-11:47]/ jessie main
-
-#deb cdrom:[Debian GNU/Linux 8 _Jessie_ - Official Snapshot amd64 LIVE/INSTALL Binary 20160609-11:47]/ jessie main
-
-#deb http://security.debian.org/ jessie/updates main
-#deb-src http://security.debian.org/ jessie/updates main
-
-
-###### Debian Main Repos
-deb http://ftp.ch.debian.org/debian/ jessie main contrib non-free 
-deb-src http://ftp.ch.debian.org/debian/ jessie main contrib non-free 
-
-###### Debian Update Repos
-deb http://security.debian.org/ jessie/updates main contrib non-free 
-deb-src http://security.debian.org/ jessie/updates main contrib non-free  
+###### Ubuntu Update Repos
+deb http://archive.ubuntu.com/ubuntu bionic-security main restricted universe multiverse
+deb http://archive.ubuntu.com/ubuntu bionic-updates main restricted universe multiverse
+deb http://archive.ubuntu.com/ubuntu bionic-proposed main restricted universe multiverse
+deb http://archive.ubuntu.com/ubuntu bionic-backports main restricted universe multiverse
 
 
+
+deb https://deb.torproject.org/torproject.org bionic main
+deb [arch=amd64] https://downloads.iridiumbrowser.de/deb/ stable main
+deb https://dl.bintray.com/hawkeye116477/waterfox-deb release main
+deb [trusted=yes] file:/cdrom/dists/ ./  # ISO repo - BB
 

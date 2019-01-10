@@ -1,0 +1,19 @@
+# HideMe is a paid service you need to get a user name and password from them https://hide.me/ 
+#Below is Just an Example only:
+#HidemeVPNusername=myemail123@gmail.com 
+#HidemeVPNpassword=MyStrongP@sswoRd323
+###########################################
+
+# Set your user and password below this line:
+HidemeVPNusername=
+HidemeVPNpassword=
+
+
+
+# You don't need to change below this line unless you don't want the script to pick a random node for you
+
+# If you don't want random vpn node to be selected then set below value to 0 then change hidemeprofilenametouse value to what you wish
+randomhidemevpn=1
+
+# Specify the profile name you want to be used if randomhidemevpn value is 0 pick a profile name from here /home/kodachi/Own_VPN_Config/vpnhidemeovpnfiles/
+hidemeprofilenametouse=de2.hide.me.ovpn 

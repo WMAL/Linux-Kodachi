@@ -1,19 +1,21 @@
 ==================================================
-Filename          : kodachi-3.7-64.iso
-MD5               : 73b43f761aeae87aafa1d4b544d78990
-SHA1              : d72c108444a51becea736c9659c102dda98f50f3
-CRC32             : 2342dec7
-SHA-256           : 15668916e5d28108421c32626b164ae3a8d1f231f780728361e6cf4618a04bfd
-SHA-512           : 30931b4e1c206fbab9226e6b195c6a4001d984cb309a571ebec5ec9cc2e9a60c04eece432fecdc4b1ac9f0e0c7fd239dfb10141e7f7a2d29fc96b676e6cac926
-SHA-384           : 658cb29807560d9b45641520b887e4b71e20834c065a2a27673b698a9d4004967cb58d4bded1cbd7bcf7d7d496a9a481
-Full Path         : https://www.digi77.com/software/kodachi/kodachi-3.7-64.iso
-Modified Time     : 1/8/2017 3:07:15 AM
-Created Time      : 1/8/2017 3:07:48 AM
-File Size         : 2,169,288,704
-File Version      : 3.7
-Product Version   : 3.7 
-Identical         : 
+Filename          : kodachi-5.7-64.iso
+MD5               : fcfe8b0f37fde1a6fb0be9191c86b7c1
+SHA1              : 21bb6cc192287025277015f683ec325743a9b4f3
+CRC32             : 2c0ce790
+SHA-256           : e5471ef69a3bf8a4bde08d1ae497b79ad6b47efac88d75667d7fee420857defc
+SHA-512           : 171489b9c463259d79298b262818b08fb67d14609bd2ea3f2fedbb98b351a306b6c97cf6c5f7e3f3c0c6ca0fcd577f4051d7fa83aaf879a28e4ddaa2b4e9860d
+SHA-384           : 54f90b9ca9e6a58bd42796469e8f10c92e0148dd69534f188aa0659f62d27c1b2c7229a1f3553e28dcd5d5a599f4fcc2
+Full Path         : https://www.digi77.com/software/kodachi/kodachi-5.7-64.iso
+Modified Time     : 12/31/2018 11:23:55 PM
+Created Time      : 12/31/2018 11:24:56 PM
+File Size         : 2,487,599,104
+File Version      : 5.7
+Product Version   : 5.7
 Extension         : iso
 File Attributes   : A
 ==================================================
 
+
+
+ 

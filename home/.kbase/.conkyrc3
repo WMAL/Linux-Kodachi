@@ -1,0 +1,179 @@
+#==============================================================================
+#                               conkyrc_orange
+#
+#  author  : SLK
+#  version : v2011011601
+#  license : Distributed under the terms of GNU GPL version 2 or later.
+#
+#==============================================================================
+
+# Script written by Warith Al Maawali  
+# (c) 2018 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here: 
+
+background yes
+update_interval 10
+
+cpu_avg_samples 2
+net_avg_samples 2
+temperature_unit celsius
+
+double_buffer yes
+no_buffers yes
+text_buffer_size 2048
+
+gap_x 10
+gap_y 30
+minimum_size 170 650
+maximum_width 300
+# — WINDOW — #
+own_window yes
+own_window_type override
+own_window_transparent yes
+own_window_hints undecorate,sticky,skip_taskbar,skip_pager,below
+border_inner_margin 0
+border_outer_margin 0
+alignment tr
+
+draw_shades no
+draw_outline no
+draw_borders no
+draw_graph_borders no
+
+override_utf8_locale yes
+use_xft yes
+xftfont caviar dreams:size=10
+xftalpha 0.5
+uppercase no
+
+default_color FFFFFF
+color1 FDA455 
+color2 666 
+color3 666
+color4 FFFFF 
+color5 0AFF0A
+
+
+
+lua_draw_hook_post main
+
+
+
+TEXT
+${goto 5}${font Impact:size=10:normal}${color3}SYSTEM  
+#${goto 5}${font Impact:size=10:normal}${color3}Distro:${alignr}${color1}${exec cat /etc/issue.net}
+#Cancelled vars #$machine  #${nodename} #$machine
+${goto 5}${font Impact:size=10:normal}${color3}Files:${color1}${exec lsof | wc -l}${alignr}${color3}Threads:${color1}${alignr}${threads}
+${goto 5}${font Impact:size=10:normal}${color3}Processes:${color1}${alignr}$running_processes/$processes
+${goto 5}${font Impact:size=10:normal}${color3}OS uptime:${color1}${alignr}${uptime_short}
+${goto 5}${font Impact:size=10:normal}${color3}Users logon:${color1}${color1}$user_number
+${goto 5}${font Impact:size=10:normal}${color3}Desktop used:${if_match ${desktop}==1}${color1}1${else}${color2}1${endif} ${if_match ${desktop}==2}${color1}2${else}${color2}2${endif} ${if_match ${desktop}==3}${color1}3${else}${color2}3${endif} ${if_match ${desktop}==4}${color1}4${else}${color2}4${endif}
+${goto 5}${font Impact:size=10:normal}${color3}Screen resolution:${color1}${alignr}${exec xdpyinfo | sed -n 's/.*dim.* \([0-9]*x[0-9]*\) .*/\1/pg' | sed ':a;N;$!ba;s/\n/ /g'}
+${goto 5}${font Impact:size=10:normal}${color3}kernel:${alignr}${color1}${kernel}
+${goto 5}${font Impact:size=10:normal}${color3}HWID:${color1}${alignr}${exec cat /home/$USER/.kbase/HWID|cut -c 1-21 |xargs}
+${goto 5}${font Impact:size=10:normal}${color3}Developer:${alignr}${color1}Warith AL Maawali
+${goto 5}${font Impact:size=10:normal}${color3}Time:${color1}${time %H-%M}${alignr}${color3}Date:${color1}${time %d-%m-%Y}
+
+${goto 5}${font Impact:size=10:normal}${color3}TRAFFIC
+${if_existing /proc/net/route wlan0}
+${goto 5}${font Impact:size=10:normal}${color2}  Card:${color1}${alignr}wlan0
+${goto 5}${font Impact:size=10:normal}${color2}  Up:${color1}${alignr}${upspeed wlan0}
+${goto 5}${font Impact:size=10:normal}${color2}  Down:${color1}${alignr}${downspeed wlan0}
+${goto 5}${font Impact:size=10:normal}${color2}  Upload:${color1}${alignr}${totalup wlan0}
+${goto 5}${font Impact:size=10:normal}${color2}  Download:${color1}${alignr}${totaldown wlan0}
+${goto 5}${font Impact:size=10:normal}${color2}  Ip:${color1} ${alignr}${addr wlan0}
+${else}${if_existing /proc/net/route eth0}
+${goto 5}${font Impact:size=10:normal}${color2}  Card:${color1}${alignr}eth0
+${goto 5}${font Impact:size=10:normal}${color2}  Up:${color1}${alignr}${upspeed eth0}
+${goto 5}${font Impact:size=10:normal}${color2}  Down:${color1}${alignr}${downspeed eth0}
+${goto 5}${font Impact:size=10:normal}${color2}  Upload:${color1}${alignr}${totalup eth0}
+${goto 5}${font Impact:size=10:normal}${color2}  Download:${color1}${alignr}${totaldown eth0}
+${goto 5}${font Impact:size=10:normal}${color2}  Ip:${color1} ${alignr}${addr eth0}
+${else}${if_existing /proc/net/route ens33}
+${goto 5}${font Impact:size=10:normal}${color2}  Card:${color1}${alignr}ens33
+${goto 5}${font Impact:size=10:normal}${color2}  Up:${color1}${alignr}${upspeed ens33}
+${goto 5}${font Impact:size=10:normal}${color2}  Down:${color1}${alignr}${downspeed ens33}
+${goto 5}${font Impact:size=10:normal}${color2}  Upload:${color1}${alignr}${totalup ens33}
+${goto 5}${font Impact:size=10:normal}${color2}  Download:${color1}${alignr}${totaldown ens33}
+${goto 5}${font Impact:size=10:normal}${color2}  Ip:${color1} ${alignr}${addr ens33}
+${else}${if_existing /proc/net/route wlx18a6f71995d8}
+${goto 5}${font Impact:size=10:normal}${color2}  Card:${color1}${alignr}wlx18a6f71995d8
+${goto 5}${font Impact:size=10:normal}${color2}  Up:${color1}${alignr}${upspeed wlx18a6f71995d8}
+${goto 5}${font Impact:size=10:normal}${color2}  Down:${color1}${alignr}${downspeed wlx18a6f71995d8}
+${goto 5}${font Impact:size=10:normal}${color2}  Upload:${color1}${alignr}${totalup wlx18a6f71995d8}
+${goto 5}${font Impact:size=10:normal}${color2}  Download:${color1}${alignr}${totaldown wlx18a6f71995d8}
+${goto 5}${font Impact:size=10:normal}${color2}  Ip:${color1} ${alignr}${addr wlx18a6f71995d8} 
+${else}${if_existing /proc/net/route wlx18a6}
+${goto 5}${font Impact:size=10:normal}${color2}  Card:${color1}${alignr}wlx18a6
+${goto 5}${font Impact:size=10:normal}${color2}  Up:${color1}${alignr}${upspeed wlx18a6}
+${goto 5}${font Impact:size=10:normal}${color2}  Down:${color1}${alignr}${downspeed wlx18a6}
+${goto 5}${font Impact:size=10:normal}${color2}  Upload:${color1}${alignr}${totalup wlx18a6}
+${goto 5}${font Impact:size=10:normal}${color2}  Download:${color1}${alignr}${totaldown wlx18a6}
+${goto 5}${font Impact:size=10:normal}${color2}  Ip:${color1} ${alignr}${addr wlx18a6}
+${else}${if_existing /proc/net/route wlp3s0}
+${goto 5}${font Impact:size=10:normal}${color2}  Card:${color1}${alignr}wlp3s0
+${goto 5}${font Impact:size=10:normal}${color2}  Up:${color1}${alignr}${upspeed wlp3s0}
+${goto 5}${font Impact:size=10:normal}${color2}  Down:${color1}${alignr}${downspeed wlp3s0}
+${goto 5}${font Impact:size=10:normal}${color2}  Upload:${color1}${alignr}${totalup wlp3s0}
+${goto 5}${font Impact:size=10:normal}${color2}  Download:${color1}${alignr}${totaldown wlp3s0}
+${goto 5}${font Impact:size=10:normal}${color2}  Ip:${color1} ${alignr}${addr wlp3s0}
+${else}${if_existing /proc/net/route wlp2s0}
+${goto 5}${font Impact:size=10:normal}${color2}  Card:${color1}${alignr}wlp2s0
+${goto 5}${font Impact:size=10:normal}${color2}  Up:${color1}${alignr}${upspeed wlp2s0}
+${goto 5}${font Impact:size=10:normal}${color2}  Down:${color1}${alignr}${downspeed wlp2s0}
+${goto 5}${font Impact:size=10:normal}${color2}  Upload:${color1}${alignr}${totalup wlp2s0}
+${goto 5}${font Impact:size=10:normal}${color2}  Download:${color1}${alignr}${totaldown wlp2s0}
+${goto 5}${font Impact:size=10:normal}${color2}  Ip:${color1} ${alignr}${addr wlp2s0}
+${else}${if_existing /proc/net/route enp0s3}
+${goto 5}${font Impact:size=10:normal}${color2}  Card:${color1}${alignr}enp0s3
+${goto 5}${font Impact:size=10:normal}${color2}  Up:${color1}${alignr}${upspeed enp0s3}
+${goto 5}${font Impact:size=10:normal}${color2}  Down:${color1}${alignr}${downspeed enp0s3}
+${goto 5}${font Impact:size=10:normal}${color2}  Upload:${color1}${alignr}${totalup enp0s3}
+${goto 5}${font Impact:size=10:normal}${color2}  Download:${color1}${alignr}${totaldown enp0s3}
+${goto 5}${font Impact:size=10:normal}${color2}  Ip:${color1} ${alignr}${addr enp0s3}
+${else}${if_existing /proc/net/route enp2s0}
+${goto 5}${font Impact:size=10:normal}${color2}  Card:${color1}${alignr}enp2s0
+${goto 5}${font Impact:size=10:normal}${color2}  Up:${color1}${alignr}${upspeed enp2s0}
+${goto 5}${font Impact:size=10:normal}${color2}  Down:${color1}${alignr}${downspeed enp2s0}
+${goto 5}${font Impact:size=10:normal}${color2}  Upload:${color1}${alignr}${totalup enp2s0}
+${goto 5}${font Impact:size=10:normal}${color2}  Download:${color1}${alignr}${totaldown enp2s0}
+${goto 5}${font Impact:size=10:normal}${color2}  Ip:${color1} ${alignr}${addr enp2s0}
+${else}${if_existing /proc/net/route tun0}
+${goto 5}${font Impact:size=10:normal}${color2}  Card:${color1}${alignr}tun0
+${goto 5}${font Impact:size=10:normal}${color2}  Up:${color1}${alignr}${alignr}${upspeed tun0}
+${goto 5}${font Impact:size=10:normal}${color2}  Down:${color1}${alignr}${downspeed tun0}
+${goto 5}${font Impact:size=10:normal}${color2}  Upload:${color1}${alignr}${totalup tun0}
+${goto 5}${font Impact:size=10:normal}${color2}  Download:${color1}${alignr}${totaldown tun0}
+${goto 5}${font Impact:size=10:normal}${color2}  Ip:${color1} ${alignr}${addr tun0}
+${else}${if_existing /proc/net/route eth1}
+${goto 5}${font Impact:size=10:normal}${color2}  Card:${color1}${alignr}eth1
+${goto 5}${font Impact:size=10:normal}${color2}  Up:${color1}${alignr}${upspeed eth1}
+${goto 5}${font Impact:size=10:normal}${color2}  Down:${color1}${alignr}${downspeed eth1}
+${goto 5}${font Impact:size=10:normal}${color2}  Upload:${color1}${alignr}${totalup eth1}
+${goto 5}${font Impact:size=10:normal}${color2}  Download:${color1}${alignr}${totaldown eth1}
+${goto 5}${font Impact:size=10:normal}${color2}  Ip:${color1} ${alignr}${addr eth1}
+${endif}
+${goto 5}${font Impact:size=10:normal}${color2}Open ports:${color1}   ${tcp_portmon 1 65535 count}
+${goto 5}${font Impact:size=10:normal}${color2}IP${alignr}DPORT
+${goto 5}${font Impact:size=10:normal}${color1}${tcp_portmon 1 65535 rip  0}${alignr 1}${tcp_portmon 1 65535 rport  0}
+${goto 5}${font Impact:size=10:normal}${color1}${tcp_portmon 1 65535 rip  1}${alignr 1}${tcp_portmon 1 65535 rport  1}
+${goto 5}${font Impact:size=10:normal}${color1}${tcp_portmon 1 65535 rip  2}${alignr 1}${tcp_portmon 1 65535 rport  2}
+${goto 5}${font Impact:size=10:normal}${color1}${tcp_portmon 1 65535 rip  3}${alignr 1}${tcp_portmon 1 65535 rport  3}
+${goto 5}${font Impact:size=10:normal}${color1}${tcp_portmon 1 65535 rip  4}${alignr 1}${tcp_portmon 1 65535 rport  4}
+${goto 5}${font Impact:size=10:normal}${color1}${tcp_portmon 1 65535 rip  5}${alignr 1}${tcp_portmon 1 65535 rport  5}
+${goto 5}${font Impact:size=10:normal}${color1}${tcp_portmon 1 65535 rip  6}${alignr 1}${tcp_portmon 1 65535 rport  6}
+${goto 5}${font Impact:size=10:normal}${color1}${tcp_portmon 1 65535 rip  7}${alignr 1}${tcp_portmon 1 65535 rport  7}
+${goto 5}${font Impact:size=10:normal}${color1}${tcp_portmon 1 65535 rip  8}${alignr 1}${tcp_portmon 1 65535 rport  8}
+${goto 5}${font Impact:size=10:normal}${color1}${tcp_portmon 1 65535 rip  9}${alignr 1}${tcp_portmon 1 65535 rport  9}
+${goto 5}${font Impact:size=10:normal}${color1}${tcp_portmon 1 65535 rip 10}${alignr 1}${tcp_portmon 1 65535 rport 10}
+${goto 5}${font Impact:size=10:normal}${color1}${tcp_portmon 1 65535 rip 11}${alignr 1}${tcp_portmon 1 65535 rport 11}
+${goto 5}${font Impact:size=10:normal}${color1}${tcp_portmon 1 65535 rip 12}${alignr 1}${tcp_portmon 1 65535 rport 12}
+${goto 5}${font Impact:size=10:normal}${color1}${tcp_portmon 1 65535 rip 13}${alignr 1}${tcp_portmon 1 65535 rport 13}
+${goto 5}${font Impact:size=10:normal}${color1}${tcp_portmon 1 65535 rip 14}${alignr 1}${tcp_portmon 1 65535 rport 14}
+
+
+
+#${image /home/$USER/.kbase/.conky/eeds.png -p 65,0 -s 57x54}
+

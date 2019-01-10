@@ -1,0 +1,73 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2018 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here: 
+
+cd $(dirname $0) 
+source ../Globalconfig;
+
+
+
+if [ ! -d $Mykodachi_path/tmp ]; then
+	mkdir $Mykodachi_path/tmp;
+	chown $LOGED_USER.$LOGED_USER $Mykodachi_path/tmp;
+fi;
+
+
+#NEW_UUID=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)
+NEW_UUID="D4k1arhRSKjt0emBOYT0YKg6bwC9gTBH@";
+me=$(basename "$(test -L "$0" && readlink "$0" || echo "$0")")
+
+lockdir=$Mykodachi_path/tmp/$NEW_UUID$me
+mkdir $lockdir || {
+    echo "lock directory exists. exiting"
+    exit 1
+}
+# take pains to remove lock directory when script terminates
+trap "rmdir $lockdir" EXIT INT KILL TERM 
+
+# rest of script here
+
+netIP="google.com";
+
+ 
+
+	while true; do 
+			
+		sleep 10
+		dnsforce=$(cat $Mykodachi_path/forcetempdns);
+		SERVICE='dnscrypt-proxy';
+		if [[ "$dnsforce" == *Yes* ]]
+		then
+			ping -c1 -W 2 "$netIP" &> /dev/null
+			if [ $? -eq 0 ]; 
+			then
+				 echo "The network is up";			 
+				 sudo bash -c 'cat dns1 > /etc/resolv.conf'; 	
+				 netIP="google.com";		
+			else
+				 echo "The network is down"
+				 echo "No ip found set Tenta + Freedns + NordDNS";
+				 sudo bash -c 'cat dns9 > /etc/resolv.conf';
+				 netIP="digi77.com"; 	 
+			fi
+		fi
+			
+	   
+	done
+
+
+
+
+
+
+
+
+
+ 
+
+ 
+	
+ 

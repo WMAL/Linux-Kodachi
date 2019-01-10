@@ -1,0 +1,64 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2018 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here:
+
+cd $(dirname $0) 
+source Globalconfig;
+
+
+
+
+ 
+
+DIRECTORY="$Mykodachi_path/tmp/mpWSUbCNvn8UjXumBnwZ5bRWDUAF0zDx@bootgui2";
+SERVICE='conkyrc0';
+sFile='$Mykodachi_path/bootgui2';
+# romove install icon
+if [ -d "$DIRECTORY" ]; then
+	
+	
+	if !(ps ax | grep -v grep | grep $SERVICE > /dev/null)
+	then
+		echo "folder is there: $DIRECTORY file not running";
+		#echo "Conky: Removed tmp dir on boot up" > /home/kodachi/Desktop/t1.txt;
+		sudo rm -f -r $Mykodachi_path/tmp/* 
+		bash $sFile	;		
+	else
+		echo "folder is there: $DIRECTORY file running";
+		#skip
+	fi
+fi
+
+
+ 
+DIRECTORY="$Mykodachi_path/tmp/4uF58TdwtCI2ZXvRZIG9IgkqwmYAsVnm@bootgui";
+SERVICE='cairo-dock';
+sFile='$Mykodachi_path/bootgui2';
+# romove install icon
+if [ -d "$DIRECTORY" ]; then
+	
+	
+	if !(ps ax | grep -v grep | grep $SERVICE > /dev/null)
+	then
+		echo "folder is there: $DIRECTORY file not running";
+		#echo "cairo-dock:Removed tmp dir on boot up" > /home/kodachi/Desktop/t2.txt;
+		sudo rm -f -r $Mykodachi_path/tmp/* 
+		bash $sFile;		
+		
+	else
+		echo "folder is there: $DIRECTORY file running";
+		#skip
+	fi
+fi
+
+
+
+
+
+ 
+
+
+

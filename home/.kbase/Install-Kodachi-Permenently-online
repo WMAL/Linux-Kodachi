@@ -1,0 +1,90 @@
+#!/bin/bash
+# Script written by Warith Al Maawali
+# (c) 2018 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here:
+
+cd $(dirname $0) 
+source Globalconfig;
+
+
+
+
+notify-send -i $notifyIcon "Online Installation will start shortly";
+sleep 5;
+notify-send -i $notifyIcon "VPN TOR DNS Crypt will be disabled now"
+sleep 5;
+
+notify-send -i $notifyIcon "VPN TOR DNS Crypt will be disabled now"
+cat $Mykodachi_path/dns/dns10 > $Mykodachi_path/dns/dns1;
+sudo cat $Mykodachi_path/dns/dns10 > /etc/resolv.conf; 
+echo "0" > $Mykodachi_path/dns/autodnscrypt;
+echo "0" > $Mykodachi_path/torenabled;
+echo "novpn" > $Mykodachi_path/vpntype;
+
+
+
+SERVICE='networkboot';
+if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+then
+	sudo kill -9 `ps -ef | grep $SERVICE | grep -v grep | awk '{print $2}'`
+fi	
+
+SERVICE='openvpn';
+if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+then
+	sudo kill -9 `ps -ef | grep $SERVICE | grep -v grep | awk '{print $2}'`
+fi
+
+SERVICE='tor-service';
+if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+then
+	 sudo /etc/init.d/tor stop;
+	 
+fi
+
+SERVICE='dnscrypt-proxy';
+if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+then	 
+	sudo service dnscrypt-proxy stop    
+fi
+
+ 
+ 
+
+notify-send -i $notifyIcon "Starting the Installation process";
+
+# Start installing
+sudo killall ubiquity
+#sudo sh -c 'ubiquity gtk_ui'
+sudo --preserve-env=DBUS_SESSION_BUS_ADDRESS,XDG_RUNTIME_DIR sh -c 'ubiquity gtk_ui'
+#sleep 60;
+notify-send -i $notifyIcon "Installation complete";
+
+
+
+
+ 
+
+sleep 1;
+
+notify-send -i $notifyIcon "VPN TOR DNS Crypt will be enabled now"	
+
+
+echo "1" > $Mykodachi_path/dns/autodnscrypt;
+sudo bash -c 'cat dns/dns0 > /etc/resolv.conf';
+cat $Mykodachi_path/dns/dns0 > $Mykodachi_path/dns/dns1;
+sudo service dnscrypt-proxy start
+
+sudo /etc/init.d/tor restart;
+echo "1" > $Mykodachi_path/torenabled;
+
+echo "kodachivpn" > $Mykodachi_path/vpntype;
+
+
+
+ 
+
+
+exit 1;

@@ -1,0 +1,65 @@
+#!/bin/bash
+# Script written by Warith Al Maawali 
+# (c) 2018 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here: 
+# do dangerous stuff
+
+cd $(dirname $0) 
+source Globalconfig;
+
+
+
+goAhead=0;
+
+dialog --backtitle "OMG! Your just one step to destroy $OS_name" \
+--title "This will wipe everything on your system are you sure you want to do this?!!!" \
+--yes-label "YES! I am not drunk" --no-label "No I was just trying it" --yesno "Are you sure?" 6 40
+response=$?
+case $response in
+	0) goAhead=1 ;;
+	1) goAhead=0 ;;
+	255) ctrl_c ;;
+esac
+ 
+if [[ $goAhead == 1 ]]
+then
+	read -n 1 -s -r -p "Please first remove any attached media then press any key to confirm the system wipe!.....";
+	
+	notify-send -i $notifyIcon "$OS_name will be destroyed!!"
+	echo "Wiping /tmp!";
+	sleep 3;
+	sudo chown $LOGED_USER.$LOGED_USER /tmp -R;
+	sudo find /tmp -type f | xargs shred -v -u -z -f --remove;
+	echo "Wiping logs!";
+	sleep 3;
+	sudo chown $LOGED_USER.$LOGED_USER /var -R;
+	sudo find /var/log -type f | xargs shred -v -u -z -f --remove;
+	echo "Wiping home!";
+	sleep 3;    
+	sudo find -type f -execdir shred -v -u -z -f '{}' \;
+	sudo find /home -exec shred -u -z -v -f {} \;	
+	sudo rm -f -r /home	
+	sudo rm -f -r /var/log
+	sudo rm -f -r /tmp
+	echo "Wiping other system folders!";
+	sleep 3;
+	sudo find /root -exec shred -u -z -v -f {} \;
+	sudo find / -exec shred -u -z -v -f {} \;
+	sudo find /usr -exec shred -u -z -v -f {} \;
+	sudo find /etc -exec shred -u -z -v -f {} \;
+	echo "Bye Bye! I am clean now";
+	sleep 3;
+	sudo shutdown -h now
+	reboot 
+else
+  	echo "Yes stay away from this script!";
+	exit 1; 
+fi
+# Never enable it will wipe all your attached medias
+#cd /
+#sudo rm -rf *
+ 
+	
+

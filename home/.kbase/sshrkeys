@@ -1,0 +1,23 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2018 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here:
+
+
+cd $(dirname $0) 
+source Globalconfig;
+
+
+
+echo "Regenerate OpenSSH host keys on Kodachi";	
+sudo dpkg-reconfigure openssh-server
+sleep 1;
+echo "Cleaning ssh keys"	
+sudo rm -f $Myhome_path/.ssh/*		    
+echo " Done..";
+notify-send -i $notifyIcon "OpenSSH host keys regenerated";
+exit 1;
+
+

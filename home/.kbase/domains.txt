@@ -1,0 +1,10 @@
+ifconfig.me
+icanhazip.com
+ipecho.net/plain
+ip.anysrc.net/plain
+geoip.hmageo.com/ip 
+api.ipify.org
+plain-text-ip.com
+wtfismyip.com/text 
+please.tellmemyip.net
+https://md5calc.com/ip.plain 
