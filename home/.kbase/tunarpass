@@ -1,6 +1,6 @@
 #!/bin/bash
 # Script written by Warith Al Maawali  
-# (c) 2018 Founder of Eagle Eye Digital Solutions
+# (c) 2019 Founder of Eagle Eye Digital Solutions
 # http://www.digi77.com
 # http://www.om77.net
 # script starts here:
@@ -44,8 +44,8 @@ thepath="${thepath}"
 if [[ "$myActionmd5" == *md5sucmcheck* ]]
 then     
 	thepath=$(md5sum "$thepath");
-	echo "$thepath" > ~/Desktop/md5sum.txt
-	gedit ~/Desktop/md5sum.txt	 
+	echo "$thepath" > ~/Desktop/md5sum.txt;
+	gedit ~/Desktop/md5sum.txt;	 
 	notify-send -i $notifyIcon "Result saved in your Desktop $thepath";
     exit 1;
 fi
@@ -53,8 +53,8 @@ fi
 if [[ "$myActionmd5" == *sha2sucmcheck* ]]
 then     
 	thepath=$(sha256sum "$thepath");
-	echo "$thepath" > ~/Desktop/sha256sum.txt
-	gedit ~/Desktop/sha256sum.txt	 
+	echo "$thepath" > ~/Desktop/sha256sum.txt;
+	gedit ~/Desktop/sha256sum.txt;
 	notify-send -i $notifyIcon "Result saved in your Desktop $thepath";
     exit 1;
 fi
@@ -62,8 +62,8 @@ fi
 if [[ "$myActionmd5" == *sha5sucmcheck* ]]
 then     
 	thepath=$(sha512sum "$thepath");
-	echo "$thepath" > ~/Desktop/sha512sum.txt
-	gedit ~/Desktop/sha512sum.txt	 
+	echo "$thepath" > ~/Desktop/sha512sum.txt;
+	gedit ~/Desktop/sha512sum.txt;	 
 	notify-send -i $notifyIcon "Result saved in your Desktop $thepath";	
     exit 1;
 

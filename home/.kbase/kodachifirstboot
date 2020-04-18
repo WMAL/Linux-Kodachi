@@ -1,9 +1,11 @@
 #!/bin/bash
 # Script written by Warith Al Maawali  
-# (c) 2018 Founder of Eagle Eye Digital Solutions
+# (c) 2019 Founder of Eagle Eye Digital Solutions
 # http://www.digi77.com
 # http://www.om77.net
 # script starts here:
+
+
 cd $(dirname $0) 
 source Globalconfig;
 
@@ -20,30 +22,46 @@ echo -e " ==============================\n"
 }
 
 showtitle
+# If kodachi username has been changed warnthe user
+if [[ "$LOGED_USER" != "kodachi" ]]; then 
+	notify-send -t 30000 -i $notifyIcon "Warning! $OS_name will not function properly!
+You have changed the logged-in user name from kodachi to $LOGED_USER 
+If you would like for $OS_name to function properly please login with the user name kodachi";	
+	sleep 3;
+fi
 
+#Arrange Desktop icons
+xfdesktop -A;
+
+
+echo -e "\n${green}";
+sudo bash $Mykodachi_path/autologinoff
 echo -e "\n";
-echo "${cayn}Installation is almost done ☺";
+print_good "${green}For security reasons $OS_name has disabled auto login feature you can enable it again from the panic room menu";
+echo -e "\n";
+print_good "${cayn}Installation is almost done ☺";
 echo -e "\n";
 bash $Mykodachi_path/beeper > /dev/null 2>&1;
 #sleep 2;
-echo "Be aware that everything you do will be saved permanently to the system! ";
+print_error "Be aware that everything you do will be saved permanently to the system! ";
 sleep 4; 
 echo -e "\n";
-echo "${red}By doing so you also lost 10 scores from the security scoring scheme ☹"; 
+print_error "${red}By doing so you also lost 10 scores from the security scoring scheme ☹"; 
 sleep 4;
 echo -e "\n";
-echo "${cayn}Kodachi will shutdown in 30 seconds to finalize the installation"; 
+print_good "${cayn}$OS_name will shutdown in 30 seconds to finalize the installation"; 
 sleep 4;
 echo -e "\n";
-echo "You can cancel the auto shutdown by closing this window to do it later manually but the sysetm will be slow!";
+print_good "You can cancel the auto shutdown by closing this window to do it later manually but the sysetm will be slow!";
 sleep 4;
 echo -e "\n";
 source $Mykodachi_path/progressbar 
 progress_bar 30;
 echo -e "\n";
-echo "Shutting down the system....";
+print_good "Shutting down the system....";
 sleep 5;
 shutdown -h now;
+
 exit 1
 
 

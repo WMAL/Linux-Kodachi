@@ -1,6 +1,6 @@
 #!/bin/bash
 # Script written by Warith Al Maawali  
-# (c) 2018 Founder of Eagle Eye Digital Solutions
+# (c) 2019 Founder of Eagle Eye Digital Solutions
 # http://www.digi77.com
 # http://www.om77.net
 # script starts here:
@@ -24,9 +24,13 @@ sudo sed -i "/$v3/d" /etc/sysctl.conf
 sudo sed -i "/$v4/d" /etc/sysctl.conf
 echo -n "0" > /proc/sys/net/ipv6/conf/all/disable_ipv6;
 sudo sysctl -p;
+# Alternative way but I use both to be sure
+sysctl -w net.ipv6.conf.all.disable_ipv6=0
+sysctl -w net.ipv6.conf.default.disable_ipv6=0
 
 
 notify-send -i $notifyIcon "IPv6 enabled"; 
+
 exit 1
 
 

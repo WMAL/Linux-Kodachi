@@ -6,4 +6,6 @@ geoip.hmageo.com/ip
 api.ipify.org
 plain-text-ip.com
 wtfismyip.com/text
+please.tellmemyip.net
+ipinfo.io/ip
 https://md5calc.com/ip.plain

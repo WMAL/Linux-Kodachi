@@ -1,0 +1,91 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2019 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here:
+
+cd $(dirname $0) 
+source Globalconfig;
+
+reply=$1;
+fileCounter=$(ls $Mysafebox_path|wc -l);
+
+if [ -d $Mysafebox_path ]
+then		
+	if [[ "$reply" = *"on"* ]]
+	then
+		if [[ $fileCounter -gt 0 ]]
+		then
+			theList=$(ls $Mysafebox_path/*.locked 2> /dev/null);
+			if [[ ! -n $theList ]]  
+			then		
+			
+				print_good "Note: $OS_name already has Veracrypt and Zulucrpt installed used them for stronger encryption options";	
+				echo "";
+				print_good "This process will encrypt all files in $Mysafebox_path";
+				echo "";
+				read -n 1 -s -r -p "${reset}Press any key to continue.....";
+				echo "";
+				if (python $Mykodachi_path/lock.py -v -c --lock $Mysafebox_path)
+				then
+					print_good "Safebox is encrypted now";
+					echo "";
+					notify-send -i $notifyIcon "Safebox is encrypted now";
+					exit 1;
+				else
+					print_error "Safebox encryption failed";
+					notify-send -i $notifyIcon "Safebox encryption failed";
+					exit 1;
+
+				fi	
+			else
+				print_error "Safebox already encrypted";
+				notify-send -i $notifyIcon "Safebox already encrypted";
+				exit 1;
+			fi		
+		else
+			print_error "Safebox $Mysafebox_path has no files to encrypted";
+			notify-send -i $notifyIcon "Safebox $Mysafebox_path has no files to encrypted";
+			exit 1;
+		fi
+	fi
+	if [[ "$reply" = *"off"* ]]
+	then	
+		theList=$(ls $Mysafebox_path/*.locked 2> /dev/null);
+		if [[ -n $theList ]]
+		then		
+			print_good "This process will decrypt all files in $Mysafebox_path";
+			echo "";
+			read -n 1 -s -r -p "${reset}Press any key to continue.....";
+			echo "";
+			if (python $Mykodachi_path/lock.py -v -c --unlock $Mysafebox_path)
+			then
+				print_good "Safebox is decrypted now";
+				echo "";
+				notify-send -i $notifyIcon "Safebox is decrypted now";
+				exit 1;
+			else
+				print_error "Safebox decryption failed";
+				notify-send -i $notifyIcon "Safebox decryption failed";
+				exit 1;
+
+			fi	
+		
+		else
+			print_error "Safebox not encrypted yet";
+			notify-send -i $notifyIcon "Safebox not encrypted yet";
+			exit 1;
+		fi
+	fi
+	
+	
+else
+	print_error "$Mysafebox_path does not exist";
+	notify-send -i $notifyIcon "$Mysafebox_path does not exist";
+	exit 1;
+fi
+	
+
+
+exit 1;

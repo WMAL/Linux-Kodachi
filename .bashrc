@@ -214,7 +214,7 @@ securityScoreFish="";
 bigMan="";
 
 
-ipext=$(timeout 5 curl -s https://www.digi77.com/software/vpn/ipcheckplain.php|sed 's/ //g'|xargs);
+ipext=$(timeout 10 curl -s https://www.digi77.com/software/vpn/ipcheckplain.php|sed 's/ //g'|xargs);
 ipext=$(echo $ipext|grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}');
 #ipext="";
 if [ -n "$ipext" ] 
@@ -226,7 +226,7 @@ then
 		#echo "${green}IP:$ipext Country:$theCountry   ᕦ(ò_óˇ)ᕤ     ${reset}";
 		if [ -n "$theCountry" ] 
 		then   
-			countryFish="${reset}CO:${cayn}$theCountry${reset} "; 
+			countryFish="${reset}${cayn}$theCountry${reset} "; 
 		fi
 	fi
 fi	

@@ -1,13 +1,22 @@
 #!/bin/bash
 # Script written by Warith Al Maawali  
-# (c) 2018 Founder of Eagle Eye Digital Solutions
+# (c) 2019 Founder of Eagle Eye Digital Solutions
 # http://www.digi77.com
 # http://www.om77.net
-# script starts here
+# script starts here:
+
+
 cd $(dirname $0) 
 source Globalconfig;
 
+unset torifiedwason
 
+
+torifySystem=$(cat $Mykodachi_path/torifysystemstatus);
+if [[ "$torifySystem" == *Yes* ]]
+then
+	torifiedwason="Yes";
+fi
 
 echo "0" > /home/$LOGED_USER/.kbase/torenabled
 echo "0" > /home/$LOGED_USER/.kbase/torenablednovpn
@@ -30,8 +39,16 @@ sudo service dnscrypt-proxy restart
 #sudo service dnscrypt-proxy start
 echo "1" > $Mykodachi_path/dns/autodnscrypt;
 sudo cat $Mykodachi_path/dns/dns0 > /etc/resolv.conf;
-echo "" > $Mykodachi_path/.eeds-ipinfo;
-echo "" > $Mykodachi_path/.eeds-tipinfo;
-echo "1" > /home/$LOGED_USER/.kbase/actionpicker
+if [[ "$torifiedwason" == *Yes* ]]
+then
+	echo "-" > $Mykodachi_path/.eeds-ipinfo;
+	echo "-" > $Mykodachi_path/.eeds-tipinfo;
+	echo "1" > /home/$LOGED_USER/.kbase/actionpicker
+fi
+
+if systemctl is-active tor.service > /dev/null 2>&1;  
+then
+	sudo /etc/init.d/tor stop;	
+fi
 notify-send -i $notifyIcon "Tor client disabled"; 
 

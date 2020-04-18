@@ -1,16 +1,13 @@
 #!/bin/bash
-# Script written by Warith Al Maawali
-# (c) 2018 Founder of Eagle Eye Digital Solutions
+# Script written by Warith Al Maawali  
+# (c) 2019 Founder of Eagle Eye Digital Solutions
 # http://www.digi77.com
 # http://www.om77.net
 # script starts here:
 
 
-
 cd $(dirname $0) 
 source Globalconfig;
-
-
 
 
 
@@ -20,7 +17,7 @@ then
 
 	netIP='digi77.com';
 	# if google is down replace with digi77.com 
-	ping -c1 -W 2 "$netIP" &> /dev/null
+	wget --timeout=2 --waitretry=0 --tries=3 --retry-connrefused -q --spider "$netIP" &> /dev/null
 
 	source $Mykodachi_path/vpnattributes
 	thePort="";
@@ -75,7 +72,7 @@ then
 			echo "Interface is:$x54"
 			if [ ! -n "$x54" ]     
 			then 	
-				echo "Empty Interface setting it to ens33";
+				print_error "Empty Interface setting it to ens33";
 				x54="ens33";
 			fi
 					
@@ -83,13 +80,13 @@ then
 			theSecS=$(cat $Mykodachi_path/.eeds-ipinfo|cut -d : -f 2|tr -d " \t\n\r");
 			if [ ! -n "$theSecS" ]     
 			then 	
-				echo "Sorry try again when you have a secure VPN IP address";
+				print_error "Sorry try again when you have a secure VPN IP address";
 				exit;
 			fi
 			
 			if (echo $theSecS|grep "notsecure")
 			then
-				echo "Sorry try again when you have a secure VPN IP address";
+				print_error "Sorry try again when you have a secure VPN IP address";
 				exit;
 			fi
 			echo "The ips is:$theIP"
@@ -117,13 +114,13 @@ then
 				 
 				sudo ufw allow out on $x54 proto udp from any to $theIP port $thePort;
 				
-				echo "Final rule was:";
-				echo "${cayn}sudo ufw allow out on $x54 proto $theProtocol from any to $theIP port $thePort${reset}";
+				print_good "Final rule was:";
+				print_good "${cayn}sudo ufw allow out on $x54 proto $theProtocol from any to $theIP port $thePort${reset}";
 			else
 				#echo "output is for tcp";
 				sudo ufw allow out on $x54 proto tcp from any to $theIP port $thePort; 
-				echo "Final rule was:";
-				echo "${cayn}sudo ufw allow out on $x54 proto $theProtocol from any to $theIP port $thePort${reset}";
+				print_good "Final rule was:";
+				print_good "${cayn}sudo ufw allow out on $x54 proto $theProtocol from any to $theIP port $thePort${reset}";
 			fi
 			
 			sudo ufw default deny incoming;
@@ -140,16 +137,17 @@ You should click on allow all Internet traffic button to get it back";
 			notify-send -t 20000 -i $notifyIcon "Only vpn traffic will be allowed if VPN is on";
 		
 		else
-			echo "Please connect to VPN first or wait for Kodachi to establish it then run this script";
+			print_error "Please connect to VPN first or wait for Kodachi to establish it then run this script";
 		fi
 	else
-		echo "No Internet you have to be connected";
+		print_error "No Internet you have to be connected";
 	fi
 else
-	notify-send -i $notifyIcon "Please disable Torified system first then run the script again!"
-	echo "Please disable Torified system first then run the script again!"
+	notify-send -i $notifyIcon "Please disable Torified system first then run the script again!";
+	print_error "Please disable Torified system first then run the script again!"
 fi
 echo -e "\n \n \n";
+
 exit 1;
 
  

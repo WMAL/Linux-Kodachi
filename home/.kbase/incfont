@@ -1,36 +1,41 @@
 #!/bin/bash
 # Script written by Warith Al Maawali  
-# (c) 2018 Founder of Eagle Eye Digital Solutions
+# (c) 2019 Founder of Eagle Eye Digital Solutions
 # http://www.digi77.com
 # http://www.om77.net
 # script starts here:
+
+
 cd $(dirname $0) 
 source Globalconfig;
 
 
 oldFontSize=$(cat $Mykodachi_path/screenfontsize);
-if [[ "$oldFontSize" != 18 ]]
+if [[ "$oldFontSize" -lt 20 ]] && [[ "$oldFontSize" -gt 2 ]]
 then	
-newFontSize=$((oldFontSize+1));
-echo $oldFontSize " - " $newFontSize;
-rpl -i "size=$oldFontSize" "size=$newFontSize" $Mykodachi_path/.conkyrc*	
+	newFontSize=$((oldFontSize+1));
+	echo $oldFontSize " - " $newFontSize;
+	rpl -i "size=$oldFontSize" "size=$newFontSize" $Mykodachi_path/.conkyrc*	
 
-if [[ $newFontSize -lt 13 ]]
-then	
-	rpl -i "gap_x 330" "gap_x 220" $Mykodachi_path/.conkyrc2*
-	rpl -i "gap_x 715" "gap_x 480" $Mykodachi_path/.conkyrc0*
-	rpl -i "gap_x 715" "gap_x 480" $Mykodachi_path/.conkyrc1*
-else
-	rpl -i "gap_x 220" "gap_x 330" $Mykodachi_path/.conkyrc2*
-	rpl -i "gap_x 480" "gap_x 715" $Mykodachi_path/.conkyrc0*
-	rpl -i "gap_x 480" "gap_x 715" $Mykodachi_path/.conkyrc1*
-fi
-notify-send -i $notifyIcon "Font size changed from: $oldFontSize to: $newFontSize"; 
-echo $newFontSize > $Mykodachi_path/screenfontsize
+	if [[ $newFontSize -lt 13 ]]
+	then	
+		rpl -i "gap_x 350" "gap_x 220" $Mykodachi_path/.conkyrc2*;
+		rpl -i "gap_x 780" "gap_x 500" $Mykodachi_path/.conkyrc0*;
+		rpl -i "gap_x 725" "gap_x 480" $Mykodachi_path/.conkyrc1*;
+		rpl -i "minimum_size 320 0" "minimum_size 220 0" $Mykodachi_path/.conkyrc1*;
+	else
+		rpl -i "gap_x 220" "gap_x 350" $Mykodachi_path/.conkyrc2*;
+		rpl -i "gap_x 500" "gap_x 780" $Mykodachi_path/.conkyrc0*;
+		rpl -i "gap_x 480" "gap_x 725" $Mykodachi_path/.conkyrc1*;
+		rpl -i "minimum_size 220 0" "minimum_size 320 0" $Mykodachi_path/.conkyrc1*;
+	
+	fi
+	notify-send -i $notifyIcon "Font size changed from: $oldFontSize to: $newFontSize"; 
+	echo $newFontSize > $Mykodachi_path/screenfontsize
 else
 	notify-send -i $notifyIcon "Font size $oldFontSize is maximum you can change to";
-
 fi
+
 exit 1;
 
 

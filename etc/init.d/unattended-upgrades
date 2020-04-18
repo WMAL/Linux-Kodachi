@@ -1,0 +1,51 @@
+#! /bin/sh
+#
+### BEGIN INIT INFO
+# Required-Start:    $local_fs $remote_fs
+# Required-Stop:     $local_fs $remote_fs
+# Provides:          unattended-upgrade-shutdown-check
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 6
+# Short-Description: Check if unattended upgrades are being applied
+# Description:       Check if unattended upgrades are being applied
+#                    and wait for them to finish
+### END INIT INFO
+set -e
+
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+NAME="unattended-upgrades-shutdown"
+DESC="unattended package upgrades shutdown"
+SCRIPTNAME="/etc/init.d/$NAME"
+SHUTDOWN_HELPER="/usr/share/unattended-upgrades/unattended-upgrade-shutdown"
+
+if [ -x /usr/bin/python3 ]; then
+    PYTHON=python3
+else
+    PYTHON=python
+fi
+
+# Load the VERBOSE setting and other rcS variables
+. /lib/init/vars.sh
+
+# Define LSB log_* functions.
+# Depend on lsb-base (>= 3.2-14) to ensure that this file is present
+. /lib/lsb/init-functions
+
+case "$1" in
+start|restart|force-reload|status)
+	# nothing, just to keep update-rc.d happy (see debian #630732)
+	;;
+stop)
+	if [ -e $SHUTDOWN_HELPER ]; then
+		[ "$VERBOSE" != "no" ] && log_action_begin_msg "Checking for running $DESC"
+		$PYTHON $SHUTDOWN_HELPER
+		[ "$VERBOSE" != "no" ] && log_action_end_msg $? "$NAME"
+	fi
+	;;
+*)
+	echo "Usage: $SCRIPTNAME {start|stop|status|restart|force-reload}" >&2
+	exit 3
+	;;
+esac
+:

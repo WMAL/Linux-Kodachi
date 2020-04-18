@@ -1,25 +1,12 @@
 #!/bin/bash
 # Script written by Warith Al Maawali  
-# (c) 2018 Founder of Eagle Eye Digital Solutions
+# (c) 2019 Founder of Eagle Eye Digital Solutions
 # http://www.digi77.com
 # http://www.om77.net
 # script starts here:
+
 cd $(dirname $0) 
 source Globalconfig;
-
-
-	
-	
-	
-	
-	
-	
-	exit 1;
-
-
-
-
-
 
  
 
@@ -27,4 +14,25 @@ source Globalconfig;
 
 
 
+netIP='google.com'; 
+wget --timeout=2 --waitretry=0  --tries=3 --retry-connrefused -q --spider "$netIP" &> /dev/null
+if [ $? -eq 0 ]; 
+then
 
+ 
+	echo " we have net";
+		
+		
+		
+	 
+else
+	echo "Please connect to Internet first!";
+    exit 1;
+fi
+
+exit 1
+
+
+
+
+ 

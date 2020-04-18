@@ -1,9 +1,9 @@
 #!/bin/bash
 # Script written by Warith Al Maawali  
-# (c) 2018 Founder of Eagle Eye Digital Solutions
+# (c) 2019 Founder of Eagle Eye Digital Solutions
 # http://www.digi77.com
 # http://www.om77.net
-# script starts here: 
+# script starts here
 
 cd $(dirname $0) 
 source ../Globalconfig;
@@ -32,31 +32,66 @@ trap "rmdir $lockdir" EXIT INT KILL TERM
 
 netIP="google.com";
 
- 
+#Disable systemd-resolved and reboot. so nameserver 127.0.0.53 is not written to /etc/resolv.conf.
+sudo systemctl disable systemd-resolved;
 
-	while true; do 
-			
-		sleep 10
-		dnsforce=$(cat $Mykodachi_path/forcetempdns);
-		SERVICE='dnscrypt-proxy';
-		if [[ "$dnsforce" == *Yes* ]]
+
+
+while true; do 
+		
+
+
+	dnsforce=$(cat $Mykodachi_path/forcetempdns);
+	SERVICE='dnscrypt-proxy';
+	if [[ "$dnsforce" == *Yes* ]]
+	then
+		torifySystem=$(cat $Mykodachi_path/torifysystemstatus);
+		if [[ "$torifySystem" == *Yes* ]]
 		then
-			ping -c1 -W 2 "$netIP" &> /dev/null
-			if [ $? -eq 0 ]; 
-			then
-				 echo "The network is up";			 
-				 sudo bash -c 'cat dns1 > /etc/resolv.conf'; 	
-				 netIP="google.com";		
-			else
-				 echo "The network is down"
-				 echo "No ip found set Tenta + Freedns + NordDNS";
-				 sudo bash -c 'cat dns9 > /etc/resolv.conf';
-				 netIP="digi77.com"; 	 
-			fi
+			# slow network
+			wget --timeout=15 --waitretry=0 --tries=3 --retry-connrefused -q --spider $netIP &> /dev/null
+		else
+			wget --timeout=5 --waitretry=0 --tries=3 --retry-connrefused -q --spider $netIP &> /dev/null
 		fi
+		if [ $? -eq 0 ]; 
+		then
+			 echo "The network is up";			 
+			 sudo bash -c 'cat dns1 > /etc/resolv.conf'; 	
+			 netIP="google.com";		
+		else
+			 echo "The network is down"
+			 echo "No ip found set Tenta + Freedns + NordDNS";
+			 sudo bash -c 'cat dns9 > /etc/resolv.conf';
+			 netIP="digi77.com"; 	 
+		fi
+		sleep 5;
+	else
+		#Reset dns at startup
+		chk1=`cksum /etc/resolv.conf | awk -F" " '{print $1}'`
+		chk2=`cksum $Mykodachi_dns_path/dns1 | awk -F" " '{print $1}'`
+
+		if [ $chk1 -eq $chk2 ]
+		then
+			echo "Dns file is identical do nothing"
+		else
+			echo "Dns file is not identical"
+			sudo bash -c 'cat dns1 > /etc/resolv.conf'; 
 			
-	   
-	done
+			
+			if (grep -R Tor $Mykodachi_dns_path/dns1)
+			then			
+				sudo bash /home/$USER/.kbase/dns/.tordns;
+				
+			fi	
+			
+		fi
+
+		
+		sleep 2;
+	fi
+		
+   
+done
 
 
 

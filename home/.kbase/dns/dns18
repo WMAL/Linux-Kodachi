@@ -1,0 +1,5 @@
+# Dnsused:Mallvad
+nameserver 193.138.218.74
+nameserver 193.138.218.74
+search localdomain
+ 

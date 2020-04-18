@@ -1,6 +1,6 @@
 #!/bin/bash
-# Script written by Warith Al Maawali
-# (c) 2018 Founder of Eagle Eye Digital Solutions
+# Script written by Warith Al Maawali  
+# (c) 2019 Founder of Eagle Eye Digital Solutions
 # http://www.digi77.com
 # http://www.om77.net
 # script starts here:
@@ -10,116 +10,120 @@ source Globalconfig;
 
 
 
-
-
-notify-send -i $notifyIcon "Offline Installation will start shortly";
-sleep 5;
-notify-send -i $notifyIcon "All Internet traffic will be blocked during installation process"
-sleep 5;
-
-# No net so disable everything
-notify-send -i $notifyIcon "VPN TOR DNS Crypt will be disabled now"
-cat $Mykodachi_path/dns/dns10 > $Mykodachi_path/dns/dns1;
-sudo cat $Mykodachi_path/dns/dns10 > /etc/resolv.conf; 
-echo "0" > $Mykodachi_path/dns/autodnscrypt;
-echo "0" > $Mykodachi_path/torenabled;
-echo "novpn" > $Mykodachi_path/vpntype;
-
-#Disable torify
-sudo bash $Mykodachi_path/stoptor
-
-
-SERVICE='networkboot';
-if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+torifySystem=$(cat $Mykodachi_path/torifysystemstatus);
+if [[ "$torifySystem" == *Yes* ]]
 then
-	sudo kill -9 `ps -ef | grep $SERVICE | grep -v grep | awk '{print $2}'`
-fi	
+	notify-send -i $notifyIcon "Please Disable Torify system then try again";
+else
 
-SERVICE='openvpn';
-if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
-then
-	sudo kill -9 `ps -ef | grep $SERVICE | grep -v grep | awk '{print $2}'`
-fi
+	notify-send -i $notifyIcon "Offline Installation will start shortly";
+	sleep 5;
+	notify-send -i $notifyIcon "All Internet traffic will be blocked during installation process"
+	sleep 5;
 
-SERVICE='tor-service';
-if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
-then
-	 sudo /etc/init.d/tor stop;
+	# No net so disable everything
+	notify-send -i $notifyIcon "VPN TOR DNS Crypt will be disabled now"
+	cat $Mykodachi_path/dns/dns10 > $Mykodachi_path/dns/dns1;
+	sudo cat $Mykodachi_path/dns/dns10 > /etc/resolv.conf; 
+	echo "0" > $Mykodachi_path/dns/autodnscrypt;
+	echo "0" > $Mykodachi_path/torenabled;
+	echo "Novpn" > $Mykodachi_path/vpntype;
+
+	#Disable torify
+	sudo bash $Mykodachi_path/stoptor
+
+
+	SERVICE='networkboot';
+	if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+	then
+		sudo kill -9 `ps -ef | grep $SERVICE | grep -v grep | awk '{print $2}'`
+	fi	
+
+	SERVICE='openvpn';
+	if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+	then
+		sudo kill -9 `ps -ef | grep $SERVICE | grep -v grep | awk '{print $2}'`
+	fi
+
+	SERVICE='tor-service';
+	if systemctl is-active tor.service > /dev/null 2>&1; 
+	then
+		 sudo /etc/init.d/tor stop;
+		 
+	fi
+
+	SERVICE='hardworknet';
+	if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+	then
+		 sudo kill -9 `ps -ef | grep $SERVICE | grep -v grep | awk '{print $2}'`
+		 rm -f $Mykodachi_path/tmp/W2ygSm9EdXbKkbqip7EtWwHdDYWkytai@net@systemhealth
+		 
+	fi
+	SERVICE='hardworknonet';
+	if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+	then
+		 sudo kill -9 `ps -ef | grep $SERVICE | grep -v grep | awk '{print $2}'`
+		 rm -f $Mykodachi_path/tmp/NMxllr4g5KWVmq9yYGMGX1uZ0vn6nfM3@Nonet@systemhealth
+		 
+	fi
+
+
+	SERVICE='dnscrypt-proxy';
+	if systemctl is-active dnscrypt-proxy.service > /dev/null 2>&1; 
+	then	 
+		sudo service dnscrypt-proxy stop    
+	fi
+
+
+
+	# Block the internet
+	sudo ufw disable;
+	sudo ufw default deny incoming;
+	sudo ufw default deny outgoing;
+	sudo ufw enable;
+	echo "Not active" > $Mykodachi_path/netCurrentStatus;
+	echo "" > $Mykodachi_path/.eeds-ipinfo;
+	echo "" > $Mykodachi_path/.eeds-tipinfo;
 	 
-fi
+	notify-send -i $notifyIcon "Starting the Installation process";
 
-SERVICE='hardworknet';
-if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
-then
-	 sudo kill -9 `ps -ef | grep $SERVICE | grep -v grep | awk '{print $2}'`
-	 rm -f $Mykodachi_path/tmp/W2ygSm9EdXbKkbqip7EtWwHdDYWkytai@net@systemhealth
+	# Start installing
+	sudo killall ubiquity
+	#sudo apt-cdrom add
+	#sudo sh -c 'ubiquity gtk_ui'
+	sudo --preserve-env=DBUS_SESSION_BUS_ADDRESS,XDG_RUNTIME_DIR sh -c 'ubiquity gtk_ui'
+	#sleep 60;
+	notify-send -i $notifyIcon "Installation complete";
+
 	 
+
+	# Renable everyhting back
+	yes|sudo ufw reset;
+	sudo ufw disable;
+	notify-send -i $notifyIcon "Internet is enabled now";
+
+	sleep 1;
+
+	notify-send -i $notifyIcon "VPN TOR DNS Crypt will be enabled now"	
+
+	echo "1" > $Mykodachi_path/dns/autodnscrypt;
+	sudo bash -c 'cat dns/dns0 > /etc/resolv.conf';
+	cat $Mykodachi_path/dns/dns0 > $Mykodachi_path/dns/dns1;
+	sudo service dnscrypt-proxy start
+
+	sudo /etc/init.d/tor restart;
+	echo "1" > $Mykodachi_path/torenabled;
+
+	echo "kodachivpn" > $Mykodachi_path/vpntype;
+	sudo rm -f /etc/apt/sources.list
+	sudo rm -f /etc/apt/sources.list.save 	
+	echo "Copying all files";	
+	sudo cp $Mykodachi_path/apt-live/sources.list /etc/apt/sources.list
+	sudo cp $Mykodachi_path/apt-live/sources.list.save /etc/apt/sources.list.save 	
+	echo "Chown root all copied files";
+	sudo chown root.root /etc/apt/sources.list
+	sudo chown root.root /etc/apt/sources.list.save 	
+	sudo bash $Mykodachi_path/systemhealth -a hardworknet 2>/dev/null
+	sudo bash $Mykodachi_path/systemhealth -a hardworknonet 2>/dev/null
 fi
-SERVICE='hardworknonet';
-if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
-then
-	 sudo kill -9 `ps -ef | grep $SERVICE | grep -v grep | awk '{print $2}'`
-	 rm -f $Mykodachi_path/tmp/NMxllr4g5KWVmq9yYGMGX1uZ0vn6nfM3@Nonet@systemhealth
-	 
-fi
-
-
-SERVICE='dnscrypt-proxy';
-if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
-then	 
-	sudo service dnscrypt-proxy stop    
-fi
-
-
-
-# Block the internet
-sudo ufw disable;
-sudo ufw default deny incoming;
-sudo ufw default deny outgoing;
-sudo ufw enable;
-echo "Not active" > $Mykodachi_path/netCurrentStatus;
-echo "" > $Mykodachi_path/.eeds-ipinfo;
-echo "" > $Mykodachi_path/.eeds-tipinfo;
- 
-notify-send -i $notifyIcon "Starting the Installation process";
-
-# Start installing
-sudo killall ubiquity
-#sudo apt-cdrom add
-#sudo sh -c 'ubiquity gtk_ui'
-sudo --preserve-env=DBUS_SESSION_BUS_ADDRESS,XDG_RUNTIME_DIR sh -c 'ubiquity gtk_ui'
-#sleep 60;
-notify-send -i $notifyIcon "Installation complete";
-
- 
-
-# Renable everyhting back
-yes|sudo ufw reset;
-sudo ufw disable;
-notify-send -i $notifyIcon "Internet is enabled now";
-
-sleep 1;
-
-notify-send -i $notifyIcon "VPN TOR DNS Crypt will be enabled now"	
-
-echo "1" > $Mykodachi_path/dns/autodnscrypt;
-sudo bash -c 'cat dns/dns0 > /etc/resolv.conf';
-cat $Mykodachi_path/dns/dns0 > $Mykodachi_path/dns/dns1;
-sudo service dnscrypt-proxy start
-
-sudo /etc/init.d/tor restart;
-echo "1" > $Mykodachi_path/torenabled;
-
-echo "kodachivpn" > $Mykodachi_path/vpntype;
-sudo rm -f /etc/apt/sources.list
-sudo rm -f /etc/apt/sources.list.save 	
-echo "Copying all files";	
-sudo cp $Mykodachi_path/apt-live/sources.list /etc/apt/sources.list
-sudo cp $Mykodachi_path/apt-live/sources.list.save /etc/apt/sources.list.save 	
-echo "Chown root all copied files";
-sudo chown root.root /etc/apt/sources.list
-sudo chown root.root /etc/apt/sources.list.save 	
-sudo bash $Mykodachi_path/systemhealth -a hardworknet 2>/dev/null
-sudo bash $Mykodachi_path/systemhealth -a hardworknonet 2>/dev/null
-
 exit 1;

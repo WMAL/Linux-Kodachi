@@ -1,6 +1,6 @@
 #!/bin/bash
 # Script written by Warith Al Maawali  
-# (c) 2018 Founder of Eagle Eye Digital Solutions
+# (c) 2019 Founder of Eagle Eye Digital Solutions
 # http://www.digi77.com
 # http://www.om77.net
 # script starts here:
@@ -34,7 +34,7 @@ mv $Mykodachi_tmp_path/hidemevpnconfigs $VPN_hideme_ovpn_dir
 rm -f $Mykodachi_tmp_path/hidemevpnconfigs.zip
 x=$(ls $VPN_hideme_ovpn_dir|wc -l);
 echo $x
-notify-send -t 20000 -i $notifyIcon "Download complete now you can try to connect to HideMeVPN servers" "$(echo -e "HideMeVPN has $x ovpn files that were validated by $OS_name nodes\nHideMeVPN ovpn files location:\n$VPN_hideme_ovpn_dir")" 
+notify-send -t 20000 -i $notifyIcon "Download complete now you can try to connect to HideMeVPN servers" "$(echo -e "HideMeVPN has $x ovpn files that were validated by $OS_name nodes\nHideMeVPN ovpn files location:\n$VPN_hideme_ovpn_dir")"; 
  
 exit 1
 

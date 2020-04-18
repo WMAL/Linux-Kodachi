@@ -1,6 +1,6 @@
 #!/bin/bash
 # Script written by Warith Al Maawali  
-# (c) 2018 Founder of Eagle Eye Digital Solutions
+# (c) 2019 Founder of Eagle Eye Digital Solutions
 # http://www.digi77.com
 # http://www.om77.net
 # script starts here:
@@ -13,7 +13,7 @@ source Globalconfig;
 
  
 netIP='google.com'; 
-ping -c1 -W 2 "$netIP" &> /dev/null
+wget --timeout=2 --waitretry=0 --tries=3 --retry-connrefused -q --spider "$netIP" &> /dev/null
 if [ $? -eq 0 ]; 
 then
 
@@ -21,7 +21,7 @@ then
 	if [[ "$torifySystem" == *No* ]]
 	then
 
-		echo "Race will start now fasten your seat belts ☺";
+		print_good "Race will start now fasten your seat belts ☺";
 		notify-send -i $notifyIcon "NordVPN speed test will start now";
 		rm -f $Mykodachi_tmp_path/nordvpnpingtest.txt
 		rm -f $Mykodachi_tmp_path/nordvpnpingtest.txt.2
@@ -76,11 +76,11 @@ then
 		fastestserver=$(cat $VPN_configs_path/speedtests/nordvpn_speed_test_results.txt | head -1 | awk '{$1="";print}' | sed -e 's/^[[:space:]]*//')
 		echo -e "${cayn}Fastest NordVPN server: ${green}$fastestserver\n${reset}"
 		echo -e "\n";	
-		echo "NordVPN speed test results saved in:"
-		echo $VPN_configs_path/speedtests/nordvpn_speed_test_results.txt;
+		print_good "NordVPN speed test results saved in:"
+		print_good $VPN_configs_path/speedtests/nordvpn_speed_test_results.txt;
 		echo -e "\n";	
-		echo "To use any of the above profiles change the variables in:"
-		echo $VPN_configs_path/nordvpnsetup;  
+		print_good "To use any of the above profiles change the variables in:"
+		print_good $VPN_configs_path/nordvpnsetup;  
 		chown $LOGED_USER.$LOGED_USER $VPN_configs_path/speedtests/nordvpn_speed_test_results.txt  
 		notify-send -t 30000 -i $notifyIcon "Fastest NordVPN server: 
 $fastestserver
@@ -96,7 +96,7 @@ $VPN_configs_path/nordvpnsetup";
 
 	else
 		notify-send -i $notifyIcon "Please disable Torified system first then run the script again!"
-		echo "Please disable Torified system first then run the script again!"
+		print_error "Please disable Torified system first then run the script again!"
 	fi
 	echo -e "\n\n";
 else

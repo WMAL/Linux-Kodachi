@@ -1,0 +1,58 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2019 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here:
+
+cd $(dirname $0) 
+source Globalconfig;
+
+function waitForTor2beready()
+{
+	local hostport="localhost:9050" 
+	local url="https://check.torproject.org/"
+	SERVICE='tor-service';
+	#if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+	if systemctl is-active tor.service > /dev/null 2>&1;  
+	then		
+		TorCon=0;
+		while [[ $TorCon -eq 0 ]]; do
+		echo "*************************  waiting for Tor to be ready  **********************";
+		echo -e "\n"
+		#while [[ ! `timeout 50 torsocks curl --connect-timeout 15 --retry 5 https://www.digi77.com/software/vpn/ipcheckplain.php 2>/dev/null` ]]; do sleep 1; done
+		if curl -s -m 10 --socks5 "$hostport" --socks5-hostname "$hostport" -L "$url" | cat | tac | grep -q 'Congratulations';  
+		then
+			TorCon=1;
+		else
+			TorCon=0;
+		fi
+		echo "Tor while loop result: $TorCon";
+		sleep 1; done
+	fi
+}
+
+
+SERVICE='tor-service';
+if !(ps ax | grep -v grep | grep $SERVICE > /dev/null)
+then		
+	echo "1" > $Mykodachi_path/torenablednovpn;
+	echo "0" > $Mykodachi_path/torenabled;
+	echo "1" > $Mykodachi_path/actionpicker;
+	notify-send -i $notifyIcon "Changing TOR setting to start without VPN"; 
+fi
+
+# Wait for mr tor to be ready
+#waitForTor2beready;
+( cmdpid=$BASHPID; 
+(sleep 60; kill $cmdpid) \
+& while ! waitForTor2beready 
+ do 
+	 echo "Tor wait termintated"; 
+ done )			
+
+cd /usr/lib/sphere_nix
+sudo bash RunSphere.sh 
+exit 1;
+
+

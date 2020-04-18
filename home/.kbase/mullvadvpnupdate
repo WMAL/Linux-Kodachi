@@ -1,0 +1,41 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2019 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here:
+
+cd $(dirname $0) 
+source Globalconfig;
+
+
+
+
+notify-send -i $notifyIcon "Downloading MullvadVPN servers" \ "This process will take time please wait";
+#Clean up
+rm -f -r $Mykodachi_tmp_path/mullvadconfigs
+rm -f $Mykodachi_tmp_path/mullvadconfigs.zip
+
+timeout 600 wget -O $Mykodachi_tmp_path/mullvadconfigs.zip "$Kodachi_web_dir/download.php?f=mullvadconfigs.zip" -q
+
+unzip -o -P a30@06e61-79-34-88-A4-C3@ $Mykodachi_tmp_path/mullvadconfigs.zip -d $Mykodachi_tmp_path 
+chmod 755 $Mykodachi_tmp_path/mullvadconfigs -R
+mq=$(ls -1q $Mykodachi_tmp_path/mullvadconfigs/*.ovpn | wc -l);
+sq="3";
+echo $mq;
+if [[ $mq -lt $sq ]] 
+then
+	notify-send -i $notifyIcon "Updating MullvadVPN servers: FAIL" \ "Please try again";
+	rm -f $Mykodachi_tmp_path/mullvadconfigs.zip
+	exit 1
+fi
+rm -f -r $VPN_mullvad_ovpn_dir
+mv $Mykodachi_tmp_path/mullvadconfigs $VPN_mullvad_ovpn_dir
+rm -f $Mykodachi_tmp_path/mullvadconfigs.zip
+x=$(ls $VPN_mullvad_ovpn_dir|wc -l);
+echo $x
+notify-send -t 20000 -i $notifyIcon "Download complete now you can try to connect to MullvadVPN servers" "$(echo -e "MullvadVPN has $x ovpn files that were validated by $OS_name nodes\nMullvadVPN ovpn files location:\n$VPN_mullvad_ovpn_dir")" 
+ 
+exit 1
+
+

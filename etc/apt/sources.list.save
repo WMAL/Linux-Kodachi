@@ -10,5 +10,4 @@ deb http://archive.ubuntu.com/ubuntu bionic-backports main restricted universe m
 
 
 deb https://deb.torproject.org/torproject.org bionic main
-deb [arch=amd64] https://downloads.iridiumbrowser.de/deb/ stable main
-deb https://dl.bintray.com/hawkeye116477/waterfox-deb release main
+ 

@@ -1,0 +1,5 @@
+# Dnsused:Fourth-Estate
+nameserver 45.32.36.36
+nameserver 45.77.165.194
+search localdomain
+ 

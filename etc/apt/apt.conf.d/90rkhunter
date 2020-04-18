@@ -1,0 +1,2 @@
+// Makes sure that rkhunter file properties database is updated after each remove or install only APT_AUTOGEN is enabled
+DPkg::Post-Invoke { "if [ -x /usr/bin/rkhunter ] && grep -qiE '^APT_AUTOGEN=.?(true|yes)' /etc/default/rkhunter; then /usr/share/rkhunter/scripts/rkhupd.sh; fi"; };

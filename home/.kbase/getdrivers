@@ -1,6 +1,6 @@
 #!/bin/bash
 # Script written by Warith Al Maawali  
-# (c) 2018 Founder of Eagle Eye Digital Solutions
+# (c) 2019 Founder of Eagle Eye Digital Solutions
 # http://www.digi77.com
 # http://www.om77.net
 # script starts here:
@@ -17,28 +17,29 @@ source Globalconfig;
 # check if we have internet
 netIP='google.com';
 
-echo "Checking your Internet connection ...";
+print_good "Checking your Internet connection ...";
 sleep 3;
 # if google is down replace with digi77.com 
-ping -c1 -W 2 "$netIP" &> /dev/null
+wget --timeout=2 --waitretry=0 --tries=3 --retry-connrefused -q --spider "$netIP" &> /dev/null
 if [ $? -eq 0 ]; 
 then
-	echo "Internet is working cool...";
+	print_good "Internet is working cool...";
 	 
 else
 	netIP='digi77.com';
-	echo "No Internet replaced Google domain with digi77.com";
+	print_error "No Internet replaced Google domain with digi77.com";
 	
 fi
 
-ping -c1 -W 2 "$netIP" &> /dev/null
+wget --timeout=2 --waitretry=0 --tries=3 --retry-connrefused -q --spider "$netIP" &> /dev/null
 if [ $? -eq 0 ]; 
 then
-    echo "#### Getting updates please wait 1/2...";
+    print_good "#### Getting updates please wait 1/2...";
     sleep 5;
 	sudo apt update;
 	sleep 5;
-	echo "#### Getting updates please wait 2/2...";
+	echo "";
+	print_good "#### Getting updates please wait 2/2...";
 	echo -e "\n"; 
     sudo ubuntu-drivers autoinstall;
 
@@ -48,8 +49,8 @@ else
 please run again if you have Internet connection for better results";
 	sudo ubuntu-drivers autoinstall;
 	#notify-send -i $notifyIcon -t 20000 "Sorry No Internet connection this script requires Internet to function quiting now..";
-	echo "######### Attention #########";
-	echo "No Internet connection found so we will skip apt update please run again if you have Internet connection for better results";
+	print_error "######### Attention #########";
+	print_error "No Internet connection found so we will skip apt update please run again if you have Internet connection for better results";
 	exit 1
 
 fi
