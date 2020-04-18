@@ -6,16 +6,16 @@ However I would appreciate your donation to continue developing it - Faster upda
 
 Apart from my valuable time I do pay monthly rent for the vps servers hosting VPN nodes.
 
-Let me know if you need to donate in different payment methods other than BTC (Like NEO,XMR,LTC,XRP,Qtum,Zcoin ...etc). 
+Let me know if you need to donate in different payment methods other than BTC (Like XMR,Zcoin,LTC,Zcash ...etc). 
 
 
 BTC donation address:
-12pXuBKJmRFMnLDXYSxaLBopJo7YD5RoAa
+19pufEJUkQGPJYXCfA1b7GaKSUNeYEsApU
 
 Paypal donation address:
 sales@digi77.com
 
-“The only way to do great work is to love what you do.” – Steve Jobs
+“Use Kodachi OS or be in the land of insecurity!.” – Tag line by J.D
 
 Yours sincerely,
 Warith AL Maawali

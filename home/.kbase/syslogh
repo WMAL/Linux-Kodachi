@@ -1,0 +1,78 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2019 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here:
+
+#CS
+#Find mount labels
+#findmnt -lo source,target,fstype,label,options,used
+
+cd $(dirname $0) 
+source Globalconfig;
+
+while true
+do
+	userInput=0;
+	clear;
+	echo "Please choose which $OS_name system information you would like to see:";
+	echo "";
+	print_good "1) Show my Hardware ID";
+	print_good "2) Show my Hardware ID on mousepad";
+	print_good "3) Monitor system logs";
+	print_good "4) Show boot logs";
+	print_good "5) Exit";
+	echo "";
+	echo "Type the number of your selection";
+	read n
+	case $n in
+		1) userInput=1;;
+		2) userInput=2;;
+		3) userInput=3;;
+		4) userInput=4;;
+		5) userInput=5;;
+		*) print_error "sorry wrong value";sleep 1;;
+	esac
+
+
+	if [[ $userInput = "5" ]]
+	then
+		print_good "bye";
+		echo "";
+		exit 1;
+	fi
+
+
+	if [[ $userInput = "1" ]]
+	then
+		cat /home/$USER/.kbase/HWID;		
+		echo "";
+		read -n 1 -s -r -p "${reset}Press any key to continue.....";
+	fi
+	
+	if [[ $userInput = "2" ]]
+	then		 
+		mousepad  /home/$USER/.kbase/HWID > /dev/null;
+		echo "";
+		read -n 1 -s -r -p "${reset}Press any key to continue.....";
+	fi
+	
+	
+	if [[ $userInput = "3" ]]
+	then
+		 sudo tail -f /var/log/syslog
+		 echo "";
+		 read -n 1 -s -r -p "${reset}Press any key to continue.....";
+	fi
+
+
+	if [[ $userInput = "4" ]]
+	then
+		 sudo cat /var/log/boot.log
+		 echo "";
+		 read -n 1 -s -r -p "${reset}Press any key to continue.....";
+	fi
+
+
+done;

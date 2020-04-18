@@ -6,7 +6,7 @@
 GRUB_DEFAULT=0
 GRUB_TIMEOUT=10
 GRUB_DISTRIBUTOR=`lsb_release -d -s 2> /dev/null || echo Kodachi`
-GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash zswap.enabled=1 zswap.compressor=lz4"
 GRUB_CMDLINE_LINUX=""
 GRUB_BACKGROUND="/etc/grub.d/backgrounds/grub.png"
 

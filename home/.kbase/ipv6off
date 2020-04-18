@@ -1,6 +1,6 @@
 #!/bin/bash
 # Script written by Warith Al Maawali  
-# (c) 2018 Founder of Eagle Eye Digital Solutions
+# (c) 2019 Founder of Eagle Eye Digital Solutions
 # http://www.digi77.com
 # http://www.om77.net
 # script starts here:
@@ -28,7 +28,11 @@ sudo bash -c "echo $v3 >> /etc/sysctl.conf";
 sudo bash -c "echo -n $v4 >> /etc/sysctl.conf";  
 echo -n "1" > /proc/sys/net/ipv6/conf/all/disable_ipv6;
 sudo sysctl -p; 
+# Alternative way but I use both to be sure
+sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1
+sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1
 notify-send -i $notifyIcon "IPv6 disabled"; 
+
 exit 1
 
 

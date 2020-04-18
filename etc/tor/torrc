@@ -1,3 +1,5 @@
+## -- > Tor obfuscation at the end of this document <-- ##
+##
 ## Configuration file for a typical Tor user
 ## Last updated 22 December 2017 for Tor 0.3.2.8-rc.
 ## (may or may not work for much older or much newer versions of Tor.)
@@ -46,7 +48,7 @@
 ## Uncomment this to start the process in the background... or use
 ## --runasdaemon 1 on the command line. This is ignored on Windows;
 ## see the FAQ entry if you want Tor to run as an NT service.
-#RunAsDaemon 1
+RunAsDaemon 1
 
 ## The directory for keeping all the keys/etc. By default, we store
 ## things in $HOME/.tor on Unix, and in Application Data\tor on Windows.
@@ -233,14 +235,47 @@ HashedControlPassword 16:44A6BADBFDFAB985609DA026F46C22A924F97B74DE8B8F105EB3BB4
 ## order. Files starting with a dot are ignored. Files on subfolders are ignored.
 ## The %include option can be used recursively.
 #%include /etc/torrc.d/
-#%include /etc/torrc.custom
 
+
+
+
+
+# Exclude countries
+%include /etc/tor/torrc.custom
+StrictNodes 1
+
+# Don't chnage this or any of the above!
 ClientOnly 1
 TransPort 9051
 TransListenAddress 127.0.0.1
 DNSPort   9061
 DNSListenAddress 127.0.0.1
-
 VirtualAddrNetwork 10.66.0.0/255.255.0.0
 AutomapHostsOnResolve 1
+# End toriffy seettings
+
+
+
+
+
+## -- > Tor obfuscation starts here <-- ##
+
+# If you are not using VPN sometimes the Tor network is censored, and you can't connect to tor so u will need to uncomment the below lines.
+
+# UseBridges 1
+# ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy managed
+
+
+# The following lines won't work u need to get yours from here: 
+# https://bridges.torproject.org/bridges?transport=obfs4
+
+# Bridge obfs4 23.95.198.157:443 E1A1C43638311D392655B172E9BAAC4FA20AC3EA cert=QqoaXnE9ep/lIoermHkfXKWcS9cbl6ioYJGZ2SEsPoXJ/lfgsfMolau3i0ETpfs0Vfc/Jw iat-mode=0
+# Bridge obfs4 185.141.26.37:443 6FA9A912485E47498550B2B53EE94C4F5ACF5398 cert=NmtFxQsMcNdYD0tBfXEnm3Zz0pK5fcjygtSoG9sON/sChshd2zPVFc4ywnoKfsFZG8tLIw iat-mode=0
+# Bridge obfs4 158.69.204.189:443 5A5103F99EDA9E2F136CE38F3C041C0D67320EFC cert=eBfZ5Cu7KIwDSbuxtwmSG23HSZ9p7ckuF0C64K8ZkJ2SFfDxt6ihKsUOKpG9MIoKggKVTw iat-mode=0
+
+
+# Don't forget that each line starts with the word Bridge ^
+
+
+
 

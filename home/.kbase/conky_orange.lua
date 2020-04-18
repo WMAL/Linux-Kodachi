@@ -7,8 +7,8 @@
 --
 --==============================================================================
 
--- Script written by W. Al Maawali  
--- (c) 2016 Founder of Eagle Eye Digital Solutions
+-- Script written by Warith Al Maawali  
+-- (c) 2019 Founder of Eagle Eye Digital Solutions
 -- http://www.digi77.com
 -- http://www.om77.net
 -- script starts here: 
@@ -87,10 +87,10 @@ gauge = {
     graph_unit_angle=2.7,          graph_unit_thickness=2.7,
     graph_bg_colour=0xffffff,      graph_bg_alpha=0.1,
     graph_fg_colour=0xFFFFFF,      graph_fg_alpha=0.2,
-    hand_fg_colour=0xEF5A29,       hand_fg_alpha=1.0,
+    hand_fg_colour=0x8BB158,       hand_fg_alpha=1.0,
     txt_radius=34,
     txt_weight=0,                  txt_size=8.0,
-    txt_fg_colour=0xEF5A29,        txt_fg_alpha=1.0,
+    txt_fg_colour=0x8BB158,        txt_fg_alpha=1.0,
     graduation_radius=28,
     graduation_thickness=0,        graduation_mark_thickness=1,
     graduation_unit_angle=27,
@@ -108,10 +108,10 @@ gauge = {
     graph_unit_angle=2.7,          graph_unit_thickness=2.7,
     graph_bg_colour=0xffffff,      graph_bg_alpha=0.1,
     graph_fg_colour=0xFFFFFF,      graph_fg_alpha=0.2,
-    hand_fg_colour=0xEF5A29,       hand_fg_alpha=1.0,
+    hand_fg_colour=0x8BB158,       hand_fg_alpha=1.0,
     txt_radius=10,
     txt_weight=0,                  txt_size=8.0,
-    txt_fg_colour=0xEF5A29,        txt_fg_alpha=1.0,
+    txt_fg_colour=0x8BB158,        txt_fg_alpha=1.0,
     graduation_radius=28,
     graduation_thickness=0,        graduation_mark_thickness=1,
     graduation_unit_angle=27,
@@ -129,10 +129,10 @@ gauge = {
     graph_unit_angle=2.7,          graph_unit_thickness=2.7,
     graph_bg_colour=0xffffff,      graph_bg_alpha=0.1,
     graph_fg_colour=0xFFFFFF,      graph_fg_alpha=0.2,
-    hand_fg_colour=0xEF5A29,       hand_fg_alpha=1.0,
+    hand_fg_colour=0x8BB158,       hand_fg_alpha=1.0,
     txt_radius=10,
     txt_weight=0,                  txt_size=8.0,
-    txt_fg_colour=0xEF5A29,        txt_fg_alpha=1.0,
+    txt_fg_colour=0x8BB158,        txt_fg_alpha=1.0,
     graduation_radius=23,
     graduation_thickness=0,        graduation_mark_thickness=2,
     graduation_unit_angle=27,
@@ -150,10 +150,10 @@ gauge = {
     graph_unit_angle=2.7,          graph_unit_thickness=2.7,
     graph_bg_colour=0xffffff,      graph_bg_alpha=0.1,
     graph_fg_colour=0xFFFFFF,      graph_fg_alpha=0.2,
-    hand_fg_colour=0xEF5A29,       hand_fg_alpha=1.0,
+    hand_fg_colour=0x8BB158,       hand_fg_alpha=1.0,
     txt_radius=34,
     txt_weight=0,                  txt_size=8.0,
-    txt_fg_colour=0xEF5A29,        txt_fg_alpha=1.0,
+    txt_fg_colour=0x8BB158,        txt_fg_alpha=1.0,
     graduation_radius=28,
     graduation_thickness=0,        graduation_mark_thickness=1,
     graduation_unit_angle=27,
@@ -171,10 +171,10 @@ gauge = {
     graph_unit_angle=2.7,          graph_unit_thickness=2.7,
     graph_bg_colour=0xffffff,      graph_bg_alpha=0.1,
     graph_fg_colour=0xFFFFFF,      graph_fg_alpha=0.2,
-    hand_fg_colour=0xEF5A29,       hand_fg_alpha=1.0,
+    hand_fg_colour=0x8BB158,       hand_fg_alpha=1.0,
     txt_radius=10,
     txt_weight=0,                  txt_size=8.0,
-    txt_fg_colour=0xEF5A29,        txt_fg_alpha=1.0,
+    txt_fg_colour=0x8BB158,        txt_fg_alpha=1.0,
     graduation_radius=28,
     graduation_thickness=0,        graduation_mark_thickness=1,
     graduation_unit_angle=27,

@@ -17,9 +17,11 @@ do_start() {
     #REM302
     if [ "`cat /proc/cmdline | grep casper`" = "" ]; then # run thru this if it's NOT an ISO
         [ "$VERBOSE" != no ] && log_begin_msg "Running bodhibuilder-firstboot"
-        #Warith	
-	slay kodachi
-	usermod -u 1000 kodachi 
+        
+	# Warith changes made for Linux Kodachi	 - no longer needed
+	#slay kodachi
+	#usermod -u 1000 kodachi
+ 
         # Removes this script from boot:
         (sleep 60 && update-rc.d -f bodhibuilder-firstboot remove) &
         sed -i -e 's/root:x:/root:!:/g' /etc/shadow
@@ -57,7 +59,7 @@ do_start() {
         # first time, and never again.
         #
         ### Place your custom commands below this line
-        #WARITH
+        # Warith changes made for Linux Kodachi	
 	apt-get purge bodhibuilder --yes --assume-yes
         apt-get --yes --assume-yes autoremove
         

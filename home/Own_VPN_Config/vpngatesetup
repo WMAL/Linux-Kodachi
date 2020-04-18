@@ -1,11 +1,11 @@
 # Vpngate is a free service from https://www.vpngate.net
 
-
+# No empty space between = and the first letter!:
 
 # You don't need to change below this line unless you don't want the script to pick a random node for you
 
 # If you don't want random vpn node to be selected then set below value to 0 then change vpngateprofilenametouse value to what you wish
-randomnvpngate=1
+randomnvpngate='1'
 
 # Specify the profile name you want to be used if randomnvpngate value is 0 pick a profile name from here /home/kodachi/Own_VPN_Config/vpngate
-vpngateprofilenametouse=vpn733557707.ovpn
+vpngateprofilenametouse='atv-ddns.ovpn'

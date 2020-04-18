@@ -1,10 +1,9 @@
 #!/bin/bash
-# Script written by Warith Al Maawali 
-# (c) 2018 Founder of Eagle Eye Digital Solutions
+# Script written by Warith Al Maawali  
+# (c) 2019 Founder of Eagle Eye Digital Solutions
 # http://www.digi77.com
 # http://www.om77.net
-# script starts here: 
-
+# script starts here:
 
 
 cd $(dirname $0) 
@@ -45,7 +44,8 @@ if [[ $LOGED_USER = $EXEC_USER ]]; then
 	if !(ps ax | grep -v grep | grep $SERVICE > /dev/null)
 	then
 		sudo killall cairo-dock;
-		notify-send -i $notifyIcon "Dock will start in few seconds";
+		#notify-send -i $notifyIcon "Dock will start in few seconds";
+		echo "Dock will start in few seconds";
 		sleep 5;
 		cairo-dock -c
 	fi

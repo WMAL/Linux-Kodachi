@@ -1,6 +1,6 @@
 #!/bin/bash
 # Script written by Warith Al Maawali  
-# (c) 2018 Founder of Eagle Eye Digital Solutions
+# (c) 2019 Founder of Eagle Eye Digital Solutions
 # http://www.digi77.com
 # http://www.om77.net
 # script starts here:
@@ -8,7 +8,6 @@
 
 cd $(dirname $0) 
 source Globalconfig;
-
 
 
 securityScore=0; 
@@ -26,24 +25,24 @@ echo -e " ==============================\n"
 showtitle
 
 
-echo "${cayn}Scoring scheme for $OS_name Torified system maximum score is: 100";
-echo "${reset}Running in Live mode +10 If installed but encrypted +2 If Nuked +2";
-echo "User autologin off +10";
-echo "IPv6 off +10";
-echo "VPN on +20";
-echo "Kodachi Browser on +10";
-echo "System Torify on +40 Why? Because System Torify +20 Tor DNS +20";
-echo "-----------------------------------------------------------------------";
-echo "${cayn}Scoring scheme for $OS_name non Torified system maximum score is: 94";
-echo "${reset}Running in Live mode +10 If installed but encrypted +2 If Nuked +2";
-echo "User autologin off +10";
-echo "IPv6 off +10";
-echo "VPN on +20";
-echo "Tor on +10";
-echo "Tor DNS on +20 or DNSCrypt on +15";
-echo "Kodachi Browser on +10";
-echo "Force Internet traffic via VPN by ip on +2";
-echo "Force Internet traffic via by ip,port,protocol,interface on +2";
+print_good "${cayn}Scoring scheme for $OS_name Torified system maximum score is: 100";
+print_good "${reset}Running in Live mode +10 If installed but encrypted +2 If Nuked +2";
+print_good "User autologin off +10";
+print_good "IPv6 off +10";
+print_good "VPN on +20";
+print_good "Kodachi Browser on +10";
+print_good "System Torify on +40 Why? Because System Torify +20 Tor DNS +20";
+print_good "-----------------------------------------------------------------------";
+print_good "${cayn}Scoring scheme for $OS_name non Torified system maximum score is: 94";
+print_good "${reset}Running in Live mode +10 If installed but encrypted +2 If Nuked +2";
+print_good "User autologin off +10";
+print_good "IPv6 off +10";
+print_good "VPN on +20";
+print_good "Tor on +10";
+print_good "Tor DNS on +20 or DNSCrypt on +15";
+print_good "Kodachi Browser on +10";
+print_good "Force Internet traffic via VPN by ip on +2";
+print_good "Force Internet traffic via by ip,port,protocol,interface on +2";
 echo -e "\n"
 read -n 1 -s -r -p "${yellow}Press any key to start the test.....${reset}"
 echo -e "\n"
@@ -54,23 +53,23 @@ sleep 2;
 echo -e "\n"
 echo "Is Kodachi installed?"
 #Calculate scores
-xP=$(id -u $LOGED_USER)
+#xP=$(id -u $LOGED_USER)
 if [[ $xP == *990* ]] 
 then
 	securityScore=$((securityScore+10));
-	echo "${green}$OS_name is not installed its running on live mode entirely on RAM you get 10 scores for this ☺";
+	print_good "${green}$OS_name is not installed its running on live mode entirely on RAM you get 10 scores for this ☺";
 else
-	echo "${yellow}$OS_name is installed you just lost 10 scores ☹";
+	print_error "${yellow}$OS_name is installed you just lost 10 scores ☹";
     getSDA=$(lsblk|egrep crypt|cut -d _ -f 1| sed 's/[^a-zA-Z0-9]//g');	
 	if [[ -n $getSDA ]] 
 	then
 		securityScore=$((securityScore+2));
-		echo "${green}$OS_name is is installed but encrypted you get 2 scores for this ☺";
+		print_good "${green}$OS_name is is installed but encrypted you get 2 scores for this ☺";
 		
 		if (apt-mark showhold|grep cryptsetup-bin) 
 		then
 			securityScore=$((securityScore+2));
-			echo "${green}Nuke is activated welldone ☺ you get 2 scores for this ☺";
+			print_good "${green}Nuke is activated welldone ☺ you get 2 scores for this ☺";
 		else
 			echo "${yellow} Make sure you activate nuke feature";
 		fi
@@ -91,10 +90,10 @@ if [[ $theIP6s == 1 ]]
 then
 	 
 	securityScore=$((securityScore+10))
-	echo "${green}IPv6 is disabled you get 10 scores for this ☺"
+	print_good "${green}IPv6 is disabled you get 10 scores for this ☺"
 else
 	 
-	 echo "${yellow}IPv6 is enabled you just lost 10 scores ☹"
+	 print_error "${yellow}IPv6 is enabled you just lost 10 scores ☹"
 
 fi
 
@@ -106,10 +105,10 @@ echo "Is system auto login enabled?"
 
 if(grep -R $LOGED_USER /usr/share/lightdm/lightdm.conf.d/60-xubuntu.conf > /dev/null)
 then
-     echo "${yellow}Auto login is enabled you just lost 10 scores ☹"
+     print_error "${yellow}Auto login is enabled you just lost 10 scores ☹"
 else
 	securityScore=$((securityScore+10))
-	echo "${green}Auto login is disabled you get 10 scores for this ☺"
+	print_good "${green}Auto login is disabled you get 10 scores for this ☺"
 fi
 
 echo "${cayn}Score $securityScore/100${reset}";
@@ -121,11 +120,11 @@ echo "Is $OS_name system fully Torfied?"
 torifySystem=$(cat $Mykodachi_path/torifysystemstatus);
 if [[ "$torifySystem" == *No* ]]
 then
-	echo "${yellow}$OS_name system is not fully torified you just lost 40 scores ☹"
+	print_error "${yellow}$OS_name system is not fully torified you just lost 40 scores ☹"
 	
 else
 	securityScore=$((securityScore+40))
-	echo "${green}$OS_name system fully torified you get 40 scores for this ☺"
+	print_good "${green}$OS_name system fully torified you get 40 scores for this ☺"
 fi
 
 echo "${cayn}Score $securityScore/100${reset}";
@@ -137,9 +136,9 @@ SERVICE='openvpn';
 if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
 then
 	securityScore=$((securityScore+20))
-	echo "${green}VPN is on you get 20 scores for this ☺"
+	print_good "${green}VPN is on you get 20 scores for this ☺"
 else
-	echo "${yellow}VPN is off you just lost 20 scores ☹"
+	print_error "${yellow}VPN is off you just lost 20 scores ☹"
 fi
 
 
@@ -155,9 +154,9 @@ SERVICE2="firefox";
 if (ps ax | grep -v grep | grep $SERVICE| grep $SERVICE2> /dev/null)
 then
 	securityScore=$((securityScore+10));
-	echo "${green}Kodachi browser is running you get 10 scores for this ☺"
+	print_good "${green}Kodachi browser is running you get 10 scores for this ☺"
 else
-	echo "${yellow}Kodachi browser is off you just lost 10 scores ☹"
+	print_error "${yellow}Kodachi browser is off you just lost 10 scores ☹"
 
 fi
 
@@ -176,10 +175,10 @@ then
 	SERVICE='tor-service';
 	if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
 	then
-		echo "${green}Tor is on you get 10 scores for this ☺"
+		print_good "${green}Tor is on you get 10 scores for this ☺"
 		securityScore=$((securityScore+10))
 	else
-		echo "${yellow}Tor is off you just lost 10 scores ☹"
+		print_error "${yellow}Tor is off you just lost 10 scores ☹"
 	fi
 	
 	echo "${cayn}Score $securityScore/100${reset}";
@@ -188,10 +187,10 @@ then
 	echo "Is Tor DNS on?"
 	if (grep -R Tor $Mykodachi_dns_path/dns1 > /dev/null)
 	then
-		echo "${green}Tor DNS is on you get 20 scores for this ☺"
+		print_good "${green}Tor DNS is on you get 20 scores for this ☺"
 		securityScore=$((securityScore+20))
 	else
-		echo "${yellow}Tor DNS is off you just lost 20 scores ☹"
+		print_error "${yellow}Tor DNS is off you just lost 20 scores ☹"
 	
 	fi 
 	echo "${cayn}Score $securityScore/100${reset}";
@@ -202,10 +201,10 @@ then
 	SERVICE='dnscrypt-proxy';
 	if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
 	then
-		echo "${green}DNSCrypt is on you get 15 scores for this ☺"
+		print_good "${green}DNSCrypt is on you get 15 scores for this ☺"
 		securityScore=$((securityScore+15))
 	else
-		echo "${yellow}DNSCrypt is off you just lost 20 scores ☹"
+		print_error "${yellow}DNSCrypt is off you just lost 20 scores ☹"
 	
 	fi
 	
@@ -222,10 +221,10 @@ then
 		
 		if(sudo ufw status |grep tun0 > /dev/null)
 		then
-			echo "${green}Internet traffic forced via VPN by IP (ufw rule) you get 2 scores for this ☺"
+			print_good "${green}Internet traffic forced via VPN by IP (ufw rule) you get 2 scores for this ☺"
 			securityScore=$((securityScore+2))
 		else
-			echo "${yellow}Internet traffic is not forced via VPN by IP you just lost 2 scores ☹"
+			print_error "${yellow}Internet traffic is not forced via VPN by IP you just lost 2 scores ☹"
 		fi
 		
 		
@@ -237,10 +236,10 @@ then
 		myCard=$(cat /home/$LOGED_USER/.kbase/intfused |xargs)
 		if(sudo ufw status |grep $myCard > /dev/null)
 		then
-			echo "${green}Internet traffic forced via VPN by IP,Port,Interface,Protocol (ufw rule) you get 2 scores for this ☺"
+			print_good "${green}Internet traffic forced via VPN by IP,Port,Interface,Protocol (ufw rule) you get 2 scores for this ☺"
 			securityScore=$((securityScore+2))
 		else
-			echo "${yellow}Internet traffic is not forced via VPN by IP,Port,Interface,Protocol (ufw rule) you just lost 2 scores ☹"
+			print_error "${yellow}Internet traffic is not forced via VPN by IP,Port,Interface,Protocol (ufw rule) you just lost 2 scores ☹"
 		fi
 	fi
 
@@ -258,27 +257,27 @@ if [ $securityScore -eq 100 ]
 then
 	echo "${green}ᕦ(ò_óˇ)ᕤ";
 	echo -e "\n"
-	echo "${green}You did great your score is $securityScore/100${reset}";
-	echo "Time to share this $securityScore/100 score on Twitter ☺";
+	print_good "${green}You did great your score is $securityScore/100${reset}";
+	print_good "Time to share this $securityScore/100 score on Twitter ☺";
 else
 
 if [ $securityScore -gt 80 ]
 then
-	echo "${green}You are doing well your score is $securityScore/100${reset}";
+	print_good "${green}You are doing well your score is $securityScore/100${reset}";
 else
 
 if [ $securityScore -gt 60 ]
 then
-	echo "${yellow}You have to improve your score is $securityScore/100${reset}";
+	print_good "${yellow}You have to improve your score is $securityScore/100${reset}";
 else
 
 if [ $securityScore -gt 20 ]
 then
-	echo "${yellow}Hmmm this is pretty bad lots of work to be done your score is $securityScore/100${reset}";
+	print_error "${yellow}Hmmm this is pretty bad lots of work to be done your score is $securityScore/100${reset}";
 else
     echo "${yellow}ヽ༼ ಠ益ಠ ༽ﾉ";
     echo -e "\n"
-	echo "${yellow}OMG!! Kill me! You are in naked mode! Which means not secure your score is $securityScore/100${reset}";
+	print_error "${yellow}OMG!! Kill me! You are in naked mode! Which means not secure your score is $securityScore/100${reset}";
 fi
 fi
 fi

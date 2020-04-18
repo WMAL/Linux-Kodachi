@@ -1,0 +1,3 @@
+#14eyes
+ExcludeNodes {us},{uk},{ca},{nz},{au},{dk},{fr},{nl},{no},{de},{be},{es},{it},{se}
+ExcludeExitNodes {us},{uk},{ca},{nz},{au},{dk},{fr},{nl},{no},{de},{be},{es},{it},{se}

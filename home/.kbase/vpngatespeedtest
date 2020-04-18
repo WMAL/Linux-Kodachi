@@ -1,6 +1,6 @@
 #!/bin/bash
 # Script written by Warith Al Maawali  
-# (c) 2018 Founder of Eagle Eye Digital Solutions
+# (c) 2019 Founder of Eagle Eye Digital Solutions
 # http://www.digi77.com
 # http://www.om77.net
 # script starts here:
@@ -10,7 +10,7 @@ source Globalconfig;
 
 
 netIP='google.com'; 
-ping -c1 -W 2 "$netIP" &> /dev/null
+wget --timeout=2 --waitretry=0 --tries=3 --retry-connrefused -q --spider "$netIP" &> /dev/null
 if [ $? -eq 0 ]; 
 then
 
@@ -20,12 +20,12 @@ then
 	then
 	 
 		
-		echo "Race will start now fasten your seat belts ☺";
+		print_good "Race will start now fasten your seat belts ☺";
 		notify-send -i $notifyIcon "VPNGate speed test will start now";
 
-		rm -f $Mykodachi_tmp_path/vpngatepingtest.txt
-		rm -f $Mykodachi_tmp_path/vpngatepingtest.txt.2
-		rm -f $VPN_configs_path/speedtests/vpngate_speed_test_results.txt
+		rm -f $Mykodachi_tmp_path/vpngatepingtest.txt;
+		rm -f $Mykodachi_tmp_path/vpngatepingtest.txt.2;
+		rm -f $VPN_configs_path/speedtests/vpngate_speed_test_results.txt;
 		
 		if [ ! -d $VPN_configs_path/speedtests ]; then
 			mkdir $VPN_configs_path/speedtests;
@@ -33,8 +33,8 @@ then
 		fi;
 
 		i=1;
-		servercount=$(ls $VPN_gate_ovpn_dir/*|wc -l)
-		FILES=$VPN_gate_ovpn_dir/*
+		servercount=$(ls $VPN_gate_ovpn_dir/*|wc -l);
+		FILES=$VPN_gate_ovpn_dir/*;
 
 		for f in $FILES
 		do	     
@@ -47,8 +47,8 @@ then
 
 			# Calculate percentage of server testing process
 			percentage=$((($i*100)/$servercount));
-			echo -ne "${cayn}Testing $theIP server for latency using ping ($i \ $servercount) $percentage %  \033[0K\r${reset}"
-			i=$((i+1))	
+			echo -ne "${cayn}Testing $theIP server for latency using ping ($i \ $servercount) $percentage %  \033[0K\r${reset}";
+			i=$((i+1));	
 			
 			done
 				
@@ -61,7 +61,7 @@ then
 			re='^[0-9]+([.][0-9]+)?$'
 
 			if [[ $firstcol =~ $re ]] ; then
-				echo $line >> $VPN_configs_path/speedtests/vpngate_speed_test_results.txt
+				echo $line >> $VPN_configs_path/speedtests/vpngate_speed_test_results.txt;
 			fi
 		done < $Mykodachi_tmp_path/vpngatepingtest.txt.2	
 		echo -e "\n";	  
@@ -76,11 +76,11 @@ then
 	    fastestserver=$(cat $VPN_configs_path/speedtests/vpngate_speed_test_results.txt | head -1 | awk '{$1="";print}' | sed -e 's/^[[:space:]]*//')
 		echo -e "${cayn}Fastest VPNGate server: ${green}$fastestserver\n${reset}"
 		echo -e "\n";	
-		echo "VPNGate speed test results saved in:"
-		echo $VPN_configs_path/speedtests/vpngate_speed_test_results.txt; 
+		print_good "VPNGate speed test results saved in:"
+		print_good $VPN_configs_path/speedtests/vpngate_speed_test_results.txt; 
 		echo -e "\n";	
-		echo "To use any of the above profiles change the variables in:"
-		echo $VPN_configs_path/vpngatesetup; 
+		print_good "To use any of the above profiles change the variables in:"
+		print_good $VPN_configs_path/vpngatesetup; 
 		chown $LOGED_USER.$LOGED_USER $VPN_configs_path/speedtests/vpngate_speed_test_results.txt; 
 		notify-send -t 30000 -i $notifyIcon "Fastest VPNGate server: 
 $fastestserver
@@ -95,8 +95,8 @@ To use any of the above profiles change the variables in:
 $VPN_configs_path/vpngatesetup";
 
 	else
-		notify-send -i $notifyIcon "Please disable Torified system first then run the script again!"
-		echo "Please disable Torified system first then run the script again!"
+		notify-send -i $notifyIcon "Please disable Torified system first then run the script again!";
+		print_error "Please disable Torified system first then run the script again!";
 	fi
 	echo -e "\n\n";
 else

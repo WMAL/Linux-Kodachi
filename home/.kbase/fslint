@@ -1,9 +1,11 @@
 #!/bin/bash
 # Script written by Warith Al Maawali  
-# (c) 2018 Founder of Eagle Eye Digital Solutions
+# (c) 2019 Founder of Eagle Eye Digital Solutions
 # http://www.digi77.com
 # http://www.om77.net
 # script starts here:
+
+
 #cd $(dirname $0) 
 source Globalconfig;
 

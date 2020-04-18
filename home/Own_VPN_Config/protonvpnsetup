@@ -1,23 +1,26 @@
-#ProtonVPN is a paid service you need to get a user name and password from them https://protonvpn.com/
-#Below is Just an Example only - The plain one won't work you need the encrypted once get them from https://account.protonvpn.com/settings:
-#ProtonVPNusername=1Jw1qSsgU-XDYkce4OigqjG9 
-#ProtonVPNpassword=ABEKfRVAhvUwYrVk6tW2DzuO
+# Proton VPN  is a paid service you need to buy then get a user name and password from them 
+# Proton VPN  website:  https://protonvpn.com/
+# Below is Just an example only do not keep empty space between = and the first letter ':
+# ProtonVPNusername='1Jw1qSsgU-XDYkce4OigqjG9' 
+# ProtonVPNpassword='ABEKfRVAhvUwYrVk6tW2DzuO'
+# Examples ends here now what comes are real values used by system scripts
 ###########################################
 
+
 # Set your user and password below this line:
-ProtonVPNusername= 
-ProtonVPNpassword=
+ProtonVPNusername=''
+ProtonVPNpassword=''
 
 
 
 # You don't need to change below this line unless you don't want the script to pick a random node for you
 
 # If you don't want random vpn node to be selected then set below value to 0 then change protonprofilenametouse value to what you wish
-randomprotonvpn=1
+randomprotonvpn='1'
 
 # Specify the profile name you want to be used if randomprotonvpn value is 0 pick a profile name from here /home/kodachi/Own_VPN_Config/vpnprotonovpnfiles/
-protonprofilenametouse=194.59.249.21.ovpn 
+protonprofilenametouse='37.46.114.113.ovpn'
 
 
 # If you want to only connect to free proton VPN servers then set the following value to 1:
-protonfree=0
+protonfree='0'

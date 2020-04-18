@@ -1,9 +1,9 @@
 #!/bin/bash
-# Script written by Warith Al Maawali
-# (c) 2018 Founder of Eagle Eye Digital Solutions
+# Script written by Warith Al Maawali  
+# (c) 2019 Founder of Eagle Eye Digital Solutions
 # http://www.digi77.com
 # http://www.om77.net
-# script starts here: 
+# script starts here:
 
 
 cd $(dirname $0) 
@@ -39,35 +39,39 @@ LOGED_USER=$(who | awk '{ print $1 }')
 if [[ $LOGED_USER = *kodachi* ]]; then
 
  sleep 2;
- notify-send -i $notifyIcon "Information display will start in few seconds";
+ #notify-send -i $notifyIcon "Information display will start in few seconds";
+ echo "Information display will start in few seconds";
  
  while true; do
-	
-	if [[ $LOGED_USER = $EXEC_USER ]]; then
-		SERVICE='conkyrc0';
-		if !(ps ax | grep -v grep | grep $SERVICE > /dev/null)
-		then		
-			
-			SERVICE='cairo-dock';
-			if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
-			then
-				#sleep 1;
-				sudo killall conky;
-				sleep 30;
-				# use for cron for now killall is enopugh
-				#export pid=`ps aux | grep conkyrc7 | awk 'NR==1{print $2}' | cut -d' ' -f1`;kill -9 $pid;
-				sleep 1;
-				conky -d -c "$Mykodachi_path/.conkyrc0";	
-				sleep 1
-				conky -d -c "$Mykodachi_path/.conkyrc1";	
-				sleep 1
-				conky -d -c "$Mykodachi_path/.conkyrc3";	
-				sleep 1
-				conky -d -c "$Mykodachi_path/.conkyrc2";	
-				#sleep 1
-				#conky -d -c "$Mykodachi_path/.conkyrc4";	
-				# Fix Networkapplet showing twice
-				pkill nm-applet && nm-applet & > /dev/null 	
+	showConky=$(cat $Mykodachi_path/showconky);
+	if [[ "$showConky" == *Yes* ]]
+	then 
+		if [[ $LOGED_USER = $EXEC_USER ]]; then
+			SERVICE='conkyrc0';
+			if !(ps ax | grep -v grep | grep $SERVICE > /dev/null)
+			then		
+				
+				SERVICE='cairo-dock';
+				if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+				then
+					#sleep 1;
+					sudo killall conky;
+					sleep 5;
+					# use for cron for now killall is enopugh
+					#export pid=`ps aux | grep conkyrc7 | awk 'NR==1{print $2}' | cut -d' ' -f1`;kill -9 $pid;
+					sleep 1;
+					conky -d -c "$Mykodachi_path/.conkyrc0";	
+					sleep 1
+					conky -d -c "$Mykodachi_path/.conkyrc1";	
+					sleep 1
+					conky -d -c "$Mykodachi_path/.conkyrc3";	
+					sleep 1
+					conky -d -c "$Mykodachi_path/.conkyrc2";	
+					#sleep 1
+					#conky -d -c "$Mykodachi_path/.conkyrc4";	
+					# Fix Networkapplet showing twice
+					pkill nm-applet && nm-applet & > /dev/null 	
+				fi
 			fi
 		fi
 	fi

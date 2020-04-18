@@ -1,12 +1,45 @@
 #!/bin/bash
 # Script written by Warith Al Maawali  
-# (c) 2018 Founder of Eagle Eye Digital Solutions
+# (c) 2019 Founder of Eagle Eye Digital Solutions
 # http://www.digi77.com
 # http://www.om77.net
 # script starts here
+
 cd $(dirname $0) 
 source ../Globalconfig;
 
+function isTorReady()
+{
+
+	#check if tor is ready to go
+	local hostport="localhost:9050" 
+	local url="https://check.torproject.org/"
+	if systemctl is-active tor.service > /dev/null 2>&1; 
+	then
+		if curl -s -m 10 --socks5 "$hostport" --socks5-hostname "$hostport" -L "$url" | cat | tac | grep -q 'Congratulations';  
+		then
+			return 1
+		else
+			return 0
+		fi
+	else	
+		return 0
+	fi
+
+}
+
+if (grep -R Tor $Mykodachi_dns_path/dns1)
+then	
+	isTorReady  
+	if [[ $? -eq 0 ]]; 
+	then				
+		echo "check point tor stop 1A";
+		sudo /etc/init.d/tor restart;
+		notify-send -i $notifyIcon "Tor service started";
+		
+		
+	fi
+fi
 
 
 torifySystemS=$(cat $Mykodachi_path/torifysystemstatus);
@@ -15,7 +48,9 @@ then
 	notify-send -i $notifyIcon "System is Torified and Tor DNS is already in use!";
 
 else
-
+	#Disable systemd-resolved and reboot. so nameserver 127.0.0.53 is not written to /etc/resolv.conf.
+	sudo systemctl disable systemd-resolved;
+	
 	echo "0" > /home/$LOGED_USER/.kbase/torenabled
 	echo "1" > /home/$LOGED_USER/.kbase/torenablednovpn 
 
@@ -23,6 +58,7 @@ else
 	if !(ps ax | grep -v grep | grep $SERVICE > /dev/null)
 	then
 		echo "1" > /home/$LOGED_USER/.kbase/actionpicker
+		echo "check point tor stop 2A";
 		sudo /etc/init.d/tor start;
 		notify-send -i $notifyIcon "Tor service started"; 
 	fi
@@ -47,7 +83,11 @@ else
 	sudo cat $Mykodachi_path/dns/dns15 > /etc/resolv.conf; 
 	echo "0" > $Mykodachi_path/dns/autodnscrypt;
 	# Stop dnscrypt
-	sudo service dnscrypt-proxy stop;
+	if systemctl is-active dnscrypt-proxy.service > /dev/null 2>&1; 
+	then	 
+		sudo service dnscrypt-proxy stop;    
+	fi
 	notify-send -i $notifyIcon "Tor DNS started"; 
 fi
+
 exit 1;

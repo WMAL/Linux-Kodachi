@@ -1,0 +1,153 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2019 Founder of Eagle Eye Digital Solutions
+# http://www.digi77.com
+# http://www.om77.net
+# script starts here:
+
+cd $(dirname $0) 
+source Globalconfig;
+
+
+showtitle() {
+clear
+stdcol="\e[0m"
+echo -e "\n${green} =============================="
+echo " |    $OS_name IP security Test   |"
+echo -e " ==============================\n"
+
+}
+
+showtitle
+
+read -n 1 -s -r -p "${reset}Press any key to start.....";
+echo -e "\n"
+
+print_good "Reporting your ip from ifconfig.me:";
+curl -s -m 30 ifconfig.me|xargs|tr -d " \t\n\r"
+echo -e "\n"
+print_good "Reporting your ip from icanhazip.com:";
+curl -s -m 30 icanhazip.com|xargs|tr -d " \t\n\r"
+echo -e "\n"
+print_good "Reporting your ip from ipecho.net:";
+curl -s -m 30 ipecho.net/plain|xargs|tr -d " \t\n\r"
+echo -e "\n"
+print_good "Reporting your ip from anysrc.net:";
+curl -s -m 30 ip.anysrc.net/plain|xargs|tr -d " \t\n\r"
+echo -e "\n"
+print_good "Reporting your ip from hmageo.com:";
+curl -s -m 30 geoip.hmageo.com/ip|xargs|tr -d " \t\n\r" 
+echo -e "\n"
+print_good "Reporting your ip from ipify.org:";
+curl -s -m 30 api.ipify.org|xargs|tr -d " \t\n\r"
+echo -e "\n"
+print_good "Reporting your ip from plain-text-ip.com:";
+curl -s -m 30 plain-text-ip.com|xargs|tr -d " \t\n\r"
+echo -e "\n"
+print_good "Reporting your ip from wtfismyip.com:";
+curl -s -m 30 wtfismyip.com/text|xargs|tr -d " \t\n\r" 
+echo -e "\n"
+print_good "Reporting your ip from tellmemyip.net:";
+curl -s -m 30 please.tellmemyip.net|xargs|tr -d " \t\n\r"
+echo -e "\n"
+print_good "Reporting your ip from ipinfo.io:";
+curl -s -m 30 ipinfo.io/ip|xargs|tr -d " \t\n\r"
+echo -e "\n"
+print_good "Reporting your ip from  md5calc.com:";
+curl -s -m 30 https://md5calc.com/ip.plain|xargs|tr -d " \t\n\r"
+echo -e "\n"
+print_good "Reporting your ip digi77.com:";
+TIP_ADDR=$(curl -s -m 30 https://www.digi77.com/software/vpn/ipcheckplain.php);
+TIP_ADDR2=$(echo $TIP_ADDR|xargs|tr -d " \t\n\r");
+echo $TIP_ADDR2;
+echo -e "\n"
+echo "----------------------------------------------------------------------";
+print_good "Reporting Country for:$TIP_ADDR2";
+echo "";
+print_good "Reporting your ip country from local DB:";	
+theCountryx=$(geoiplookup $TIP_ADDR2|cut -d : -f 2|cut -d , -f 2|sed 's/^ *//;s/ *$//');	
+echo $theCountryx|xargs|tr -d " \t\n\r";		
+echo -e "\n"
+print_good "Reporting your ip country from iplocate.io:";				 
+theCountryx=$(curl https://www.iplocate.io/api/lookup/$TIP_ADDR2 -s -m 20 |jq -r '.country');				
+echo $theCountryx|xargs|tr -d " \t\n\r";	
+echo -e "\n"
+print_good "Reporting your ip country from ip2c.org:";	
+theCountryx=$(curl http://ip2c.org/$TIP_ADDR2 -s -m 20|cut -d ';' -f 4|sed 's/ //g'|xargs);	
+echo $theCountryx|xargs|tr -d " \t\n\r";	
+echo -e "\n"
+print_good "Reporting your ip country from mullvad.net:";		
+theCountryx=$(curl -s -m 20 https://am.i.mullvad.net/country);
+echo $theCountryx|xargs|tr -d " \t\n\r";
+echo -e "\n"		
+				 
+
+
+if ! systemctl is-active tor.service > /dev/null 2>&1;  
+then
+	print_error "Tor is off skipping Tor ip check";
+	echo "";
+else
+	echo "----------------------------------------------------------------------";
+	read -n 1 -s -r -p "${reset}Press any key to start Tor ip check.....";
+	echo -e "\n"
+	print_good "Tor is on verifying Tor ip";
+	echo -e "\n"
+	print_good "Reporting your Tor ip from ifconfig.me:";
+	torify curl -s -m 30 ifconfig.me|xargs|tr -d " \t\n\r"
+	echo -e "\n"
+	print_good "Reporting your Tor ip from icanhazip.com:";
+	torify curl -s -m 30 icanhazip.com|xargs|tr -d " \t\n\r"
+	echo -e "\n"
+	print_good "Reporting your Tor ip from ipecho.net:";
+	torify curl -s -m 30 ipecho.net/plain|xargs|tr -d " \t\n\r"
+	echo -e "\n"
+	print_good "Reporting your Tor ip from anysrc.net:";
+	torify curl -s -m 30 ip.anysrc.net/plain|xargs|tr -d " \t\n\r"
+	echo -e "\n"
+	print_good "Reporting your Tor ip from hmageo.com:";
+	torify curl -s -m 30 geoip.hmageo.com/ip|xargs|tr -d " \t\n\r" 
+	echo -e "\n"
+	print_good "Reporting your Tor ip from ipify.org:";
+	torify curl -s -m 30 api.ipify.org|xargs|tr -d " \t\n\r"
+	echo -e "\n"
+	print_good "Reporting your Tor ip from plain-text-ip.com:";
+	torify curl -s -m 30 plain-text-ip.com|xargs|tr -d " \t\n\r"
+	echo -e "\n"
+	print_good "Reporting your Tor ip from wtfismyip.com:";
+	torify curl -s -m 30 wtfismyip.com/text|xargs|tr -d " \t\n\r" 
+	echo -e "\n"
+	print_good "Reporting your Tor ip from tellmemyip.net:";
+	torify curl -s -m 30 please.tellmemyip.net|xargs|tr -d " \t\n\r"
+	echo -e "\n"
+	print_good "Reporting your Tor ip from ipinfo.io:";
+	torify curl -s -m 30 ipinfo.io/ip|xargs|tr -d " \t\n\r"
+	echo -e "\n"
+	print_good "Reporting your Tor ip from md5calc.com:";
+	torify curl -s -m 30 https://md5calc.com/ip.plain|xargs|tr -d " \t\n\r"
+	echo -e "\n"
+	print_good "Reporting your Tor ip digi77.com:";
+	TIP_ADDR=$(torify curl -s -m 30 https://www.digi77.com/software/vpn/ipcheckplain.php);
+	TIP_ADDR2=$(echo $TIP_ADDR|xargs|tr -d " \t\n\r");
+	echo $TIP_ADDR2;
+	echo -e "\n";
+	echo "----------------------------------------------------------------------";
+	print_good "Reporting your Tor ip country from local DB:";	
+	theCountryx=$(geoiplookup $TIP_ADDR2|cut -d : -f 2|cut -d , -f 2|sed 's/^ *//;s/ *$//');	
+	echo $theCountryx|xargs|tr -d " \t\n\r";		
+	echo -e "\n"
+	print_good "Reporting your Tor ip country from iplocate.io:";				 
+	theCountryx=$(curl https://www.iplocate.io/api/lookup/$TIP_ADDR2 -s -m 20 |jq -r '.country');				
+	echo $theCountryx|xargs|tr -d " \t\n\r";	
+	echo -e "\n"
+	print_good "Reporting your Tor ip country from ip2c.org:";	
+	theCountryx=$(curl http://ip2c.org/$TIP_ADDR2 -s -m 20|cut -d ';' -f 4|sed 's/ //g'|xargs);	
+	echo $theCountryx|xargs|tr -d " \t\n\r";	
+	echo -e "\n"
+	#print_good "Reporting your Tor ip country from mullvad.net:";		
+	#theCountryx=$(curl -s -m 20 https://am.i.mullvad.net/country);
+	#echo $theCountryx;
+	#echo -e "\n"
+	
+fi 	
+exit 1;

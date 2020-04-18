@@ -1,6 +1,6 @@
 #!/bin/bash
-# Script written by Warith Al Maawali
-# (c) 2018 Founder of Eagle Eye Digital Solutions
+# Script written by Warith Al Maawali  
+# (c) 2019 Founder of Eagle Eye Digital Solutions
 # http://www.digi77.com
 # http://www.om77.net
 # script starts here:
@@ -23,6 +23,41 @@
 #A || B  # Run B if and only if A failed
 #A &     # Run A in background.
 
+# Pass output and excute it examples
+# cat workingdomain.txt |xargs -n1 curl -t 15
+# find /path -type f | while read ln; do echo "processing $ln"; done
+# echo "input" | awk '{print $1"string"}
+
+
+
+#nolapic
+#noapic
+#acpi_osi=“Linux”
+#acpi_osi=“Windows 2006”
+#acpi=ht
+#pci=noacpi
+#acpi=noirq
+#pnpacpi=off
+#acpi=off
+
+#apt stuff
+#sudo apt-get purge --auto-remove thermald
+#sudo apt rdepends thermald
+
+#cheat sheet
+#sudo kill -9 `ps -ef | grep hardworknet | grep -v grep | awk '{print $2}'`
+#sudo bash systemhealth -a hardworknet
+
+
+#sudo kill -9 `ps -ef | grep hardworknonet | grep -v grep | awk '{print $2}'`
+#sudo bash systemhealth -a hardworknonet
+
+
+#sudo kill -9 `ps -ef | grep reschangecheck | grep -v grep | awk '{print $2}'`
+#sudo bash reschangecheck
+
+
+
 
 cd $(dirname $0) 
 source Globalconfig;
@@ -30,22 +65,25 @@ source Globalconfig;
 
 
 # Set global;
-e="";
-IP_ADDR="";
-TIP_ADDR="";
-IP_ADDRPublic="";
-originalIP="";
-theCountry="";
-theCountryx="";
+unset e;
+unset IP_ADDR;
+unset TIP_ADDR;
+unset IP_ADDRPublic;
+unset originalIP;
+unset theCountry;
+unset theCountryx;
 kodachi_version=$Kodachi_version;
 netIP='google.com';
-randomdomain="";
+unset randomdomain;
 vpntype="kodachivpn";
 sameipCounter=0;
 killVPNTorcounterpopup=0;
 tornullipcounter=0;
 # Hay don't cheat leave this value alone :p
 securityScore=0;
+fileDomain1="$Mykodachi_path/workingdomain.txt";
+fileDomain2="$Mykodachi_path/workingdomaintmp.txt";
+
  
 
 
@@ -159,7 +197,7 @@ function getBan()
 {
     getID
     #Banned Stuff
-    Ban_Status=$(sudo curl -G -s -m 30 "https://www.digi77.com/software/vpn/ko_band_check.php" --data-urlencode "ko_hwid=$e" --data-urlencode "ko_ver=$kodachi_version")
+    Ban_Status=$(sudo curl -G -s -m 30 "https://www.digi77.com/software/vpn/ko_band_check.php" --data-urlencode "ko_hwid=$e" --data-urlencode "ko_ver=$kodachi_version");
     echo $Ban_Status | cut -d ' ' -f 1 > $Mykodachi_path/BandSatus;
     echo "getBan: Kodachi status:" $Ban_Status;
 }
@@ -173,7 +211,7 @@ function banAction()
 		sudo killall -SIGINT openvpn;
 	fi
     sudo killall tor; 
-    TIP_ADDR=""; 
+    unset TIP_ADDR; 
     cat $Mykodachi_path/dns/dns4 > $Mykodachi_path/dns/dns1;
 	sudo bash -c 'cat dns/dns4 > /etc/resolv.conf'; 
 	echo "0" > $Mykodachi_path/dns/autodnscrypt;
@@ -206,7 +244,8 @@ function getVersion()
 			#only if run by system cron
 			#export DISPLAY=:0.0 && export XAUTHORITY=$Myhome_path/.Xauthority && sudo -u kodachi /usr/bin/conky -c $Mykodachi_path/.conkyrc5;
 			echo "!" > $Mykodachi_path/newversionalert;	
-			echo "version no match";		
+			echo "version no match";	
+			sudo chown $LOGED_USER.$LOGED_USER $Mykodachi_path/newversionalert;	
 				
 		else
 			rm -f $Mykodachi_path/newversionalert;	
@@ -224,7 +263,8 @@ function checkDNSisRunning()
 	if [[ "$dnsstatus" == 1 ]]
 	then
 		echo "autodnscrypt status is : $dnsstatus";
-		if !(ps ax | grep -v grep | grep $SERVICE > /dev/null)
+		#if !(ps ax | grep -v grep | grep $SERVICE > /dev/null)
+		if ! systemctl is-active dnscrypt-proxy.service > /dev/null 2>&1; 
 		then
 			echo "No DNS Crypt process Starting Dnscrypt";
 			sudo service dnscrypt-proxy stop    
@@ -234,15 +274,44 @@ function checkDNSisRunning()
 			echo "Dnscrypt running no issue";
 		fi
 	fi
+	
+	
+	
+	
+	if (grep -R Tor $Mykodachi_dns_path/dns1)
+	then			 
+		SERVICE='tor-service';
+		#if !(ps ax | grep -v grep | grep $SERVICE > /dev/null)
+		if ! systemctl is-active tor.service > /dev/null 2>&1;  
+		then	
+			notify-send -i $notifyIcon "Restarting Tor it was shutdown and you are using Tor DNS";
+			sudo bash $Mykodachi_dns_path/.tordns;			
+		fi
+	fi
+	
+	
+	
+	
 }
 
 
 function resetips()
 {
-		IP_ADDRPublic="";
-		TIP_ADDR="";
-		echo "" > $Mykodachi_path/.eeds-ipinfo;
-		echo "" > $Mykodachi_path/.eeds-tipinfo;
+	unset IP_ADDRPublic;
+	unset TIP_ADDR;
+	unset theCountry;
+	unset theCountryx;
+	
+	echo "-" > $Mykodachi_path/.eeds-ipinfo;
+	echo "-" > $Mykodachi_path/.eeds-tipinfo;
+	
+	SERVICE='openvpn';
+    if !(ps ax | grep -v grep | grep $SERVICE > /dev/null)
+    then
+		unset originalIP;
+		echo "-" > $Mykodachi_path/.eeds-oipinfo;
+		echo "-" > $Mykodachi_path/.eeds-ocipinfo;
+    fi
 	
 }
 
@@ -251,11 +320,28 @@ function startvpnfunction()
    
     vpntype=$(cat $Mykodachi_path/vpntype|tr -d ' ');
     # make sure we have internet before starting    
-    ping -c1 -W 2 "$netIP" &> /dev/null
+    #ping -c 1 -W 2 "$netIP" &> /dev/null
+    
+    torifySystem=$(cat $Mykodachi_path/torifysystemstatus);
+	if [[ "$torifySystem" == *Yes* ]]
+	then
+    	# slow network
+    	wget --timeout=15 --waitretry=0 --tries=3 --retry-connrefused -q --spider $netIP &> /dev/null
+	else
+		wget --timeout=5 --waitretry=0 --tries=3 --retry-connrefused -q --spider $netIP &> /dev/null
+	fi
 	if [ $? -eq 0 ]; 
 	then
 		
-		if [[ "$vpntype" == *kodachivpn* ]]
+		
+		torifySystem=$(cat $Mykodachi_path/torifysystemstatus);
+		if [[ "$torifySystem" == *Yes* ]]
+		then
+			notify-send -i $notifyIcon "VPN over Tor  (ISP > TOR > VPN) is considered to be dangerous please disable system toriffy
+Before connecting to VPN then check Kodachi website for more information about this";
+		fi
+		
+		if [[ "$vpntype" == *Kodachi* ]]
 		then
 			notify-send -i $notifyIcon "Kodachi VPN will start now"
 			SERVICE='openvpn';
@@ -273,6 +359,7 @@ function startvpnfunction()
 			sudo echo "cf90b117a31e7c2bb53cac3186b867b0" >> /etc/openvpn/auth;	
 			if(sudo timeout 60 wget "https://digi77.com/software/kodachi/kodachi-vpn.zip" -q)
 			then
+				sudo rm -f /etc/openvpn/kodachi-vpn.ovpn
 				unzip -P a30@06e61-79-34-88-A4-C3@ kodachi-vpn.zip -d /etc/openvpn/
 				rm -f kodachi-vpn.zip
 				 
@@ -283,30 +370,35 @@ function startvpnfunction()
 				theVPNproto=$(cat $theOvfile|grep "^[^#;]"|grep 'proto'|awk  '{print $2}'|tail -n 1);		 
 				theVPNipUsed=$(cat $theOvfile|grep "^[^#;]"|grep 'remote '|awk  '{print $2}'|tail -n 1);
 				theCountry=$(geoiplookup $theVPNipUsed|cut -d : -f 2|cut -d , -f 2|sed 's/^ *//;s/ *$//'|tail -n 1);
-				theCountry=$(geoiplookup $IP_ADDRPublic|cut -d : -f 2|cut -d , -f 2|sed 's/^ *//;s/ *$//');	
+				 
 				if [[ "$theCountry" == *"not found"* ]]
 				then
 					echo "Going to get country online iplocate.io for normal ip:$theCountry";
-					theCountry=$(curl https://www.iplocate.io/api/lookup/$IP_ADDRPublic -s -m 20 |jq -r '.country');
+					theCountry=$(curl https://www.iplocate.io/api/lookup/$theVPNipUsed -s -m 20 |jq -r '.country');
 					
 					if [[ "$theCountry" == *"null"* ]] || [[ ! -n $theCountry ]]
 					then
 						echo "Going to get country online ip2c.org for normal ip:$theCountry";
-						theCountry=$(curl http://ip2c.org/$IP_ADDRPublic -s -m 20|cut -d ';' -f 4|sed 's/ //g'|xargs);
+						theCountry=$(curl http://ip2c.org/$theVPNipUsed -s -m 20|cut -d ';' -f 4|sed 's/ //g'|xargs);
 						if [[ ! -n $theCountry ]]
 						then
 							theCountry="Not found";
 						fi
 					fi 							
-							
 				fi				
 				
-				ping -c1 -W 2 "$theVPNipUsed" &> /dev/null
+				if [[ "$torifySystem" == *No* ]]
+				then
+					ping -c 1 -W 2 "$theVPNipUsed" &> /dev/null
+				else
+					return 0;
+				fi	
 				if [ $? -eq 0 ]; 
 				then
 					sudo openvpn --daemon --config /etc/openvpn/kodachi-vpn.ovpn > /dev/null 2>&1
 					theTime=$(date +%H:%M);
-					notify-send -t 30000 -i $notifyIcon "Kodachi VPN will connect to:" "$(echo -e "IP: $theVPNipUsed\nCountry: $theCountry\nPort: $theVPNport\nProtocol: $theVPNproto\nTime: $theTime")" 
+					thePingS=$(fping -B 1.0 -t 1000 -i 1 -r 0 -e -c 1 -q $theVPNipUsed 2>&1 | awk -F'/' '{print $8}');
+					notify-send -t 30000 -i $notifyIcon "Kodachi VPN will connect to:" "$(echo -e "IP: $theVPNipUsed\nCountry: $theCountry\nPort: $theVPNport\nProtocol: $theVPNproto\nPing: $thePingS ms\nTime: $theTime")"; 
 				
 					NEWLINE=$'\n'
 					theVPNport="port=$theVPNport";
@@ -319,7 +411,7 @@ function startvpnfunction()
 				
 				else
 					theTime=$(date +%H:%M);
-					notify-send -i $notifyIcon "$OS_name VPN skipping offline node:" "$(echo -e "IP: $theVPNipUsed\nCountry: $theCountry\nPort: $theVPNport\nProtocol: $theVPNproto\nTime: $theTime")" 
+					notify-send -i $notifyIcon "$OS_name VPN skipping offline node:" "$(echo -e "IP: $theVPNipUsed\nCountry: $theCountry\nPort: $theVPNport\nProtocol: $theVPNproto\nTime: $theTime")";
 					
 				fi
 				sudo rm -f /etc/openvpn/kodachi-vpn.ovpn;
@@ -333,14 +425,14 @@ function startvpnfunction()
 		
 		
 		
-		if [[ "$vpntype" == *vpngate* ]]
+		if [[ "$vpntype" == *Gate* ]]
 		then
 			# get variables from config
 			source $VPN_configs_path/vpngatesetup
 			if [[ $randomnvpngate==0 ]] || [[ $randomnvpngate==1 ]]   
 			then
 		
-				notify-send -i $notifyIcon "VPNGate will start now"
+				notify-send -i $notifyIcon "VPN Gate will start now"
 				SERVICE='openvpn';
 				if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
 				then
@@ -354,13 +446,13 @@ function startvpnfunction()
 				then
 				
 					randomvpngatepick=$(ls $VPN_gate_ovpn_dir |sort -R|shuf -n 1);
-					echo "Pickced up random profile for VPNGate:$randomvpngatepick";
+					echo "Pickced up random profile for VPN Gate:$randomvpngatepick";
 				else
 					randomvpngatepick=$vpngateprofilenametouse;
-					echo "User has selected profile for VPNGate:$randomvpngatepick";
+					echo "User has selected profile for VPN Gate:$randomvpngatepick";
 					if [[ ! -f "$VPN_gate_ovpn_dir/$randomvpngatepick" ]] || [[ ! -n "$randomvpngatepick" ]];  
 					then
-						notify-send -i $notifyIcon "VPNGate profile $randomvpngatepick is missing correct the vpngatesetup file:" \ "$VPN_configs_path/vpngatesetup";
+						notify-send -i $notifyIcon "VPN Gate profile $randomvpngatepick is missing correct the vpngatesetup file:" \ "$VPN_configs_path/vpngatesetup";
 					fi
 				fi
 				 
@@ -371,29 +463,35 @@ function startvpnfunction()
 				theVPNproto=$(cat $theOvfile|grep "^[^#;]"|grep 'proto'|awk  '{print $2}'|tail -n 1);		 
 				theVPNipUsed=$(cat $theOvfile|grep "^[^#;]"|grep 'remote '|awk  '{print $2}'|tail -n 1);
 				theCountry=$(geoiplookup $theVPNipUsed|cut -d : -f 2|cut -d , -f 2|sed 's/^ *//;s/ *$//'|tail -n 1);
+				 
 				if [[ "$theCountry" == *"not found"* ]]
 				then
 					echo "Going to get country online iplocate.io for normal ip:$theCountry";
-					theCountry=$(curl https://www.iplocate.io/api/lookup/$IP_ADDRPublic -s -m 20 |jq -r '.country');
+					theCountry=$(curl https://www.iplocate.io/api/lookup/$theVPNipUsed -s -m 20 |jq -r '.country');
 					
 					if [[ "$theCountry" == *"null"* ]] || [[ ! -n $theCountry ]]
 					then
 						echo "Going to get country online ip2c.org for normal ip:$theCountry";
-						theCountry=$(curl http://ip2c.org/$IP_ADDRPublic -s -m 20|cut -d ';' -f 4|sed 's/ //g'|xargs);
+						theCountry=$(curl http://ip2c.org/$theVPNipUsed -s -m 20|cut -d ';' -f 4|sed 's/ //g'|xargs);
 						if [[ ! -n $theCountry ]]
 						then
 							theCountry="Not found";
 						fi
-					fi 							
-							
+					fi 						
 				fi				
 				
-				ping -c1 -W 2 "$theVPNipUsed" &> /dev/null
+				if [[ "$torifySystem" == *No* ]]
+				then
+					ping -c 1 -W 2 "$theVPNipUsed" &> /dev/null
+				else
+					return 0;
+				fi	
 				if [ $? -eq 0 ]; 
 				then
 					sudo openvpn --daemon --config $VPN_gate_ovpn_dir/$randomvpngatepick > /dev/null 2>&1;
 					theTime=$(date +%H:%M);
-					notify-send -t 30000 -i $notifyIcon "VPNGate will connect to:" "$(echo -e "Profile: $randomvpngatepick\nIP: $theVPNipUsed\nCountry: $theCountry\nPort: $theVPNport\nProtocol: $theVPNproto\nTime: $theTime")" 
+					thePingS=$(fping -B 1.0 -t 1000 -i 1 -r 0 -e -c 1 -q $theVPNipUsed 2>&1 | awk -F'/' '{print $8}');
+					notify-send -t 30000 -i $notifyIcon "VPN Gate will connect to:" "$(echo -e "IP: $theVPNipUsed\nCountry: $theCountry\nPort: $theVPNport\nProtocol: $theVPNproto\nPing: $thePingS ms\nTime: $theTime")"; 
 				
 					NEWLINE=$'\n'
 					theVPNport="port=$theVPNport";
@@ -406,11 +504,11 @@ function startvpnfunction()
 				
 				else
 					theTime=$(date +%H:%M);
-					notify-send -t 30000 -i $notifyIcon "VPNGate skipping offline node:" "$(echo -e "Profile: $randomvpngatepick\nIP: $theVPNipUsed\nCountry: $theCountry\nPort: $theVPNport\nProtocol: $theVPNproto\nTime: $theTime")" 
+					notify-send -t 30000 -i $notifyIcon "VPN Gate skipping offline node:" "$(echo -e "Profile: $randomvpngatepick\nIP: $theVPNipUsed\nCountry: $theCountry\nPort: $theVPNport\nProtocol: $theVPNproto\nTime: $theTime")"; 
 					
 				fi
 			else
-				notify-send -i $notifyIcon "VPNGate needs to be setup first";
+				notify-send -i $notifyIcon "VPN Gate needs to be setup first";
 				sleep 2;
 				bash $Mykodachi_path/beeper > /dev/null 2>&1;
 				gedit $VPN_configs_path/vpngatesetup;			   	
@@ -423,14 +521,14 @@ function startvpnfunction()
 		
 		
 		
-		if [[ "$vpntype" == *kernvpn* ]]
+		if [[ "$vpntype" == *Kern* ]]
 		then
 			# get variables from config
 			source $VPN_configs_path/kernvpnsetup
 			if [[ $randomkernvpn==0 ]] || [[ $randomkernvpn==1 ]]   
 			then
 		
-				notify-send -i $notifyIcon "KernVPN will start now"
+				notify-send -i $notifyIcon "Kern VPN will start now"
 				SERVICE='openvpn';
 				if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
 				then
@@ -444,13 +542,13 @@ function startvpnfunction()
 				then
 				
 					randomkernvpnpick=$(ls $VPN_kern_ovpn_dir |sort -R|shuf -n 1);
-					echo "Pickced up random profile for KernVPN:$randomkernvpnpick";
+					echo "Pickced up random profile for Kern VPN:$randomkernvpnpick";
 				else
 					randomkernvpnpick=$kernvpnfilenameuse;
-					echo "User has selected profile for KernVPN:$randomkernvpnpick";
+					echo "User has selected profile for Kern VPN:$randomkernvpnpick";
 					if [[ ! -f "$VPN_kern_ovpn_dir/$randomkernvpnpick" ]] || [[ ! -n "$randomkernvpnpick" ]];  
 					then
-						notify-send -i $notifyIcon "KernVPN profile $randomkernvpnpick is missing correct the kernvpnsetup file:" \ "$VPN_configs_path/kernvpnsetup";
+						notify-send -i $notifyIcon "Kern VPN profile $randomkernvpnpick is missing correct the kernvpnsetup file:" \ "$VPN_configs_path/kernvpnsetup";
 					fi
 				fi
 				 
@@ -460,30 +558,36 @@ function startvpnfunction()
 				theVPNport=$(cat $theOvfile|grep "^[^#;]"|grep 'remote '|awk  '{print $3}'|tail -n 1);
 				theVPNproto=$(cat $theOvfile|grep "^[^#;]"|grep 'proto'|awk  '{print $2}'|tail -n 1);		 
 				theVPNipUsed=$(cat $theOvfile|grep "^[^#;]"|grep 'remote '|awk  '{print $2}'|tail -n 1);
-				theCountry=$(geoiplookup $theVPNipUsed|cut -d : -f 2|cut -d , -f 2|sed 's/^ *//;s/ *$//'|tail -n 1); 
+				theCountry=$(geoiplookup $theVPNipUsed|cut -d : -f 2|cut -d , -f 2|sed 's/^ *//;s/ *$//'|tail -n 1);
+				 
 				if [[ "$theCountry" == *"not found"* ]]
 				then
 					echo "Going to get country online iplocate.io for normal ip:$theCountry";
-					theCountry=$(curl https://www.iplocate.io/api/lookup/$IP_ADDRPublic -s -m 20 |jq -r '.country');
+					theCountry=$(curl https://www.iplocate.io/api/lookup/$theVPNipUsed -s -m 20 |jq -r '.country');
 					
 					if [[ "$theCountry" == *"null"* ]] || [[ ! -n $theCountry ]]
 					then
 						echo "Going to get country online ip2c.org for normal ip:$theCountry";
-						theCountry=$(curl http://ip2c.org/$IP_ADDRPublic -s -m 20|cut -d ';' -f 4|sed 's/ //g'|xargs);
+						theCountry=$(curl http://ip2c.org/$theVPNipUsed -s -m 20|cut -d ';' -f 4|sed 's/ //g'|xargs);
 						if [[ ! -n $theCountry ]]
 						then
 							theCountry="Not found";
 						fi
-					fi 							
-							
+					fi 						
 				fi				
 				
-				ping -c1 -W 2 "$theVPNipUsed" &> /dev/null
+				if [[ "$torifySystem" == *No* ]]
+				then
+					ping -c 1 -W 2 "$theVPNipUsed" &> /dev/null
+				else
+					return 0;
+				fi	
 				if [ $? -eq 0 ]; 
 				then
 					sudo openvpn --daemon --config $VPN_kern_ovpn_dir/$randomkernvpnpick > /dev/null 2>&1;
 					theTime=$(date +%H:%M);
-					notify-send -t 30000 -i $notifyIcon "KernVPN will connect to:" "$(echo -e "Profile: $randomkernvpnpick\nIP: $theVPNipUsed\nCountry: $theCountry\nPort: $theVPNport\nProtocol: $theVPNproto\nTime: $theTime")" 
+					thePingS=$(fping -B 1.0 -t 1000 -i 1 -r 0 -e -c 1 -q $theVPNipUsed 2>&1 | awk -F'/' '{print $8}');
+					notify-send -t 30000 -i $notifyIcon "Kern VPN will connect to:" "$(echo -e "IP: $theVPNipUsed\nCountry: $theCountry\nPort: $theVPNport\nProtocol: $theVPNproto\nPing: $thePingS ms\nTime: $theTime")"; 
 				
 					NEWLINE=$'\n'
 					theVPNport="port=$theVPNport";
@@ -496,11 +600,11 @@ function startvpnfunction()
 				
 				else
 					theTime=$(date +%H:%M);
-					notify-send -t 30000 -i $notifyIcon "KernVPN skipping offline node:" "$(echo -e "Profile: $randomkernvpnpick\nIP: $theVPNipUsed\nCountry: $theCountry\nPort: $theVPNport\nProtocol: $theVPNproto\nTime: $theTime")" 
+					notify-send -t 30000 -i $notifyIcon "Kern VPN skipping offline node:" "$(echo -e "Profile: $randomkernvpnpick\nIP: $theVPNipUsed\nCountry: $theCountry\nPort: $theVPNport\nProtocol: $theVPNproto\nTime: $theTime")"; 
 					
 				fi
 			else
-				notify-send -i $notifyIcon "KernVPN needs to be setup first";
+				notify-send -i $notifyIcon "Kern VPN needs to be setup first";
 				sleep 2;
 				bash $Mykodachi_path/beeper > /dev/null 2>&1;
 				gedit $VPN_configs_path/kernvpnsetup;			   	
@@ -514,7 +618,7 @@ function startvpnfunction()
 		
 		 
 	
-		if [[ "$vpntype" == *nordvpn* ]]
+		if [[ "$vpntype" == *Nord* ]]
 		then
 			# get variables from config
 			source $VPN_configs_path/nordvpnsetup
@@ -522,7 +626,7 @@ function startvpnfunction()
 			if [[ -n "$NordVPNusername" ]] ||  [[  -n "$NordVPNpassword" ]]
 			then
 			 
-				notify-send -i $notifyIcon "NordVPN will start now"
+				notify-send -i $notifyIcon "Nord VPN will start now"
 				SERVICE='openvpn';
 				if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
 				then
@@ -536,13 +640,13 @@ function startvpnfunction()
 				then
 				
 					randomNordpick=$(ls $VPN_nord_ovpn_dir |sort -R|shuf -n 1);
-					echo "Pickced up random profile for NordVPN:$randomNordpick";
+					echo "Pickced up random profile for Nord VPN:$randomNordpick";
 				else
 					randomNordpick=$nordprofilenametouse;
-					echo "User has selected profile for NordVPN:$randomNordpick";
+					echo "User has selected profile for Nord VPN:$randomNordpick";
 					if [[ ! -f "$VPN_nord_ovpn_dir/$randomNordpick" ]] || [[ ! -n "$randomNordpick" ]];  
 					then
-						notify-send -i $notifyIcon "NordVPN profile $randomNordpick is missing correct the nordvpnsetup file:" \ "$VPN_configs_path/nordvpnsetup";
+						notify-send -i $notifyIcon "Nord VPN profile $randomNordpick is missing correct the nordvpnsetup file:" \ "$VPN_configs_path/nordvpnsetup";
 					fi
 				fi
 				 
@@ -553,31 +657,37 @@ function startvpnfunction()
 				theVPNproto=$(cat $theOvfile|grep "^[^#;]"|grep 'proto'|awk  '{print $2}'|tail -n 1);		 
 				theVPNipUsed=$(cat $theOvfile|grep "^[^#;]"|grep 'remote '|awk  '{print $2}'|tail -n 1);
 				theCountry=$(geoiplookup $theVPNipUsed|cut -d : -f 2|cut -d , -f 2|sed 's/^ *//;s/ *$//'|tail -n 1);
+				 
 				if [[ "$theCountry" == *"not found"* ]]
 				then
 					echo "Going to get country online iplocate.io for normal ip:$theCountry";
-					theCountry=$(curl https://www.iplocate.io/api/lookup/$IP_ADDRPublic -s -m 20 |jq -r '.country');
+					theCountry=$(curl https://www.iplocate.io/api/lookup/$theVPNipUsed -s -m 20 |jq -r '.country');
 					
 					if [[ "$theCountry" == *"null"* ]] || [[ ! -n $theCountry ]]
 					then
 						echo "Going to get country online ip2c.org for normal ip:$theCountry";
-						theCountry=$(curl http://ip2c.org/$IP_ADDRPublic -s -m 20|cut -d ';' -f 4|sed 's/ //g'|xargs);
+						theCountry=$(curl http://ip2c.org/$theVPNipUsed -s -m 20|cut -d ';' -f 4|sed 's/ //g'|xargs);
 						if [[ ! -n $theCountry ]]
 						then
 							theCountry="Not found";
 						fi
-					fi 							
-							
+					fi 						
 				fi				
 				
-				ping -c1 -W 2 "$theVPNipUsed" &> /dev/null
+				if [[ "$torifySystem" == *No* ]]
+				then
+					ping -c 1 -W 2 "$theVPNipUsed" &> /dev/null
+				else
+					return 0;
+				fi	
 				if [ $? -eq 0 ]; 
 				then
 					NEWLINE=$'\n'
 					echo "$NordVPNusername$NEWLINE$NordVPNpassword" > $VPN_configs_path/nordvpnauth.txt
 					sudo openvpn --daemon --config $VPN_nord_ovpn_dir/$randomNordpick > /dev/null 2>&1;
 					theTime=$(date +%H:%M);
-					notify-send -t 30000 -i $notifyIcon "NordVPN will connect to:" "$(echo -e "Profile: $randomNordpick\nIP: $theVPNipUsed\nCountry: $theCountry\nPort: $theVPNport\nProtocol: $theVPNproto\nTime: $theTime")" 
+					thePingS=$(fping -B 1.0 -t 1000 -i 1 -r 0 -e -c 1 -q $theVPNipUsed 2>&1 | awk -F'/' '{print $8}');
+					notify-send -t 30000 -i $notifyIcon "Nord VPN will connect to:" "$(echo -e "IP: $theVPNipUsed\nCountry: $theCountry\nPort: $theVPNport\nProtocol: $theVPNproto\nPing: $thePingS ms\nTime: $theTime")"; 
 				
 					NEWLINE=$'\n'
 					theVPNport="port=$theVPNport";
@@ -590,11 +700,11 @@ function startvpnfunction()
 				    resetips;
 				else
 					theTime=$(date +%H:%M);
-					notify-send -t 30000 -i $notifyIcon "NordVPN skipping offline node:" "$(echo -e "Profile: $randomNordpick\nIP: $theVPNipUsed\nCountry: $theCountry\nPort: $theVPNport\nProtocol: $theVPNproto\nTime: $theTime")" 
+					notify-send -t 30000 -i $notifyIcon "Nord VPN skipping offline node:" "$(echo -e "Profile: $randomNordpick\nIP: $theVPNipUsed\nCountry: $theCountry\nPort: $theVPNport\nProtocol: $theVPNproto\nTime: $theTime")"; 
 					 	
 				fi
 			else
-				notify-send -i $notifyIcon "NordVPN needs to be setup first";
+				notify-send -i $notifyIcon "Nord VPN needs to be setup first";
 				sleep 2;
 				bash $Mykodachi_path/beeper > /dev/null 2>&1;
 				gedit $VPN_configs_path/nordvpnsetup;			   	
@@ -606,7 +716,7 @@ function startvpnfunction()
 		
 		
 		
-		if [[ "$vpntype" == *hideme* ]]
+		if [[ "$vpntype" == *Hideme* ]]
 		then
 			# get variables from config
 			source $VPN_configs_path/hidemevpnsetup
@@ -614,7 +724,7 @@ function startvpnfunction()
 			if [[ -n "$HidemeVPNusername" ]] ||  [[  -n "$HidemeVPNpassword" ]]
 			then
 			 
-				notify-send -i $notifyIcon "HidemeVPN will start now"
+				notify-send -i $notifyIcon "Hideme VPN will start now"
 				SERVICE='openvpn';
 				if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
 				then
@@ -628,13 +738,13 @@ function startvpnfunction()
 				then
 				
 					randomhidemepick=$(ls $VPN_hideme_ovpn_dir |sort -R|shuf -n 1);
-					echo "Pickced up random profile for HidemeVPN:$randomhidemepick";
+					echo "Pickced up random profile for Hideme VPN:$randomhidemepick";
 				else
 					randomhidemepick=$hidemeprofilenametouse;
-					echo "User has selected profile for HidemeVPN:$randomhidemepick";
+					echo "User has selected profile for Hideme VPN:$randomhidemepick";
 					if [[ ! -f "$VPN_hideme_ovpn_dir/$randomhidemepick" ]] || [[ ! -n "$randomhidemepick" ]];  
 					then
-						notify-send -i $notifyIcon "HidemeVPN profile $randomhidemepick is missing correct the hidemevpnsetup file:" \ "$VPN_configs_path/hidemevpnsetup";
+						notify-send -i $notifyIcon "Hideme VPN profile $randomhidemepick is missing correct the hidemevpnsetup file:" \ "$VPN_configs_path/hidemevpnsetup";
 					fi
 				fi
 				 
@@ -645,31 +755,38 @@ function startvpnfunction()
 				theVPNproto=$(cat $theOvfile|grep "^[^#;]"|grep 'proto'|awk  '{print $2}'|tail -n 1);		 
 				theVPNipUsed=$(cat $theOvfile|grep "^[^#;]"|grep 'remote '|awk  '{print $2}'|tail -n 1);
 				theCountry=$(geoiplookup $theVPNipUsed|cut -d : -f 2|cut -d , -f 2|sed 's/^ *//;s/ *$//'|tail -n 1);
+				theCountry=$(geoiplookup $theVPNipUsed|cut -d : -f 2|cut -d , -f 2|sed 's/^ *//;s/ *$//'|tail -n 1);
+				 
 				if [[ "$theCountry" == *"not found"* ]]
 				then
 					echo "Going to get country online iplocate.io for normal ip:$theCountry";
-					theCountry=$(curl https://www.iplocate.io/api/lookup/$IP_ADDRPublic -s -m 20 |jq -r '.country');
+					theCountry=$(curl https://www.iplocate.io/api/lookup/$theVPNipUsed -s -m 20 |jq -r '.country');
 					
 					if [[ "$theCountry" == *"null"* ]] || [[ ! -n $theCountry ]]
 					then
 						echo "Going to get country online ip2c.org for normal ip:$theCountry";
-						theCountry=$(curl http://ip2c.org/$IP_ADDRPublic -s -m 20|cut -d ';' -f 4|sed 's/ //g'|xargs);
+						theCountry=$(curl http://ip2c.org/$theVPNipUsed -s -m 20|cut -d ';' -f 4|sed 's/ //g'|xargs);
 						if [[ ! -n $theCountry ]]
 						then
 							theCountry="Not found";
 						fi
-					fi 							
-							
+					fi 						
 				fi				
 				
-				ping -c1 -W 2 "$theVPNipUsed" &> /dev/null
+				if [[ "$torifySystem" == *No* ]]
+				then
+					ping -c 1 -W 2 "$theVPNipUsed" &> /dev/null
+				else
+					return 0;
+				fi	
 				if [ $? -eq 0 ]; 
 				then
 					NEWLINE=$'\n';
 					echo "$HidemeVPNusername$NEWLINE$HidemeVPNpassword" > $VPN_configs_path/hidemevpnauth.txt
 					sudo openvpn --daemon --config $VPN_hideme_ovpn_dir/$randomhidemepick > /dev/null 2>&1;
 					theTime=$(date +%H:%M);
-					notify-send -t 30000 -i $notifyIcon "HidemeVPN will connect to:" "$(echo -e "Profile: $randomhidemepick\nIP: $theVPNipUsed\nCountry: $theCountry\nPort: $theVPNport\nProtocol: $theVPNproto\nTime: $theTime")" 
+					thePingS=$(fping -B 1.0 -t 1000 -i 1 -r 0 -e -c 1 -q $theVPNipUsed 2>&1 | awk -F'/' '{print $8}');
+					notify-send -t 30000 -i $notifyIcon "Hideme VPN will connect to:" "$(echo -e "IP: $theVPNipUsed\nCountry: $theCountry\nPort: $theVPNport\nProtocol: $theVPNproto\nPing: $thePingS ms\nTime: $theTime")"; 
 				
 					NEWLINE=$'\n'
 					theVPNport="port=$theVPNport";
@@ -682,11 +799,11 @@ function startvpnfunction()
 				    resetips;
 				else
 					theTime=$(date +%H:%M);
-					notify-send -t 30000 -i $notifyIcon "HidemeVPN skipping offline node:" "$(echo -e "Profile: $randomhidemepick\nIP: $theVPNipUsed\nCountry: $theCountry\nPort: $theVPNport\nProtocol: $theVPNproto\nTime: $theTime")" 
+					notify-send -t 30000 -i $notifyIcon "Hideme VPN skipping offline node:" "$(echo -e "Profile: $randomhidemepick\nIP: $theVPNipUsed\nCountry: $theCountry\nPort: $theVPNport\nProtocol: $theVPNproto\nTime: $theTime")" ;
 					 	
 				fi
 			else
-				notify-send -i $notifyIcon "HidemeVPN needs to be setup first";
+				notify-send -i $notifyIcon "Hideme VPN needs to be setup first";
 				sleep 2;
 				bash $Mykodachi_path/beeper > /dev/null 2>&1;
 				gedit $VPN_configs_path/hidemevpnsetup;			   	
@@ -697,7 +814,7 @@ function startvpnfunction()
 		
 		
 		
-		if [[ "$vpntype" == *proton* ]]
+		if [[ "$vpntype" == *Proton* ]]
 		then
 			# get variables from config
 			source $VPN_configs_path/protonvpnsetup
@@ -705,7 +822,7 @@ function startvpnfunction()
 			if [[ -n "$ProtonVPNusername" ]] ||  [[  -n "$ProtonVPNpassword" ]]
 			then
 			 
-				notify-send -i $notifyIcon "ProtonVPN will start now"
+				notify-send -i $notifyIcon "Proton VPN will start now"
 				SERVICE='openvpn';
 				if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
 				then
@@ -721,17 +838,17 @@ function startvpnfunction()
 					if [[ "$protonfree" == 1 ]]
 					then
 						randomprotonpick=$(ls $VPN_proton_ovpn_dir |grep free |sort -R|shuf -n 1);
-						echo "Pickced up random free profile for ProtonVPN:$randomprotonpick";
+						echo "Pickced up random free profile for Proton VPN:$randomprotonpick";
 					else
 						randomprotonpick=$(ls $VPN_proton_ovpn_dir |grep -v free |sort -R|shuf -n 1);
-						echo "Pickced up random profile for ProtonVPN:$randomprotonpick";
+						echo "Pickced up random profile for Proton VPN:$randomprotonpick";
 					fi
 				else
 					randomprotonpick=$protonprofilenametouse;
-					echo "User has selected profile for ProtonVPN:$randomprotonpick";
+					echo "User has selected profile for Proton VPN:$randomprotonpick";
 					if [[ ! -f "$VPN_proton_ovpn_dir/$randomprotonpick" ]] || [[ ! -n "$randomprotonpick" ]];  
 					then
-						notify-send -i $notifyIcon "ProtonVPN profile $randomprotonpick is missing correct the protonvpnsetup file:" \ "$VPN_configs_path/protonvpnsetup";
+						notify-send -i $notifyIcon "Proton VPN profile $randomprotonpick is missing correct the protonvpnsetup file:" \ "$VPN_configs_path/protonvpnsetup";
 					fi
 				fi
 				 
@@ -742,31 +859,37 @@ function startvpnfunction()
 				theVPNproto=$(cat $theOvfile|grep "^[^#;]"|grep 'proto'|head -n 1|awk  '{print $2}'|tail -n 1);		 
 				theVPNipUsed=$(cat $theOvfile|grep "^[^#;]"|grep 'remote '|awk  '{print $2}'|tail -n 1);
 				theCountry=$(geoiplookup $theVPNipUsed|cut -d : -f 2|cut -d , -f 2|sed 's/^ *//;s/ *$//'|tail -n 1);
+				 
 				if [[ "$theCountry" == *"not found"* ]]
 				then
 					echo "Going to get country online iplocate.io for normal ip:$theCountry";
-					theCountry=$(curl https://www.iplocate.io/api/lookup/$IP_ADDRPublic -s -m 20 |jq -r '.country');
+					theCountry=$(curl https://www.iplocate.io/api/lookup/$theVPNipUsed -s -m 20 |jq -r '.country');
 					
 					if [[ "$theCountry" == *"null"* ]] || [[ ! -n $theCountry ]]
 					then
 						echo "Going to get country online ip2c.org for normal ip:$theCountry";
-						theCountry=$(curl http://ip2c.org/$IP_ADDRPublic -s -m 20|cut -d ';' -f 4|sed 's/ //g'|xargs);
+						theCountry=$(curl http://ip2c.org/$theVPNipUsed -s -m 20|cut -d ';' -f 4|sed 's/ //g'|xargs);
 						if [[ ! -n $theCountry ]]
 						then
 							theCountry="Not found";
 						fi
-					fi 							
-							
+					fi 						
 				fi				
 				
-				ping -c1 -W 2 "$theVPNipUsed" &> /dev/null
+				if [[ "$torifySystem" == *No* ]]
+				then
+					ping -c 1 -W 2 "$theVPNipUsed" &> /dev/null
+				else
+					return 0;
+				fi	
 				if [ $? -eq 0 ]; 
 				then
 					NEWLINE=$'\n';
 					echo "$ProtonVPNusername$NEWLINE$ProtonVPNpassword" > $VPN_configs_path/protonvpnauth.txt
 					sudo openvpn --daemon --config $VPN_proton_ovpn_dir/$randomprotonpick > /dev/null 2>&1;
 					theTime=$(date +%H:%M);
-					notify-send -t 30000 -i $notifyIcon "ProtonVPN will connect to:" "$(echo -e "Profile: $randomprotonpick\nIP: $theVPNipUsed\nCountry: $theCountry\nPort: $theVPNport\nProtocol: $theVPNproto\nTime: $theTime")" 
+					thePingS=$(fping -B 1.0 -t 1000 -i 1 -r 0 -e -c 1 -q $theVPNipUsed 2>&1 | awk -F'/' '{print $8}');
+					notify-send -t 30000 -i $notifyIcon "Proton VPN will connect to:" "$(echo -e "IP: $theVPNipUsed\nCountry: $theCountry\nPort: $theVPNport\nProtocol: $theVPNproto\nPing: $thePingS ms\nTime: $theTime")"; 
 				
 					NEWLINE=$'\n'
 					theVPNport="port=$theVPNport";
@@ -779,29 +902,129 @@ function startvpnfunction()
 				    resetips;
 				else
 					theTime=$(date +%H:%M);
-					notify-send -t 30000 -i $notifyIcon "ProtonVPN skipping offline node:" "$(echo -e "Profile: $randomprotonpick\nIP: $theVPNipUsed\nCountry: $theCountry\nPort: $theVPNport\nProtocol: $theVPNproto\nTime: $theTime")" 
+					notify-send -t 30000 -i $notifyIcon "Proton VPN skipping offline node:" "$(echo -e "Profile: $randomprotonpick\nIP: $theVPNipUsed\nCountry: $theCountry\nPort: $theVPNport\nProtocol: $theVPNproto\nTime: $theTime")"; 
 					 	
 				fi
 			else
-				notify-send -i $notifyIcon "ProtonVPN needs to be setup first";
+				notify-send -i $notifyIcon "Proton VPN needs to be setup first";
 				sleep 2;
 				bash $Mykodachi_path/beeper > /dev/null 2>&1;
 				gedit $VPN_configs_path/protonvpnsetup;			   	
 			
 			fi
 			 
-		fi	# end protonvpn	 	
+		fi	# end protonvpn	 
 		
 		
 		
 		
-		if [[ "$vpntype" == *ownvpn* ]]
+		
+		if [[ "$vpntype" == *Mullvad* ]]
+		then
+			# get variables from config
+			source $VPN_configs_path/mullvadvpnsetup
+			
+			if [[ -n "$MullvadVPNusername" ]] ||  [[  -n "$MullvadVPNpassword" ]]
+			then
+			 
+				notify-send -i $notifyIcon "Mullvad VPN will start now"
+				SERVICE='openvpn';
+				if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+				then
+					echo "#### Will kill vpn now before starting it ####";
+					sudo killall -SIGINT openvpn;			    
+				
+				fi	
+						 
+			
+				if [[ "$randommullvadvpn" == 1 ]]
+				then
+				
+					randommullvadpick=$(ls $VPN_mullvad_ovpn_dir |sort -R|shuf -n 1);
+					echo "Pickced up random profile for Mullvad VPN:$randommullvadpick";
+				else
+					randommullvadpick=$mullvadprofilenametouse;
+					echo "User has selected profile for Mullvad VPN:$randommullvadpick";
+					if [[ ! -f "$VPN_mullvad_ovpn_dir/$randommullvadpick" ]] || [[ ! -n "$randommullvadpick" ]];  
+					then
+						notify-send -i $notifyIcon "Mullvad VPN profile $randommullvadpick is missing correct the mullvadvpnsetup file:" \ "$VPN_configs_path/mullvadvpnsetup";
+					fi
+				fi
+				 
+			
+				#Get proto  port ip
+				theOvfile="$VPN_mullvad_ovpn_dir/$randommullvadpick";
+				theVPNport=$(cat $theOvfile|grep "^[^#;]"|grep 'remote '|awk  '{print $3}'|tail -n 1);
+				theVPNproto=$(cat $theOvfile|grep "^[^#;]"|grep 'proto'|awk  '{print $2}'|tail -n 1);		 
+				theVPNipUsed=$(cat $theOvfile|grep "^[^#;]"|grep 'remote '|awk  '{print $2}'|tail -n 1);
+				theCountry=$(geoiplookup $theVPNipUsed|cut -d : -f 2|cut -d , -f 2|sed 's/^ *//;s/ *$//'|tail -n 1);
+				theCountry=$(geoiplookup $theVPNipUsed|cut -d : -f 2|cut -d , -f 2|sed 's/^ *//;s/ *$//'|tail -n 1);
+				 
+				if [[ "$theCountry" == *"not found"* ]]
+				then
+					echo "Going to get country online iplocate.io for normal ip:$theCountry";
+					theCountry=$(curl https://www.iplocate.io/api/lookup/$theVPNipUsed -s -m 20 |jq -r '.country');
+					
+					if [[ "$theCountry" == *"null"* ]] || [[ ! -n $theCountry ]]
+					then
+						echo "Going to get country online ip2c.org for normal ip:$theCountry";
+						theCountry=$(curl http://ip2c.org/$theVPNipUsed -s -m 20|cut -d ';' -f 4|sed 's/ //g'|xargs);
+						if [[ ! -n $theCountry ]]
+						then
+							theCountry="Not found";
+						fi
+					fi 						
+				fi				
+				
+				if [[ "$torifySystem" == *No* ]]
+				then
+					ping -c 1 -W 2 "$theVPNipUsed" &> /dev/null
+				else
+					return 0;
+				fi	
+				if [ $? -eq 0 ]; 
+				then
+					NEWLINE=$'\n';
+					echo "$MullvadVPNusername$NEWLINE$MullvadVPNpassword" > $VPN_configs_path/mullvadvpnauth.txt
+					sudo openvpn --daemon --config $VPN_mullvad_ovpn_dir/$randommullvadpick > /dev/null 2>&1;
+					theTime=$(date +%H:%M);
+					thePingS=$(fping -B 1.0 -t 1000 -i 1 -r 0 -e -c 1 -q $theVPNipUsed 2>&1 | awk -F'/' '{print $8}');
+					notify-send -t 30000 -i $notifyIcon "Mullvad VPN will connect to:" "$(echo -e "IP: $theVPNipUsed\nCountry: $theCountry\nPort: $theVPNport\nProtocol: $theVPNproto\nPing: $thePingS ms\nTime: $theTime")"; 
+				
+					NEWLINE=$'\n'
+					theVPNport="port=$theVPNport";
+					theVPNproto="protocolu=$theVPNproto";
+					theVPNipUsed="theIPu=$theVPNipUsed";
+					theVPNProfile="theProfile=$randommullvadpick";
+					echo "$theVPNport$NEWLINE$theVPNproto$NEWLINE$theVPNProfile" >  $Mykodachi_path/vpnattributes;
+					echo "Mullvad Process Done"
+				    rm -f $VPN_configs_path/mullvadvpnauth.txt;
+				    resetips;
+				else
+					theTime=$(date +%H:%M);
+					notify-send -t 30000 -i $notifyIcon "Mullvad VPN skipping offline node:" "$(echo -e "Profile: $randommullvadpick\nIP: $theVPNipUsed\nCountry: $theCountry\nPort: $theVPNport\nProtocol: $theVPNproto\nTime: $theTime")" ;
+					 	
+				fi
+			else
+				notify-send -i $notifyIcon "Mullvad VPN needs to be setup first";
+				sleep 2;
+				bash $Mykodachi_path/beeper > /dev/null 2>&1;
+				gedit $VPN_configs_path/mullvadvpnsetup;			   	
+			
+			fi
+			 
+		fi	# end mullvadvpn	 		
+		
+		
+		
+		
+		if [[ "$vpntype" == *Own* ]]
 		then
 			source $VPN_configs_path/myownvpnsetup			
 			if grep "dev tun" $VPN_configs_path/myownvpn.ovpn > /dev/null		 
 			then
 		
-				notify-send -i $notifyIcon "OwnVPN will start now"
+				notify-send -i $notifyIcon "Own VPN will start now"
 				SERVICE='openvpn';
 				if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
 				then
@@ -818,35 +1041,41 @@ function startvpnfunction()
 				theVPNport=$(cat $theOvfile|grep "^[^#;]"|grep 'remote '|awk  '{print $3}'|tail -n 1);
 				theVPNproto=$(cat $theOvfile|grep "^[^#;]"|grep 'proto'|awk  '{print $2}'|tail -n 1);		 
 				theVPNipUsed=$(cat $theOvfile|grep "^[^#;]"|grep 'remote '|awk  '{print $2}'|tail -n 1);
-				theCountry=$(geoiplookup $theVPNipUsed|cut -d : -f 2|cut -d , -f 2|sed 's/^ *//;s/ *$//'|tail -n 1); 
+				theCountry=$(geoiplookup $theVPNipUsed|cut -d : -f 2|cut -d , -f 2|sed 's/^ *//;s/ *$//'|tail -n 1);
+				 
 				if [[ "$theCountry" == *"not found"* ]]
 				then
 					echo "Going to get country online iplocate.io for normal ip:$theCountry";
-					theCountry=$(curl https://www.iplocate.io/api/lookup/$IP_ADDRPublic -s -m 20 |jq -r '.country');
+					theCountry=$(curl https://www.iplocate.io/api/lookup/$theVPNipUsed -s -m 20 |jq -r '.country');
 					
 					if [[ "$theCountry" == *"null"* ]] || [[ ! -n $theCountry ]]
 					then
 						echo "Going to get country online ip2c.org for normal ip:$theCountry";
-						theCountry=$(curl http://ip2c.org/$IP_ADDRPublic -s -m 20|cut -d ';' -f 4|sed 's/ //g'|xargs);
+						theCountry=$(curl http://ip2c.org/$theVPNipUsed -s -m 20|cut -d ';' -f 4|sed 's/ //g'|xargs);
 						if [[ ! -n $theCountry ]]
 						then
 							theCountry="Not found";
 						fi
-					fi 							
-							
-				fi					
+					fi 						
+				fi				
 				
-				ping -c1 -W 2 "$theVPNipUsed" &> /dev/null
+				if [[ "$torifySystem" == *No* ]]
+				then
+					ping -c 1 -W 2 "$theVPNipUsed" &> /dev/null
+				else
+					return 0;
+				fi	
 				if [ $? -eq 0 ]; 
 				then
 					if [[ "$need_user_password" == 1 ]]
 					then
 						NEWLINE=$'\n';
-						echo "$ownvpnusrname$NEWLINE$ownvpnpassword" > $VPN_configs_path/myownvpnauth.txt ;
+						echo "$ownvpnusername$NEWLINE$ownvpnpassword" > $VPN_configs_path/myownvpnauth.txt ;
 					fi
 					sudo openvpn --daemon --config $VPN_configs_path/myownvpn.ovpn > /dev/null 2>&1;
 					theTime=$(date +%H:%M);
-					notify-send -t 30000 -i $notifyIcon "OwnVPN will connect to:" "$(echo -e "Profile: myownvpn.ovpn\nIP: $theVPNipUsed\nCountry: $theCountry\nPort: $theVPNport\nProtocol: $theVPNproto\nTime: $theTime")" 
+					thePingS=$(fping -B 1.0 -t 1000 -i 1 -r 0 -e -c 1 -q $theVPNipUsed 2>&1 | awk -F'/' '{print $8}');
+					notify-send -t 30000 -i $notifyIcon "Own VPN will connect to:" "$(echo -e "IP: $theVPNipUsed\nCountry: $theCountry\nPort: $theVPNport\nProtocol: $theVPNproto\nPing: $thePingS ms\nTime: $theTime")"; 
 				
 					NEWLINE=$'\n'
 					theVPNport="port=$theVPNport";
@@ -854,16 +1083,16 @@ function startvpnfunction()
 					theVPNipUsed="theIPu=$theVPNipUsed";
 					theVPNProfile="theProfile=myownvpn.ovpn";
 					echo "$theVPNport$NEWLINE$theVPNproto$NEWLINE$theVPNProfile" >  $Mykodachi_path/vpnattributes;
-					echo "OwnVPN Process Done"
+					echo "Own VPN Process Done"
 				    rm -f $VPN_configs_path/myownvpnauth.txt;
 				    resetips;
 				else
 					theTime=$(date +%H:%M);
-					notify-send -t 30000 -i $notifyIcon "OwnVPN skipping offline node:" "$(echo -e "Profile: myownvpn.ovpn\nIP: $theVPNipUsed\nCountry: $theCountry\nPort: $theVPNport\nProtocol: $theVPNproto\nTime: $theTime")" 
-					
+					notify-send -t 30000 -i $notifyIcon "Own VPN skipping offline node:" "$(echo -e "Profile: $randomprotonpick\nIP: $theVPNipUsed\nCountry: $theCountry\nPort: $theVPNport\nProtocol: $theVPNproto\nTime: $theTime")"; 
+				
 				fi
 			else
-				notify-send -i $notifyIcon "OwnVPN needs to be setup first";
+				notify-send -i $notifyIcon "Own VPN needs to be setup first";
 				sleep 2;
 				bash $Mykodachi_path/beeper > /dev/null 2>&1;
 				gedit $VPN_configs_path/myownvpn.ovpn;	
@@ -888,10 +1117,11 @@ function startvpnfunction()
 			then
 				
 				sleep 30;
-				echo "Sleeping for 30 second";
+				echo "Sleeping for 30 second before restarting tor after vpn start";
 				echo "restart tor after vpn restart";
+				echo "check point tor stop 6";
 				sudo /etc/init.d/tor restart;
-				TIP_ADDR="";
+				unset TIP_ADDR;
 				tornullipcounter=0;
 						
 			
@@ -916,7 +1146,8 @@ function startvpnfunction()
 
 function fetchNormalIP()
 { 
-	theCountry="";
+	unset theCountry;
+	unset IP_ADDRPublic;
 	if [ ! -n $randomdomain ]
 	then
 		echo " Random domain was empty so we set digi77 domain";
@@ -928,6 +1159,8 @@ function fetchNormalIP()
 	# Remove empty space
 	IP_ADDRPublic=$(echo $IP_ADDRPublic|sed 's/ //g'|xargs);
 	IP_ADDRPublic=$(echo $IP_ADDRPublic|grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}');
+	
+	
 	
 	if [ -n $IP_ADDRPublic ]     
 	then 
@@ -943,18 +1176,33 @@ function fetchNormalIP()
 				theCountry=$(curl http://ip2c.org/$IP_ADDRPublic -s -m 20|cut -d ';' -f 4|sed 's/ //g'|xargs);
 				if [[ ! -n $theCountry ]]
 				then
-					theCountry="Not found";
+					theCountry=$(curl -s -m 20 https://am.i.mullvad.net/country);
 				fi
 			fi 							
 					
 		fi				
-	fi 	 
-
+	 
+	
+	
+	
+		SERVICE='openvpn';
+		if !(ps ax | grep -v grep | grep $SERVICE > /dev/null)
+		then
+			echo $IP_ADDRPublic":[notsecure]:"$theCountry> $Mykodachi_path/.eeds-ipinfo;
+			echo "The Normal ip:"$IP_ADDRPublic":[notsecure]"$theCountry;
+			originalIP=$IP_ADDRPublic;
+			echo "No2:$originalIP == $IP_ADDRPublic";
+			echo $originalIP > $Mykodachi_path/.eeds-oipinfo;
+			echo $theCountry > $Mykodachi_path/.eeds-ocipinfo;
+		fi
+	
+	fi 	# Only if ip is found
+	
 	#echo " Entering fetchNormalIP function";
 	SERVICE='openvpn';
     if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
     then
-        if [[ "$vpntype" == *ownvpn* ]] ||  [[ "$vpntype" == *kodachivpn* ]]  ||  [[ "$vpntype" == *nordvpn* ]]  || [[ "$vpntype" == *vpngate* ]] || [[ "$vpntype" == *kernvpn* ]] || [[ "$vpntype" == *hideme* ]] || [[ "$vpntype" == *proton* ]]
+        if [[ "$vpntype" == *Own* ]] ||  [[ "$vpntype" == *Kodachi* ]]  ||  [[ "$vpntype" == *Nord* ]]  || [[ "$vpntype" == *Gate* ]] || [[ "$vpntype" == *Kern* ]] || [[ "$vpntype" == *Hideme* ]] || [[ "$vpntype" == *Proton* ]] || [[ "$vpntype" == *Mullvad* ]]
 		then
 			#IP_ADDRPublic=$(echo $IP_ADDRPublic|sed 's/ //g'|xargs);
 			originalIP=$(echo $originalIP | xargs);			 
@@ -980,16 +1228,6 @@ function fetchNormalIP()
 				fi
 			fi
         fi
-    else
-        if [ -n "$IP_ADDRPublic" ] 
-		then
-			echo $IP_ADDRPublic":[notsecure]:"$theCountry> $Mykodachi_path/.eeds-ipinfo;
-			echo "The Normal ip:"$IP_ADDRPublic":[notsecure]"$theCountry;
-			originalIP=$IP_ADDRPublic;
-			echo "No2:$originalIP == $IP_ADDRPublic";
-			echo $originalIP > $Mykodachi_path/.eeds-oipinfo;
-			echo $theCountry > $Mykodachi_path/.eeds-ocipinfo;
-		fi
     fi 
     
     #Refrence update ip DB
@@ -1020,20 +1258,107 @@ function fetchKodachiIP ()
 	fi
 }
 
+function waitForTor2beready()
+{
+	local hostport="localhost:9050" 
+	local url="https://check.torproject.org/"
+	SERVICE='tor-service';
+	#if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+	if systemctl is-active tor.service > /dev/null 2>&1;  
+	then		
+		TorCon=0;
+		while [[ $TorCon -eq 0 ]]; do
+		echo "*************************  waiting for Tor to be ready  **********************";
+		echo -e "\n"
+		#while [[ ! `timeout 50 torsocks curl --connect-timeout 15 --retry 5 https://www.digi77.com/software/vpn/ipcheckplain.php 2>/dev/null` ]]; do sleep 1; done
+		if curl -s -m 10 --socks5 "$hostport" --socks5-hostname "$hostport" -L "$url" | cat | tac | grep -q 'Congratulations';  
+		then
+			TorCon=1;
+		else
+			TorCon=0;
+		fi
+		echo "Tor while loop result: $TorCon";
+		sleep 1; done
+	fi
+}
+
+
+
+
+
+ 
+
+# Sorry but we don't want ur eyes on our traffic {us},{uk},{ca},{nz},{au},{dk},{fr},{nl},{no},{de},{be},{es},{it},{se}
+function ex14Countries()
+{
+# refrence
+#SETCONF ExitNodes={ac},{af},{ax},{al},{dz},{ad},{ao},{ai},{aq},{ag},{ar},{am},{aw},{at},{az},{bs},{bh},{bd},{bb},{by},{bz},{bj},{bm},{bt},{bo},{ba},{bw},{bv},{br},{io},{vg},{bn},{bg},{bf},{bi},{kh},{cm},{cv},{ky},{cf},{td},{cl},{cn},{cx},{cc},{co},{km},{cg},{cd},{ck},{cr},{ci},{hr},{cu},{cy},{cz},{dj},{dm},{do},{tp},{ec},{eg},{sv},{gq},{ee},{et},{fk},{fo},{fj},{fi},{fx},{gf},{pf},{tf},{ga},{gm},{ge},{gh},{gi},{gr},{gl},{gd},{gp},{gu},{gt},{gn},{gw},{gy},{ht},{hm},{hn},{hk},{hu},{is},{in},{id},{ir},{iq},{ie},{im},{il},{it},{jm},{jp},{jo},{kz},{ke},{ki},{kp},{kr},{kw},{kg},{la},{lv},{lb},{ls},{lr},{ly},{li},{lt},{lu},{mo},{mk},{mg},{mw},{my},{mv},{ml},{mt},{mh},{mq},{mr},{mu},{yt},{mx},{fm},{md},{mc},{mn},{me},{ms},{ma},{mz},{mm},{na},{nr},{np},{an},{nc},{ni},{ne},{ng},{nu},{nf},{mp},{om},{pk},{pw},{ps},{pa},{pg},{py},{pe},{ph},{pn},{pl},{pt},{pr},{qa},{re},{ro},{ru},{rw},{ws},{sm},{st},{sa},{uk},{sn},{rs},{sc},{sl},{sg},{sk},{si},{sb},{so},{as},{za},{gs},{su},{lk},{sh},{kn},{lc},{pm},{vc},{sd},{sr},{sj},{sz},{ch},{sy},{tw},{tj},{tz},{th},{tg},{tk},{to},{tt},{tn},{tr},{tm},{tc},{tv},{ug},{ua},{ae},{gb},{um},{uy},{uz},{vu},{va},{ve},{vn},{vi},{wf},{eh},{ye},{zm},{zw}
+
+	# tor tester 1
+	CONTROLPORT=9060;
+cat <<'EOF' | nc localhost $CONTROLPORT
+authenticate "Auo2@s3ks@Wdq"
+SETCONF ExcludeNodes={us},{uk},{ca},{nz},{au},{dk},{fr},{nl},{no},{de},{be},{es},{it},{se}
+SETCONF ExcludeExitNodes={us},{uk},{ca},{nz},{au},{dk},{fr},{nl},{no},{de},{be},{es},{it},{se}
+SETCONF StrictNodes=1
+signal newnym
+quit
+EOF
+
+}
+
+
+function isTorReady()
+{
+	
+	#check if tor is ready to go
+	local hostport="localhost:9050" 
+	local url="https://check.torproject.org/"
+	if systemctl is-active tor.service > /dev/null 2>&1; 
+	then
+		if curl -s -m 10 --socks5 "$hostport" --socks5-hostname "$hostport" -L "$url" | cat | tac | grep -q 'Congratulations';  
+		then
+			return 1
+		else
+			return 0
+		fi
+	else	
+		return 0
+	fi
+	
+
+}
 
 
 function fetchTorIP()
 {
 
-	
+	unset theCountryx;
+	unset TIP_ADDR;
 	
 	SERVICE='tor-service';
-	if !(ps ax | grep -v grep | grep $SERVICE > /dev/null)
-	then		
+	#if ! systemctl is-active tor.service > /dev/null 2>&1; then
+	#if !(ps ax | grep -v grep | grep $SERVICE > /dev/null)
+	isTorReady  
+	if [[ $? -eq 0 ]]; 
+	then				
 		echo "Tor is not running";
 	else
 		
-		
+		torFilecounter=$(cat $Mykodachi_path/.eeds-tipinfo|wc -c)
+		echo "Tor check1: Val1 $torFilecounter  Val2 $TIP_ADDR  Val3 $fileTORIPaddress";
+	    if [[ $torFilecounter -lt 5 ]] || [[ $fileTORIPaddress == ":" ]] 
+	    then
+			# Wait for mr tor to be ready
+			#waitForTor2beready;
+			( cmdpid=$BASHPID; 
+			(sleep 60; kill $cmdpid) \
+			& while ! waitForTor2beready 
+			 do 
+				 echo "Tor wait termintated"; 
+			 done )			
+			
+		fi
 		if [ ! -n $randomdomain ]
 		then
 			echo " Random domain was empty so we set digi77 domain";
@@ -1043,11 +1368,11 @@ function fetchTorIP()
 		torifySystem=$(cat $Mykodachi_path/torifysystemstatus);
 		if [[ "$torifySystem" == *No* ]]
 		then
-			theCountryx="";
+			unset theCountryx;
 			TIP_ADDR=$(sudo curl --proxy socks5h://localhost:9050 -s -m 20 $randomdomain )
 		else
-		   theCountryx="";
-		    TIP_ADDR=$(sudo curl -s -m 30 $randomdomain);
+			unset theCountryx;
+			TIP_ADDR=$(sudo curl -s -m 30 $randomdomain);
 		fi
 		# Remove empty space
 		TIP_ADDR=$(echo $TIP_ADDR | xargs);	
@@ -1067,15 +1392,15 @@ function fetchTorIP()
 					theCountryx=$(curl http://ip2c.org/$TIP_ADDR -s -m 20|cut -d ';' -f 4|sed 's/ //g'|xargs);
 					if [[ ! -n $theCountryx ]]
 					then
-						theCountryx="Not found";
+						theCountryx=$(curl -s -m 20 https://am.i.mullvad.net/country);
 					fi
 				fi 							
 						
 			fi				
 		else
 			echo "Fetch Tor function:Tor working but no ip restarting tor circuites";
-		    (echo authenticate '"Auo2@s3ks@Wdq"';echo SETCONF ExitNodes={ac},{af},{ax},{al},{dz},{ad},{ao},{ai},{aq},{ag},{ar},{am},{aw},{au},{at},{az},{bs},{bh},{bd},{bb},{by},{be},{bz},{bj},{bm},{bt},{bo},{ba},{bw},{bv},{br},{io},{vg},{bn},{bg},{bf},{bi},{kh},{cm},{ca},{cv},{ky},{cf},{td},{cl},{cn},{cx},{cc},{co},{km},{cg},{cd},{ck},{cr},{ci},{hr},{cu},{cy},{cz},{dk},{dj},{dm},{do},{tp},{ec},{eg},{sv},{gq},{ee},{et},{fk},{fo},{fj},{fi},{fr},{fx},{gf},{pf},{tf},{ga},{gm},{ge},{de},{gh},{gi},{gr},{gl},{gd},{gp},{gu},{gt},{gn},{gw},{gy},{ht},{hm},{hn},{hk},{hu},{is},{in},{id},{ir},{iq},{ie},{im},{il},{it},{jm},{jp},{jo},{kz},{ke},{ki},{kp},{kr},{kw},{kg},{la},{lv},{lb},{ls},{lr},{ly},{li},{lt},{lu},{mo},{mk},{mg},{mw},{my},{mv},{ml},{mt},{mh},{mq},{mr},{mu},{yt},{mx},{fm},{md},{mc},{mn},{me},{ms},{ma},{mz},{mm},{na},{nr},{np},{an},{nl},{nc},{nz},{ni},{ne},{ng},{nu},{nf},{mp},{no},{om},{pk},{pw},{ps},{pa},{pg},{py},{pe},{ph},{pn},{pl},{pt},{pr},{qa},{re},{ro},{ru},{rw},{ws},{sm},{st},{sa},{uk},{sn},{rs},{sc},{sl},{sg},{sk},{si},{sb},{so},{as},{za},{gs},{su},{es},{lk},{sh},{kn},{lc},{pm},{vc},{sd},{sr},{sj},{sz},{se},{ch},{sy},{tw},{tj},{tz},{th},{tg},{tk},{to},{tt},{tn},{tr},{tm},{tc},{tv},{ug},{ua},{ae},{gb},{uk},{us},{um},{uy},{uz},{vu},{va},{ve},{vn},{vi},{wf},{eh},{ye},{zm},{zw};echo SETCONF StrictNodes=1 ;echo signal newnym; echo quit) | nc localhost 9060
-		
+		  # remove 14 eys countries refresh ip
+		  ex14Countries;
 		fi	 
 		
 		
@@ -1091,8 +1416,9 @@ function fetchTorIP()
 			if [[ $autotorvpn==1 ]] || [[ $autotornovpn==1 ]] 
 			then 
 				echo "Reviving tor no ip found";
+				echo "check point tor stop 7";
 				sudo /etc/init.d/tor restart;
-				TIP_ADDR="";
+				unset TIP_ADDR;
 			fi
 		fi
 	fi
@@ -1169,8 +1495,17 @@ function copyAptsubs()
 		  sudo rm -f /etc/apt/sources.list.d/signal-xenial.list.save				  
 		  sudo rm -f /etc/apt/sources.list.d/syncthing.list
 		  sudo rm -f /etc/apt/sources.list.d/syncthing.list.save
-		  sudo rm -f /etc/apt/sources.list.d/home:hawkeye116477:waterfox.list
-		  sudo rm -f /etc/apt/sources.list.d/home:hawkeye116477:waterfox.list.save
+		  sudo rm -f /etc/apt/sources.list.d/phoerious-ubuntu-keepassxc-bionic.list
+		  sudo rm -f /etc/apt/sources.list.d/phoerious-ubuntu-keepassxc-bionic.list.save
+		  sudo rm -f /etc/apt/sources.list.d/zelcash.list
+		  sudo rm -f /etc/apt/sources.list.d/zelcash.list.save
+		  sudo rm -f /etc/apt/sources.list.d/riot-im.list
+		  sudo rm -f /etc/apt/sources.list.d/riot-im.list.save
+		  sudo rm -f /etc/apt/sources.list.d/oguzhaninan-ubuntu-stacer-bionic.list
+		  sudo rm -f /etc/apt/sources.list.d/oguzhaninan-ubuntu-stacer-bionic.list.save
+		  
+		  #sudo rm -f /etc/apt/sources.list.d/home:hawkeye116477:waterfox.list
+		  #sudo rm -f /etc/apt/sources.list.d/home:hawkeye116477:waterfox.list.save
 		  
 		  echo "Coping all files";
 		  sudo cp $Mykodachi_path/apt-live/sources.list.d/libreoffice-ubuntu-ppa-bionic.list /etc/apt/sources.list.d/libreoffice-ubuntu-ppa-bionic.list 
@@ -1183,8 +1518,16 @@ function copyAptsubs()
 		  sudo cp $Mykodachi_path/apt-live/sources.list.d/signal-xenial.list.save /etc/apt/sources.list.d/signal-xenial.list.save			  
 		  sudo cp $Mykodachi_path/apt-live/sources.list.d/syncthing.list /etc/apt/sources.list.d/syncthing.list
 		  sudo cp $Mykodachi_path/apt-live/sources.list.d/syncthing.list.save /etc/apt/sources.list.d/syncthing.list.save 
-		  sudo cp $Mykodachi_path/apt-live/sources.list.d/home_hawkeye116477_waterfox.list /etc/apt/sources.list.d/home_hawkeye116477_waterfox.list
-		  sudo cp $Mykodachi_path/apt-live/sources.list.d/home_hawkeye116477_waterfox.list.save /etc/apt/sources.list.d/home_hawkeye116477_waterfox.list.save
+		  sudo cp $Mykodachi_path/apt-live/sources.list.d/phoerious-ubuntu-keepassxc-bionic.list /etc/apt/sources.list.d/phoerious-ubuntu-keepassxc-bionic.list
+		  sudo cp $Mykodachi_path/apt-live/sources.list.d/phoerious-ubuntu-keepassxc-bionic.list.save /etc/apt/sources.list.d/phoerious-ubuntu-keepassxc-bionic.list.save
+		  sudo cp $Mykodachi_path/apt-live/sources.list.d/zelcash.list /etc/apt/sources.list.d/zelcash.list
+		  sudo cp $Mykodachi_path/apt-live/sources.list.d/zelcash.list.save /etc/apt/sources.list.d/zelcash.list.save
+		  sudo cp $Mykodachi_path/apt-live/sources.list.d/riot-im.list /etc/apt/sources.list.d/riot-im.list
+		  sudo cp $Mykodachi_path/apt-live/sources.list.d/riot-im.list.save /etc/apt/sources.list.d/riot-im.list.save
+		  sudo cp $Mykodachi_path/apt-live/sources.list.d/oguzhaninan-ubuntu-stacer-bionic.list /etc/apt/sources.list.d/oguzhaninan-ubuntu-stacer-bionic.list
+		  sudo cp $Mykodachi_path/apt-live/sources.list.d/oguzhaninan-ubuntu-stacer-bionic.list.save /etc/apt/sources.list.d/oguzhaninan-ubuntu-stacer-bionic.list.save
+		  #sudo cp $Mykodachi_path/apt-live/sources.list.d/home_hawkeye116477_waterfox.list /etc/apt/sources.list.d/home_hawkeye116477_waterfox.list
+		  #sudo cp $Mykodachi_path/apt-live/sources.list.d/home_hawkeye116477_waterfox.list.save /etc/apt/sources.list.d/home_hawkeye116477_waterfox.list.save
 		  
 		  
 		  echo "Chown root all copied files";
@@ -1198,8 +1541,16 @@ function copyAptsubs()
 		  sudo chown root.root /etc/apt/sources.list.d/signal-xenial.list.save				  
 		  sudo chown root.root /etc/apt/sources.list.d/syncthing.list
 		  sudo chown root.root /etc/apt/sources.list.d/syncthing.list.save
-		  sudo chown root.root /etc/apt/sources.list.d/home:hawkeye116477:waterfox.list
-		  sudo chown root.root /etc/apt/sources.list.d/home:hawkeye116477:waterfox.list.save
+		  sudo chown root.root /etc/apt/sources.list.d/phoerious-ubuntu-keepassxc-bionic.list
+		  sudo chown root.root /etc/apt/sources.list.d/phoerious-ubuntu-keepassxc-bionic.list.save
+		  sudo chown root.root /etc/apt/sources.list.d/zelcash.list
+		  sudo chown root.root /etc/apt/sources.list.d/zelcash.list.save
+		  sudo chown root.root /etc/apt/sources.list.d/riot-im.list
+		  sudo chown root.root /etc/apt/sources.list.d/riot-im.list.save
+		  sudo chown root.root /etc/apt/sources.list.d/oguzhaninan-ubuntu-stacer-bionic.list
+		  sudo chown root.root /etc/apt/sources.list.d/oguzhaninan-ubuntu-stacer-bionic.list.save
+		  #sudo chown root.root /etc/apt/sources.list.d/home:hawkeye116477:waterfox.list
+		  #sudo chown root.root /etc/apt/sources.list.d/home:hawkeye116477:waterfox.list.save
 		  
 		  
 	fi
@@ -1264,7 +1615,15 @@ function getBtCprice()
 			sudo chown $LOGED_USER.$LOGED_USER $Mykodachi_path/xmrprice;
 			
 
-}			
+}		
+
+
+function getBTCDonations()
+{
+	btcDonationValue=$(wget -qO- blockchain.info/rawaddr/19pufEJUkQGPJYXCfA1b7GaKSUNeYEsApU 2>&1 | grep -Po '"final_balance":\K[0-9]+' | awk '{s=$1/100000000} END {printf "%0.8f\n", s}');
+	
+	echo -e $btcDonationValue > $Mykodachi_path/btcdonation;
+}		
 
 # parameters acception
 
@@ -1292,6 +1651,11 @@ then
 
 	# rest of script here
 	sudo chown $LOGED_USER.$LOGED_USER $Mykodachi_path/tmp/$NEW_UUID$me
+	
+	check_n_files=0;
+	echo "Getting number of opened files";
+	num_files_opened=$(timeout 15 lsof -n | wc -l);
+	echo $num_files_opened > $Mykodachi_path/openfiles;
 	
 	
 	# Check boot type
@@ -1322,7 +1686,7 @@ then
 		
 	#Check if system installed
 	theFile="$Mykodachi_path/persistent";
-	xP=$(id -u $LOGED_USER)
+	#xP=$(id -u $LOGED_USER)
 	if [[ $xP == 990 ]] 
 	then
 		echo   "Yes"  > $theFile;
@@ -1339,7 +1703,7 @@ then
 	sleep 15;
    
    while true; do
-        SERVICE="";
+        unset SERVICE;
 		# 2 sec calls no net
 		#Get memroy used
 		getMem
@@ -1385,7 +1749,7 @@ then
 		
 		
 		# Set printer cups for conky
-		if(sudo service cups status|grep inactive> /dev/null)
+		if(sudo service cups status|grep inactive > /dev/null)
 		then
 			echo "No" > $Mykodachi_path/cupsstatus;
 		else
@@ -1394,15 +1758,67 @@ then
 		sudo chown $LOGED_USER.$LOGED_USER $Mykodachi_path/cupsstatus;
 
 		
+		# set 14 tor countries block conky
+		if [[ -f /etc/tor/torrc.custom ]]
+		then
+			if (cat /etc/tor/torrc.custom|grep 14eyes)
+			then
+				echo "14 countries" > $Mykodachi_path/torblock14;
+			else
+			if (cat /etc/tor/torrc.custom|grep 9eyes)
+			then
+				echo "9 countries" > $Mykodachi_path/torblock14;
+			
+			else
+			if (cat /etc/tor/torrc.custom|grep 5eyes)
+			then
+				echo "5 countries" > $Mykodachi_path/torblock14;
+			fi
+			fi
+			fi
+			
+			
+			
+		else
+			echo "0 countries" > $Mykodachi_path/torblock14;		
+		fi
+		sudo chown $LOGED_USER.$LOGED_USER $Mykodachi_path/torblock14;
+	 
+			
+			
 		
 		# Set nuked on conky
-		if (apt-mark showhold|grep cryptsetup-bin) 
+		
+		if [[ -f  $Mykodachi_path/osnukevars ]]
+		then
+			source $Mykodachi_path/osnukevars
+		else
+			osisnuked=0;
+		fi
+		
+		#if (apt-mark showhold|grep cryptsetup-bin > /dev/null) 
+		#if [[ "$Used_Slots" -lt 2 ]]
+		if [[ $osisnuked = 1 ]]
 		then
 			echo "Yes" > $Mykodachi_path/nuked;
 		else
 			echo "No" >	$Mykodachi_path/nuked;
 		fi
 		sudo chown $LOGED_USER.$LOGED_USER $Mykodachi_path/nuked;
+		
+		
+		# Set swapcrypt on conky
+		if (cat /etc/crypttab|grep cryptswap > /dev/null) 
+		then
+			echo "Yes" > $Mykodachi_path/swapcrypt;
+		else
+			echo "No" >	$Mykodachi_path/swapcrypt;
+		fi
+		numberOfcSwaps=$(sudo swapon -s|grep -v Filename|wc -l);
+		echo $numberOfcSwaps >	$Mykodachi_path/totalswaps;
+		sudo chown $LOGED_USER.$LOGED_USER $Mykodachi_path/swapcrypt;
+		sudo chown $LOGED_USER.$LOGED_USER $Mykodachi_path/totalswaps;
+		
 		
 		
 		# Set TorDNS status conky
@@ -1427,7 +1843,7 @@ then
 		sudo chown $LOGED_USER.$LOGED_USER $Mykodachi_path/hddencrypted;
 		
 		#Calculate scores
-		xP=$(id -u $LOGED_USER)
+		#xP=$(id -u $LOGED_USER)
 		if [[ $xP == *990* ]] 
 		then
 			securityScore=$((securityScore+10));
@@ -1454,7 +1870,7 @@ then
 		fi
 		
 		
-		theModel="";
+		unset theModel;
 		
 		# Set security model
 		torifySystem=$(cat $Mykodachi_path/torifysystemstatus);
@@ -1464,12 +1880,14 @@ then
 			if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
 			then
 			    SERVICE='tor-service';
-				if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+				#if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+				if systemctl is-active tor.service > /dev/null 2>&1;  
 				then
 					theModel="ISP->VPN->Tor";
 					securityScore=$((securityScore+30))
 					SERVICE='dnscrypt-proxy';
-					if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+					#if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+					if systemctl is-active dnscrypt-proxy.service > /dev/null 2>&1; 
 					then
 						theModel="ISP->VPN->Tor->DNScrypt";
 						securityScore=$((securityScore+15))
@@ -1483,7 +1901,8 @@ then
 					
 				else
 					SERVICE='dnscrypt-proxy';
-					if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+					#if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+					if systemctl is-active dnscrypt-proxy.service > /dev/null 2>&1; 
 					then
 						theModel="ISP->VPN->DNScrypt";
 						securityScore=$((securityScore+35))
@@ -1495,7 +1914,8 @@ then
 			else
 				theModel="ISP";
 				SERVICE='dnscrypt-proxy';
-				if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+				#if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+				if systemctl is-active dnscrypt-proxy.service > /dev/null 2>&1; 
 				then
 					theModel="ISP->DNScrypt";
 					securityScore=$((securityScore+15))
@@ -1507,12 +1927,14 @@ then
 				fi
 				fi
 				SERVICE='tor-service';
-				if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+				#if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+				if systemctl is-active tor.service > /dev/null 2>&1;  
 				then
 					theModel="ISP->Tor";
 					securityScore=$((securityScore+10))
 					SERVICE='dnscrypt-proxy';
-					if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+					#if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+					if systemctl is-active dnscrypt-proxy.service > /dev/null 2>&1; 
 					then
 						theModel="ISP->Tor->DNScrypt";
 						securityScore=$((securityScore+15))
@@ -1610,9 +2032,7 @@ then
 		# Installer icon offline
 		fileIcon="$Myhome_path/Desktop/Install_Kodachi_Offline.desktop";
 		fileIconkbase="$Mykodachi_path/Install_Kodachi_Offline.desktop";
-		pFile="/cdrom/preseed/custom.seed";
-		# romove install icon
-		xP=$(id -u $LOGED_USER)
+		#xP=$(id -u $LOGED_USER)
 		if [[ $xP == *990* ]] 
 		then
 			echo "System not installed keep the icon:$xP";
@@ -1621,26 +2041,50 @@ then
 			if [[ ! -f $fileIcon ]];  
 			then
 				cp $fileIconkbase $fileIcon;
+				sudo chmod +x $fileIcon;
+				sudo chown $LOGED_USER.$LOGED_USER $fileIcon;
+				rm -f $Myhome_path/Desktop/ubiquity.desktop
 				
 			fi
-			sudo chmod +x $fileIcon;
-			sudo chown $LOGED_USER.$LOGED_USER $fileIcon;
-			rm -f $Myhome_path/Desktop/ubiquity.desktop
+			
 		else
-			echo "System installed will delete icon:$xP";
-			rm -f $fileIcon;
-			rm -f $Myhome_path/Desktop/ubiquity.desktop
+			if [[ -f $fileIcon ]];  
+			then
+				echo "System installed will delete icon:$xP";
+				rm -f $fileIcon;
+				rm -f $Myhome_path/Desktop/ubiquity.desktop
+			fi
 		fi
 		
 		
 			
-		# For online cancelled due errors
+		
 		# Installer icon Online
-		#fileIcon="$Myhome_path/Desktop/Install_Kodachi_Online.desktop";
-		#fileIconkbase="$Mykodachi_path/Install_Kodachi_Online.desktop";
-		#pFile="/cdrom/preseed/custom.seed";
-		# romove install icon
-		 
+		fileIcon="$Myhome_path/Desktop/Install_Kodachi_Online.desktop";
+		fileIconkbase="$Mykodachi_path/Install_Kodachi_Online.desktop";
+		#xP=$(id -u $LOGED_USER)
+		if [[ $xP == *990* ]] 
+		then
+			echo "System not installed keep the icon:$xP";
+			# Check icon file if does not exists
+			
+			if [[ ! -f $fileIcon ]];  
+			then
+				cp $fileIconkbase $fileIcon;
+				sudo chmod +x $fileIcon;
+				sudo chown $LOGED_USER.$LOGED_USER $fileIcon;
+				rm -f $Myhome_path/Desktop/ubiquity.desktop
+				
+			fi
+			
+		else
+			if [[ -f $fileIcon ]];  
+			then
+				echo "System installed will delete icon:$xP";
+				rm -f $fileIcon;
+				rm -f $Myhome_path/Desktop/ubiquity.desktop
+			fi
+		fi
 	 
 		
 		
@@ -1679,7 +2123,7 @@ then
 		
 		
 		#monitor my apts so ubiquity and pinguy don't play with it
-		xP=$(id -u $LOGED_USER)
+		#xP=$(id -u $LOGED_USER)
 		if [[ $xP == 990 ]] 
 		then
 			
@@ -1705,7 +2149,7 @@ then
 		# if we have stop vpn command
 		vpntype=$(cat $Mykodachi_path/vpntype|tr -d ' ');
 		# Stop vpn service
-		if [[ "$vpntype" == *novpn* ]]
+		if [[ "$vpntype" == *Novpn* ]]
 		then
 			
 			SERVICE='openvpn';
@@ -1723,14 +2167,17 @@ then
 					#then
 						echo "Restarting tor after stopping vpn";
 						notify-send -i $notifyIcon "Restarting Tor after VPN shutdown";
+						echo "check point tor stop 8";
 						sudo /etc/init.d/tor restart;
 						#sleep 5;
 					#fi
 				else
 					if !(grep -R Tor $Mykodachi_dns_path/dns1)
 					then
+						echo "Restarting tor after stopping vpn2";
+						echo "check point tor stop 2";
 						sudo /etc/init.d/tor stop;				
-						TIP_ADDR="";
+						unset TIP_ADDR;
 					fi
 			
 				
@@ -1744,14 +2191,33 @@ then
 			
 		fi
 		
-		         
+		# set swap file on off
+		
+		        
+		swapStatus=$(cat $Mykodachi_path/swapstatus|tr -d ' '); 
+		if [[ "$swapStatus" == *1* ]]
+		then
+			sudo swapon -a;
+		else
+			sudo swapoff -a;		
+		fi
 		
 		
+		
+		# Tor stuff
+		#check if we have tor dns on
+		if (grep -R Tor $Mykodachi_dns_path/dns1)
+		then
+			TorDNSison="Yes";
+		else
+			TorDNSison="No";		
+		fi
 		
 		# Auto start and stop tor
 		autotorvpn=$(cat $Mykodachi_path/torenabled|tr -d ' '); 
 		autotornovpn=$(cat $Mykodachi_path/torenablednovpn|tr -d ' '); 
-		if [[ "$autotorvpn" == *1* ]]
+		torifySystem=$(cat $Mykodachi_path/torifysystemstatus);	  
+		if [[ "$autotorvpn" == *1* ]] && [[ "$TorDNSison" == *No* ]]
 		then
 			
 			
@@ -1760,17 +2226,20 @@ then
 			if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
 			then
 				SERVICE='tor-service';
-				if !(ps ax | grep -v grep | grep $SERVICE > /dev/null)
+				#if !(ps ax | grep -v grep | grep $SERVICE > /dev/null)
+				if ! systemctl is-active tor.service > /dev/null 2>&1;  
 				then
 					echo "tor was not running run it"
+					echo "check point tor stop 9";
 					sudo /etc/init.d/tor restart;
-					TIP_ADDR="";
+					unset TIP_ADDR;
 				fi					
 			else
 				if !(grep -R Tor $Mykodachi_dns_path/dns1)
 				then
+					echo "check point tor stop 1";
 					sudo /etc/init.d/tor stop;				
-					TIP_ADDR="";
+					unset TIP_ADDR;
 				fi
 			
 			fi
@@ -1781,16 +2250,20 @@ then
 		
 		autotorvpn=$(cat $Mykodachi_path/torenabled|tr -d ' '); 
 		autotornovpn=$(cat $Mykodachi_path/torenablednovpn|tr -d ' '); 
-		if [[ "$autotornovpn" == *1* ]]
+		torifySystem=$(cat $Mykodachi_path/torifysystemstatus);	  
+		if [[ "$autotornovpn" == *1* ]] && [[ "$TorDNSison" == *No* ]]
 		then
 			echo " tor is set to autotorNovpn:$autotornovpn";
 			SERVICE='tor-service';
-			if !(ps ax | grep -v grep | grep $SERVICE > /dev/null)
+			#if !(ps ax | grep -v grep | grep $SERVICE > /dev/null)
+			if ! systemctl is-active tor.service > /dev/null 2>&1;  
 			then
 				echo "Tor is in auto without vpn value: "$autotornovpn
 				echo "Enabling tor without vpn"
+				echo "check point tor stop 10";
 				sudo /etc/init.d/tor restart;
-				TIP_ADDR="";
+				unset TIP_ADDR;
+				
 			fi  
 		fi
 
@@ -1802,7 +2275,7 @@ then
 		autotornovpn=$(cat $Mykodachi_path/torenablednovpn|tr -d ' '); 	
 		torifySystem=$(cat $Mykodachi_path/torifysystemstatus);	  
 		# Stop Tor command received
-		if [[ "$autotorvpn" == *0* ]] && [[ "$autotornovpn" == *0* ]] && [[ "$torifySystem" == *No* ]]
+		if [[ "$autotorvpn" == *0* ]] && [[ "$autotornovpn" == *0* ]] && [[ "$torifySystem" == *No* ]] && [[ "$TorDNSison" == *No* ]]
 		then
 			
 			
@@ -1813,8 +2286,10 @@ then
 				echo "1" > /home/$LOGED_USER/.kbase/torenablednovpn 
 			else
 				SERVICE='tor-service';
-				if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+				#if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+				if systemctl is-active tor.service > /dev/null 2>&1; 
 				then
+					echo "check point tor stop 3";
 					sudo /etc/init.d/tor stop; 
 					notify-send -i $notifyIcon "TOR has shutdown";  
 					
@@ -1825,8 +2300,14 @@ then
 		fi
 		  
 		  
-
-	
+		check_n_files=$((check_n_files+1))   	
+		if [ $check_n_files == 30 ]
+		then
+			echo "Getting number of opened files";
+			num_files_opened=$(timeout 15 lsof -n | wc -l);
+			echo $num_files_opened > $Mykodachi_path/openfiles;
+			check_n_files=0;
+		fi
 		
 		sleep 5;
 
@@ -1869,20 +2350,26 @@ then
 	sudo chown $LOGED_USER.$LOGED_USER $Mykodachi_path/tmp/$NEW_UUID$me
 	
 	# Clean logged files for ip info 
-	echo "" > $Mykodachi_path/.eeds-ipinfo;
-	echo "" > $Mykodachi_path/.eeds-tipinfo;
+	resetips;
 	echo "0" > $Mykodachi_path/actionpicker;
-
+    echo "-" > $Mykodachi_path/btcprice;
+	echo "-" > $Mykodachi_path/xmrprice;
+	echo "-" > $Mykodachi_path/tvpnbandwidth;
 	theIPcounter=0;  
 	killVPNTorcounter=0
 	
 	#let it breath on start up
 	sleep 30;
+	#Disable num lock keyboard issues for someusers to check status 
+	#xset q | grep "Num Lock"
+	# You need sleep 30 before it which is above ^
+	numlockx off
+	
 	
 		 
 	while true; do
 		#resetips;
-		randomdomain=$(cat $Mykodachi_path/workingdomain.txt | xargs shuf -n1 -e);
+		randomdomain=$(cat $fileDomain1 | xargs shuf -n1 -e);
 		echo "Ip domain:" $randomdomain;
 		
 		if [ ! -n $randomdomain ]
@@ -1897,8 +2384,8 @@ then
 		fileIPaddress=$(cat $Mykodachi_path/.eeds-ipinfo);
 		fileTORIPaddress=$(cat $Mykodachi_path/.eeds-tipinfo);
 		vpntype=$(cat $Mykodachi_path/vpntype|tr -d ' ');
-		SERVICE="";
-		SERVICE2="";
+		unset SERVICE;
+		unset SERVICE2;
 		
 		# Get local id
 		getID;
@@ -1953,7 +2440,15 @@ then
 		# Fetch ip address
 		# make sure we have internet before starting   
 		echo "Current net check domain is $netIP";
-		ping -c1 -W 2 "$netIP" &> /dev/null
+		#ping -c 1 -W 2 "$netIP" &> /dev/null
+		torifySystem=$(cat $Mykodachi_path/torifysystemstatus);
+		if [[ "$torifySystem" == *Yes* ]]
+		then
+			# slow network
+			wget --timeout=15 --waitretry=0 --tries=3 --retry-connrefused -q --spider $netIP &> /dev/null
+		else
+			wget --timeout=5 --waitretry=0 --tries=3 --retry-connrefused -q --spider $netIP &> /dev/null
+		fi
 		if [ $? -eq 0 ]; 
 		then
 			
@@ -1963,8 +2458,8 @@ then
 			netIP='google.com';
 			
 			
-			fileDomain2="$Mykodachi_path/workingdomaintmp.txt";
-			fileDomain1="$Mykodachi_path/workingdomain.txt";
+			
+			 
 			#Return our domain settings
 			if [[ "$ipsourcefile" == 0 ]]
 			then
@@ -1973,8 +2468,8 @@ then
 					if [[ -f $fileDomain2 ]];  
 					then
 						mv $fileDomain2 $fileDomain1;
-						sudo chown $LOGED_USER.$LOGED_USER $Mykodachi_path/workingdomain.txt;
-						sudo chown $LOGED_USER.$LOGED_USER $Mykodachi_path/workingdomaintmp.txt;
+						sudo chown $LOGED_USER.$LOGED_USER $fileDomain1;
+						
 					fi
 				fi
 			fi
@@ -1982,8 +2477,8 @@ then
 			
 			
 			
-			
-			
+			fetchNormalIP;
+			fetchTorIP;
 		 
 		
 			#check if we have vpn ip or not
@@ -2021,10 +2516,12 @@ then
 			# Check if we have tor ip
 			torFilecounter=$(cat $Mykodachi_path/.eeds-tipinfo|wc -c)
 			#if !(grep -R : $Mykodachi_path/.eeds-tipinfo> /dev/null )
+			echo "Tor check2: Val1 $torFilecounter  Val2 $TIP_ADDR  Val3 $fileTORIPaddress";
 	      	if [[ $torFilecounter -lt 5 ]] || [[ ! -n $TIP_ADDR ]] || [[ $fileTORIPaddress == ":" ]] 
 	      	then
 				SERVICE='tor-service';
-				if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+				#if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+				if systemctl is-active tor.service > /dev/null 2>&1;  
 				then
 					echo "Net is here but we have Missing TOR file IPS so we fetch them";
 					echo "Running" > $Mykodachi_path/healthsactionstatus;
@@ -2045,7 +2542,8 @@ then
 			
 		    # Catch tor if its lieng to us with the ip!	
 			SERVICE='tor-service';
-			if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+			#if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+			if systemctl is-active tor.service > /dev/null 2>&1;  
 			then
 				# if tor is running but node is dead we renew it 
 				# Give it a chnce to get the ip
@@ -2053,14 +2551,16 @@ then
 				then
 					#sudo /etc/init.d/tor restart;
 					echo "Tor working but no ip restarting tor circuites";
-					(echo authenticate '"Auo2@s3ks@Wdq"';echo SETCONF ExitNodes={ac},{af},{ax},{al},{dz},{ad},{ao},{ai},{aq},{ag},{ar},{am},{aw},{au},{at},{az},{bs},{bh},{bd},{bb},{by},{be},{bz},{bj},{bm},{bt},{bo},{ba},{bw},{bv},{br},{io},{vg},{bn},{bg},{bf},{bi},{kh},{cm},{ca},{cv},{ky},{cf},{td},{cl},{cn},{cx},{cc},{co},{km},{cg},{cd},{ck},{cr},{ci},{hr},{cu},{cy},{cz},{dk},{dj},{dm},{do},{tp},{ec},{eg},{sv},{gq},{ee},{et},{fk},{fo},{fj},{fi},{fr},{fx},{gf},{pf},{tf},{ga},{gm},{ge},{de},{gh},{gi},{gr},{gl},{gd},{gp},{gu},{gt},{gn},{gw},{gy},{ht},{hm},{hn},{hk},{hu},{is},{in},{id},{ir},{iq},{ie},{im},{il},{it},{jm},{jp},{jo},{kz},{ke},{ki},{kp},{kr},{kw},{kg},{la},{lv},{lb},{ls},{lr},{ly},{li},{lt},{lu},{mo},{mk},{mg},{mw},{my},{mv},{ml},{mt},{mh},{mq},{mr},{mu},{yt},{mx},{fm},{md},{mc},{mn},{me},{ms},{ma},{mz},{mm},{na},{nr},{np},{an},{nl},{nc},{nz},{ni},{ne},{ng},{nu},{nf},{mp},{no},{om},{pk},{pw},{ps},{pa},{pg},{py},{pe},{ph},{pn},{pl},{pt},{pr},{qa},{re},{ro},{ru},{rw},{ws},{sm},{st},{sa},{uk},{sn},{rs},{sc},{sl},{sg},{sk},{si},{sb},{so},{as},{za},{gs},{su},{es},{lk},{sh},{kn},{lc},{pm},{vc},{sd},{sr},{sj},{sz},{se},{ch},{sy},{tw},{tj},{tz},{th},{tg},{tk},{to},{tt},{tn},{tr},{tm},{tc},{tv},{ug},{ua},{ae},{gb},{uk},{us},{um},{uy},{uz},{vu},{va},{ve},{vn},{vi},{wf},{eh},{ye},{zm},{zw};echo SETCONF StrictNodes=1 ;echo signal newnym; echo quit) | nc localhost 9060
+					# remove 14 eys countries refresh ip
+					ex14Countries;
 					tornullipcounter=0;
 				fi
 			fi
 		
 		
 		
-		
+		    echo "Before ISP ip check vpn ip:$IP_ADDRPublic  isp:$originalIP"
+		    #sleep 3;
 			# Make sure vpn is established and we have secure ip
 			torifySystem=$(cat $Mykodachi_path/torifysystemstatus);
 			if [[ "$torifySystem" == *No* ]]
@@ -2093,9 +2593,13 @@ then
 			
 			
 			
+			
+			
+			
+			
 			# Start Own VPN
 			vpntype=$(cat $Mykodachi_path/vpntype|tr -d ' ');  			
-			if [[ "$vpntype" == *ownvpn* ]]
+			if [[ "$vpntype" == *Own* ]]
 			then
 				
 				echo "my ip inside own vpn function is:" $IP_ADDRPublic
@@ -2108,7 +2612,7 @@ then
 					echo "Starting own vpn now";
 					startvpnfunction;
 					actionpickervalue=1;
-					IP_ADDRPublic="";				
+					unset IP_ADDRPublic;				
 					
 				fi  
 				    
@@ -2118,7 +2622,7 @@ then
 			
 			# Start Nord VPN
 			vpntype=$(cat $Mykodachi_path/vpntype|tr -d ' '); 	
-			if [[ "$vpntype" == *nordvpn* ]]
+			if [[ "$vpntype" == *Nord* ]]
 			then
 				
 				echo "my ip inside Nord vpn function is:" $IP_ADDRPublic
@@ -2131,7 +2635,7 @@ then
 					echo "Starting Nord vpn now";
 					startvpnfunction;
 					actionpickervalue=1;
-					IP_ADDRPublic="";					
+					unset IP_ADDRPublic;					
 				fi  
 				    
 			fi
@@ -2139,7 +2643,7 @@ then
 			
 			# Start hideme VPN
 			vpntype=$(cat $Mykodachi_path/vpntype|tr -d ' '); 	
-			if [[ "$vpntype" == *hideme* ]]
+			if [[ "$vpntype" == *Hideme* ]]
 			then
 				
 				echo "my ip inside Hideme vpn function is:" $IP_ADDRPublic
@@ -2152,14 +2656,14 @@ then
 					echo "Starting Hideme vpn now";
 					startvpnfunction;
 					actionpickervalue=1;
-					IP_ADDRPublic="";					
+					unset IP_ADDRPublic;					
 				fi  
 				    
 			fi
 			
 			# Start Proton VPN
 			vpntype=$(cat $Mykodachi_path/vpntype|tr -d ' '); 	
-			if [[ "$vpntype" == *proton* ]]
+			if [[ "$vpntype" == *Proton* ]]
 			then
 				
 				echo "my ip inside Proton vpn function is:" $IP_ADDRPublic
@@ -2172,7 +2676,7 @@ then
 					echo "Starting Proton vpn now";
 					startvpnfunction;
 					actionpickervalue=1;
-					IP_ADDRPublic="";					
+					unset IP_ADDRPublic;					
 				fi  
 				    
 			fi
@@ -2180,20 +2684,42 @@ then
 			
 			# Start Vpngate
 			vpntype=$(cat $Mykodachi_path/vpntype|tr -d ' '); 	
-			if [[ "$vpntype" == *vpngate* ]]
+			if [[ "$vpntype" == *Gate* ]]
 			then
 				
-				echo "my ip inside VPNGate  function is:" $IP_ADDRPublic
+				echo "my ip inside VPN Gate  function is:" $IP_ADDRPublic
 				
 				SERVICE1='vpngateovpnfiles';
 				SERVICE2='openvpn';				 
 				if !(ps ax | grep -v grep | grep $SERVICE1|grep $SERVICE2 > /dev/null)
 				then
 					echo "Running" > $Mykodachi_path/healthsactionstatus;
-					echo "Starting VPNGate now";
+					echo "Starting VPN Gate now";
 					startvpnfunction;
 					actionpickervalue=1;
-					IP_ADDRPublic="";
+					unset IP_ADDRPublic;
+					
+				fi  
+				    
+			fi
+			
+			
+		   # Start Mullvad
+			vpntype=$(cat $Mykodachi_path/vpntype|tr -d ' '); 	
+			if [[ "$vpntype" == *Mullvad* ]]
+			then
+				
+				echo "my ip inside Mullvad  function is:" $IP_ADDRPublic
+				
+				SERVICE1='vpnpmullvadovpnfiles';
+				SERVICE2='openvpn';				 
+				if !(ps ax | grep -v grep | grep $SERVICE1|grep $SERVICE2 > /dev/null)
+				then
+					echo "Running" > $Mykodachi_path/healthsactionstatus;
+					echo "Starting Mullvad now";
+					startvpnfunction;
+					actionpickervalue=1;
+					unset IP_ADDRPublic;
 					
 				fi  
 				    
@@ -2201,22 +2727,22 @@ then
 			
 			
 			
-			# Start KernVPN
+			# Start Kern VPN
 			vpntype=$(cat $Mykodachi_path/vpntype|tr -d ' '); 	
-			if [[ "$vpntype" == *kernvpn* ]]
+			if [[ "$vpntype" == *Kern* ]]
 			then
 				
-				echo "my ip inside KernVPN  function is:" $IP_ADDRPublic
+				echo "my ip inside Kern VPN  function is:" $IP_ADDRPublic
 				
 				SERVICE1='vpnkernovpnfiles';
 				SERVICE2='openvpn';				 
 				if !(ps ax | grep -v grep | grep $SERVICE1|grep $SERVICE2 > /dev/null)
 				then
 					echo "Running" > $Mykodachi_path/healthsactionstatus;
-					echo "Starting KernVPN now";
+					echo "Starting Kern VPN now";
 					startvpnfunction;
 					actionpickervalue=1;
-					IP_ADDRPublic="";
+					unset IP_ADDRPublic;
 				
 				fi  
 				    
@@ -2229,7 +2755,7 @@ then
 
 			# Start kodachi vpn
 			vpntype=$(cat $Mykodachi_path/vpntype|tr -d ' '); 
-			if [[ "$vpntype" == *kodachivpn* ]]
+			if [[ "$vpntype" == *Kodachi* ]]
 			then
 				 
 				 if [[ "$Ban_Status" == *Banned* ]]
@@ -2262,7 +2788,8 @@ then
 				sleep 5;									
 				fetchNormalIP;				
      			SERVICE='tor-service';
-				if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+				#if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+				if systemctl is-active tor.service > /dev/null 2>&1;  
 				then
 					echo "Running" > $Mykodachi_path/healthsactionstatus;
 					fetchTorIP;
@@ -2275,7 +2802,7 @@ then
 			if [[ $ipsourcefile == 0 ]]
 			then
 				 # If something wrong with other domain don't wait for counters
-				mq=$(wc -l < $Mykodachi_path/workingdomain.txt)
+				mq=$(wc -l < $fileDomain1)
 				# If only we have less than 3 domains than we have an issue
 				echo "Inside Emergency domain checker ";
 				if [[ $mq -lt 3 ]]
@@ -2287,29 +2814,64 @@ then
 				fi
 			fi
 			
+			
+			
+			
+			# Set conky bandwidth
+			# BD eye				
+			SERVICE='openvpn';
+			if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+			then
+				upB=$(awk -v OFS=, '/tun0:/ { print $10, $2 }' /proc/net/dev|cut -d , -f 1);
+				doB=$(awk -v OFS=, '/tun0:/ { print $10, $2 }' /proc/net/dev|cut -d , -f 2);
+				echo "BDS: $upB and $doB";
+				if [[ -n $upB ]] & [[ -n $doB ]]
+				then
+					bTota=$(($upB + $doB));
+					#echo $bTota| awk '{$1=$1/(1024^2); print $1,"MB";}'; 
+					#echo $bTota| awk '{$1=$1/(1024^3); print $1,"GB";}'; 
+					bTotaConky=$(echo $bTota|awk '{$1=$1/(1024^3); print $1;}'); 
+					bTotaConky=$(echo $bTotaConky|xargs printf "%.5f");
+					echo $bTotaConky > $Mykodachi_path/tvpnbandwidth;
+					sudo chown $LOGED_USER.$LOGED_USER $Mykodachi_path/tvpnbandwidth;
+				else
+					bTota=0;
+				fi
+			fi
+			
+			
 			#routine stuff
 			actionpickervalue=$(cat $Mykodachi_path/actionpicker);
 			if [[ "$actionpickervalue" == 0 ]]
 			then
-			
-			    #get btc price
-				getBtCprice;
 				
+				# Price checker
+				if [ $theIPcounter == 0 ] || [ $theIPcounter == 12 ] || [ $theIPcounter == 24 ]
+				then
+					# Get BTc price
+					getBtCprice		
+					# Get donations
+					getBTCDonations				
+					
+				fi	
+			    				
+				# Routine stuff
 				if [ $theIPcounter == 6 ] || [ $theIPcounter == 12 ] || [ $theIPcounter == 18 ] || [ $theIPcounter == 24 ]; then 
 					echo "Calling ips and net found stuff counter: $theIPcounter":
 					echo "Running" > $Mykodachi_path/healthsactionstatus;
 										
 									
-					fetchNormalIP;			
+					#fetchNormalIP;			
 					
 										
-					SERVICE='tor-service';
-					if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
-					then
-						fetchTorIP;
-					fi
+					#SERVICE='tor-service';
+					#if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+					#if systemctl is-active tor.service > /dev/null 2>&1;  
+					#then
+						#fetchTorIP;
+					#fi
 
-					#if [[ "$vpntype" == *kodachivpn* ]]  
+					#if [[ "$vpntype" == *Kodachi* ]]  
 					#then					
 						#fetchKodachiIP;
 					#fi
@@ -2326,31 +2888,73 @@ then
 					getVersion
 				    
 				    
-						
-					
-					if [ $theIPcounter == 12 ] || [ $theIPcounter == 24 ]
+				
+					# Domain checker 
+					if [ $theIPcounter == 24 ]
 					then
 						
 						
-						echo " Regular domain checkup counter is:12 || 24";
+						echo " Regular domain checkup counter is:$theIPcounter";
 						if [[ $ipsourcefile == 1 ]]
 						then
 							
 							echo "Regular domain update ipsource=1 and we have net on digi setting Digi77";
 							url2="https://www.digi77.com/software/vpn/ipcheckplain.php";
-							echo $url2 > $Mykodachi_path/workingdomain.txt;
-						    sudo chown $LOGED_USER.$LOGED_USER $Mykodachi_path/workingdomain.txt;
+							echo $url2 > $fileDomain1;
+						    sudo chown $LOGED_USER.$LOGED_USER $fileDomain1;
 						else
 						    echo "Regular domain update will run routine";
 							sudo bash $Mykodachi_path/ipcheck -a other;								
 						fi		
-						# Get BTc price
-						getBtCprice						
+										
+						
+						
+						SERVICE='openvpn';
+						if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+						then
+							
+							#bTota=$(echo $bTota|awk '{$1=$1/(1024^2); print $1;}'|bc); 
+							maxallowed2g=2147483648; # this is 2G from https://whatsabyte.com/P1/byteconverter.htm
+							maxallowed4g=4294967296; # 4 gb
+							
+							if [[ $bTota -gt $maxallowed2g ]]
+							then
+								vpntype=$(cat $Mykodachi_path/vpntype|tr -d ' ');
+								# Stop vpn service
+								if [[ "$vpntype" == *Kodachi* ]]
+								then
+									SERVICE='openvpn';
+									if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+									then
+										notify-send -t 30000 -i $notifyIcon "Hay! You have consumed $bTotaConky of $OS_name VPN bandwidth so far 
+	$OS_name VPN is shared with others please slow down so you don't get blocked!" ;
+									fi
+								fi
+							else
+							if [[ $bTota -gt $maxallowed4g ]]
+							then							
+								if [[ "$vpntype" == *Kodachi* ]]
+								then
+									SERVICE='openvpn';
+									if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+									then
+										notify-send -t 30000 -i $notifyIcon "Hay! You have consumed $bTotaConky of bandwidth so far 
+	$OS_name VPN is shared with others please slow down so you don't get blocked!
+	stopping $OS_name VPN now please use your own VPN or other free,paid choices available" ;
+										echo "Novpn" > /home/$USER/.kbase/vpntype;
+										sudo killall -SIGINT openvpn;
+									fi
+								fi
+							fi
+							fi	
+					    fi				
+										
+											
 					fi # if counter=24
 					
 				else
 					echo "###Skipping net functions for now  counter is !=6 !=12 !=18 or !=24 ###";
-					#echo "Auto Pause" > $Mykodachi_path/healthsactionstatus;
+					#echo "Auto pause" > $Mykodachi_path/healthsactionstatus;
 				fi	# end counter 1 and 4 actions
 					
 					
@@ -2367,8 +2971,8 @@ then
 							
 						echo "Regular domain update ipsource=1 and we have net on digi setting Digi77";
 						url2="https://www.digi77.com/software/vpn/ipcheckplain.php";
-						echo $url2 > $Mykodachi_path/workingdomain.txt;
-						sudo chown $LOGED_USER.$LOGED_USER $Mykodachi_path/workingdomain.txt;
+						echo $url2 > $fileDomain1;
+						sudo chown $LOGED_USER.$LOGED_USER $fileDomain1;
 						
 					else
 						echo "Regular domain update ipsource=0 and we havenet setting to other";
@@ -2379,16 +2983,16 @@ then
 				
 				
 				# If domain file is deleted
-				fileDomain="$Mykodachi_path/workingdomain.txt";
-				if [[ ! -f $fileDomain ]];  
+				 
+				if [[ ! -f $fileDomain1 ]];  
 				then
 					if [[ "$ipsourcefile" == 1 ]]
 					then
 							
 						echo "Regular domain update ipsource=1 and we have net on digi setting Digi77";
 						url2="https://www.digi77.com/software/vpn/ipcheckplain.php";
-						echo $url2 > $Mykodachi_path/workingdomain.txt;
-						sudo chown $LOGED_USER.$LOGED_USER $Mykodachi_path/workingdomain.txt;
+						echo $url2 > $fileDomain1;
+						sudo chown $LOGED_USER.$LOGED_USER $fileDomain1;
 						
 					else
 						echo "Regular domain update ipsource=0 and we havenet setting to other";
@@ -2427,7 +3031,7 @@ then
 			then
 						
 				echo "Going to sleep we have net";
-				echo "Auto Pause" > $Mykodachi_path/healthsactionstatus;
+				echo "Auto pause" > $Mykodachi_path/healthsactionstatus;
 				sleep 5;
 				echo " finish sleeping ";
 			else			
@@ -2460,16 +3064,17 @@ then
 			
 			if [[ "$ipsourcefile" == 0 ]]
 			then
-				fileDomain2="$Mykodachi_path/workingdomaintmp.txt";
-				fileDomain1="$Mykodachi_path/workingdomain.txt";
+						
+				 
 				if [[ ! -f $fileDomain2 ]];  
-				then
-					cp $fileDomain $fileDomain2
+				then					 
+					cp $fileDomain1 $fileDomain2
+					sudo chown $LOGED_USER.$LOGED_USER $fileDomain1;
+					sudo chown $LOGED_USER.$LOGED_USER $fileDomain2;
 				fi
 				url2="https://www.digi77.com/software/vpn/ipcheckplain.php";
-				echo $url2 > $Mykodachi_path/workingdomain.txt;
-				sudo chown $LOGED_USER.$LOGED_USER $Mykodachi_path/workingdomain.txt;
-				sudo chown $LOGED_USER.$LOGED_USER $Mykodachi_path/workingdomaintmp.txt;
+				echo $url2 > $fileDomain1;
+				
 			fi
 			
 			# no internet
@@ -2488,8 +3093,9 @@ then
 				autotornovpn=$(cat $Mykodachi_path/torenablednovpn|tr -d ' '); 
 				if [[ "$autotornovpn" == 0 ]]
 				then
+					echo "check point tor stop 4";
 					sudo /etc/init.d/tor stop;
-					TIP_ADDR="";
+					unset TIP_ADDR;
 				fi
 				killVPNTorcounter=0;
 				#theIPcounter=2;
@@ -2513,7 +3119,7 @@ Panic room menu then -> Repair Network";
 			if [[ "$actionpickervalue" == 0 ]]
 			then
 				echo "Going to sleep no Net will sleep for 5 sec only";
-				echo "Auto Pause" > $Mykodachi_path/healthsactionstatus;
+				echo "Auto pause" > $Mykodachi_path/healthsactionstatus;
 				sleep 5;				
 				echo " finish sleeping ";
 			else			
@@ -2532,20 +3138,9 @@ Panic room menu then -> Repair Network";
 	# Reset conky 2 timer
 	#rm -f > $Mykodachi_path/.countfile;
 	actionpickervalue=0;
-	echo "Auto Pause" > $Mykodachi_path/healthsactionstatus;
+	echo "Auto pause" > $Mykodachi_path/healthsactionstatus;
 	done	
 	
 
 
 fi # for hardwoknet action
-
-
-
-
-#cheat sheet
-#sudo kill -9 `ps -ef | grep hardworknet | grep -v grep | awk '{print $2}'`
-#sudo kill -9 `ps -ef | grep hardworknonet | grep -v grep | awk '{print $2}'`
-#sudo bash systemhealth -a hardworknonet
-#sudo bash systemhealth -a hardworknet
-
-
