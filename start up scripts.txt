@@ -3,7 +3,6 @@
 /home/kodachi/.kbase/dns/.dns
 /home/kodachi/.kbase/networkboot
 /home/kodachi/.kbase/reschangecheck
-sudo bash /home/kodachi/.kbase/newmac
 sudo bash /home/kodachi/.kbase/setsudo
 sudo /home/kodachi/.kbase/systemhealth -a hardworknonet
 sudo bash /home/kodachi/.kbase/systemhealth -a hardworknet
