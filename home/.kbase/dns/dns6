@@ -1,7 +1,0 @@
-# Dnsused:Level3
-nameserver 209.244.0.3 
-nameserver 209.244.0.4
-search localdomain
-
-
-
