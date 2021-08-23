@@ -1,5 +1,8 @@
 # kodachi
 
+How to find lates Kodachi source code please watch this video:
+https://www.youtube.com/watch?v=P3i1zGZVOY8&t=5240s
+
 Linux Kodachi operating system is based on Xbuntu 18.04 it will provide you with a secure, anti-forensic, and anonymous operating system considering all features that a person who is concerned about privacy would need to have in order to be secure.
 
 Kodachi is very easy to use all you have to do is boot it up on your PC via USB drive then you should have a fully running operating system with established VPN connection + Tor Connection established + DNScrypt service running. No setup or Linux knowledge is required from your side we do it all for you. The entire OS is functional from your temporary memory RAM so once you shut it down no trace is left behind all your activities are wiped out.
