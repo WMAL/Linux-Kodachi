@@ -20,6 +20,7 @@ https://www.digi77.com/software/kodachi/kodachi-8.15-64.iso
 Achievements:
 
 First place at Techradar magazine two consecutive years (2020 – 2021) Original article – Techradar PDF 2020– Techradar PDF 2021.
+
 https://www.techradar.com/news/best-linux-distro-privacy-security
 
 https://www.digi77.com/software/kodachi/TechRadar2020.pdf
