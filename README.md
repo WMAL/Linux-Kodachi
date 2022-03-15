@@ -21,7 +21,9 @@ Achievements:
 
 First place at Techradar magazine two consecutive years (2020 – 2021) Original article – Techradar PDF 2020– Techradar PDF 2021.
 https://www.techradar.com/news/best-linux-distro-privacy-security
+
 https://www.digi77.com/software/kodachi/TechRadar2020.pdf
+
 https://www.digi77.com/software/kodachi/TechRadar2021.pdf
 
 First place at Linux Format world UK magazine on privacy distribution round up (2020) Linux Format PDF – Original link.
@@ -44,7 +46,7 @@ XMR Donations:
 Paypal:
 https://donorbox.org/kodachi
 
-How to find lates Kodachi source code please watch this video:
+How to find latest Kodachi source code please watch this video:
 https://www.youtube.com/watch?v=P3i1zGZVOY8&t=5240s
 
 
