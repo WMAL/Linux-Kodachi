@@ -1,0 +1,317 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2022 Founder of Eagle Eye Digital Solutions
+# Discord channel https://discord.gg/KEFErEx
+# Twitter http://twitter.com/warith2020
+# Linkedin http://www.linkedin.com/in/warith1977
+# http://www.digi77.com
+# http://www.om77.net
+# Kodachi  OS/Software/Code are strictly protected by LICENSE terms at /home/kodachi/LICENSE
+#
+#
+# script starts here:
+
+
+cd $(dirname $0) 
+source Globalconfig;
+unset torsearchkeyword; 
+unset tornullipcounter;
+unset COuntryCode;
+unset rand;
+unset TorCon;
+unset appName;
+unset jsonvarName;
+unset run_tor_if_vpn_is_off;
+appName="Torrifytorstatus";
+jsonvarName="torrifytorstatus";
+
+#arr[0]="ch";
+#arr[1]="be";
+#arr[2]="nl";
+#arr[3]="pl";
+#arr[4]="it";
+#arr[5]="at";
+#arr[6]="jp";
+
+arr[0]="ch";
+arr[1]="at";
+arr[2]="lu";
+arr[3]="ro";
+arr[4]="sc";
+arr[5]="pl";
+arr[6]="cz";
+arr[7]="za";
+arr[8]="kr";
+arr[9]="jp";
+arr[10]="th";
+arr[11]="br";
+arr[12]="is";
+arr[13]="ru";
+arr[14]="ua";
+arr[15]="md";
+arr[16]="bz";
+arr[17]="hu";
+arr[18]="bg";
+arr[19]="sg";
+arr[20]="fi";
+arr[21]="tr";
+
+
+function startTOR()
+{
+	
+	#if !(systemctl is-active openvpn.service > /dev/null 2>&1); # open vpn does not run as service so this won't work
+	SERVICE='openvpn';				 
+	if !(ps ax | grep -v grep | grep $SERVICE > /dev/null)
+	then
+		writeToJason "Yes" "TORonifVPNisoff"; 
+		notify-send -i $notifyIcon "Changing TOR setting to start without VPN"; 	
+	fi
+	writeToJason "Yes" "Toriffystatus";
+	writeToJason "Yes" "TORenabled";
+	sleep 1;	
+	print_error "Tor process was not found so let us restart it";
+	sudo /etc/init.d/tor restart;	
+	sleep 3;
+	rand=$[$RANDOM % ${#arr[@]}]
+	COuntryCode=${arr[$rand]};	
+	#sudo bash $Mykodachi_path/torforce off|(echo authenticate '"Auo2@s3ks@Wdq"';echo SETCONF ExitNodes={$COuntryCode};echo SETCONF StrictNodes=1 ;echo signal newnym; echo quit) | nc localhost 9060
+	#print_error "First try to switch TOR to: $COuntryCode";
+	sleep 3;	
+}
+
+function waitForTor2beready()
+{
+	
+	echo "waitForTor2beready function start";
+	tornullipcounter=0;
+	SERVICE='tor-service';
+	if (ps ax | grep -v grep | grep $SERVICE > /dev/null)	
+	then		
+		TorCon=0;
+		writeToJason "$TorCon" "$jsonvarName";
+		while [[ $TorCon -eq 0 ]]; do
+			tornullipcounter=$((tornullipcounter+1));
+			echo "*************************  waiting for Tor to be ready  **********************";
+			echo -e "\n"
+			#while [[ ! `timeout 50 torsocks curl --connect-timeout 15 --retry 5 $kodachiipcheck 2>/dev/null` ]]; do sleep 1; done
+			
+			local hostport="localhost:9050" 
+			local url=$(cat $Jason_web_file_name | jq -r '.ServerFeed2[].torstatuschecksite'|xargs);
+			if [[ ! -n "$url" ]]
+			then
+				url="https://check.torproject.org/";
+				print_error "Failed to get TOR site from json setting value to: $url";
+			fi
+				
+			
+			torsearchkeyword=$(cat $Jason_web_file_name | jq -r '.ServerFeed2[].torsearchkeyword'|xargs);
+			if [[ ! -n "$torsearchkeyword" ]]
+			then
+				torsearchkeyword="Congratulations";
+				print_error "Failed to get TOR search keyword from json setting value to: $torsearchkeyword";
+			fi
+			
+			
+			#if curl -s -m 15 "$url" | cat | tac | grep -q "$torsearchkeyword";
+			if curl -s -m 15 --socks5 "$hostport" --socks5-hostname "$hostport" -L "$url" | cat | tac | grep -q "$torsearchkeyword";  
+			then
+				TorCon=1;
+				tornullipcounter=0;	
+				writeToJason "$TorCon" "$jsonvarName";	
+				writeToJason "Yes" "Toriffystatus";
+				writeToJason "Yes" "TORenabled";
+				print_good "Torrify is on good site used: $url serachkeyword is:$torsearchkeyword";
+			else
+				TorCon=0;
+				writeToJason "$TorCon" "$jsonvarName";	
+				print_error "Torrify is off bad TOR will restart site used: $url serachkeyword is:$torsearchkeyword";
+					
+				rand=$[$RANDOM % ${#arr[@]}]
+				COuntryCode=${arr[$rand]};
+				
+				if !(systemctl is-active tor.service > /dev/null 2>&1);  
+				then	
+					print_error "Tor process was not found so let us restart it inside whiel loop";
+					sudo /etc/init.d/tor restart;	
+					sleep 3;
+			    
+			    fi
+			    
+				if [[ $tornullipcounter -le 3 ]]
+				then
+					# for some how some tor nodes are banned
+					#sudo bash $Mykodachi_path/torforce off|(echo authenticate '"Auo2@s3ks@Wdq"';echo SETCONF ExitNodes={$COuntryCode};echo SETCONF StrictNodes=1 ;echo signal newnym; echo quit) | nc localhost 9060
+					#print_error "Try to switch TOR to: $COuntryCode tornullipcounter is: $tornullipcounter";	
+					sleep 1;
+					echo "Sleeping for 1 sec tornullipcounter:$tornullipcounter";
+				fi
+				
+				if [[ $tornullipcounter > 3 ]] && [[ $tornullipcounter < 6 ]]
+				then
+					# for some how some tor nodes are banned
+					#sudo bash $Mykodachi_path/torforce off|(echo authenticate '"Auo2@s3ks@Wdq"';echo SETCONF ExitNodes={$COuntryCode};echo SETCONF StrictNodes=1 ;echo signal newnym; echo quit) | nc localhost 9060
+					#print_error "Try to switch TOR to: $COuntryCode tornullipcounter is: $tornullipcounter";	
+					#sleep 1							
+					sudo /etc/init.d/tor restart;
+					print_error "Giving up on sleep atttempts restarting TOR tornullipcounter:$tornullipcounter";
+					sleep 3;
+				fi
+												
+				if [[ $tornullipcounter > 5 ]]
+				then
+					# for some how some tor nodes are banned
+					sudo bash $Mykodachi_path/torforce off|(echo authenticate '"Auo2@s3ks@Wdq"';echo SETCONF ExitNodes={$COuntryCode};echo SETCONF StrictNodes=1 ;echo signal newnym; echo quit) | nc localhost 9060
+					print_error "Try to switch TOR to: $COuntryCode tornullipcounter is: $tornullipcounter";	
+					sleep 1							
+					sudo /etc/init.d/tor restart;
+					print_error "Giving up on country atttempts restarting TOR tornullipcounter:$tornullipcounter";
+					sleep 1;
+				fi
+				echo "Tor while loop result: $TorCon";
+				writeToJason "No" "Toriffystatus";
+				sleep 5; 
+			fi
+			
+		done
+	else
+	
+		startTOR;
+	fi
+}
+
+
+
+# First call 
+toriffy_Status=$(cat $Jason_file_name | jq -r .Toriffystatus);
+if [[ "$toriffy_Status" == *Yes* ]] 
+then
+    notify-send -i $notifyIcon "$OS_name is already in torrified mode disabel TOR to enable torrify again";
+	exit 1;
+	
+fi	
+
+
+
+#SERVICE="tor-service";
+#if !(ps ax | grep -v grep | grep $SERVICE > /dev/null)	
+if !(systemctl is-active tor.service > /dev/null 2>&1);  
+then		
+     notify-send -i $notifyIcon "Call start TOR";
+	 startTOR;
+fi 
+
+
+# Wait for mr tor to be ready
+#waitForTor2beready;
+( cmdpid=$BASHPID; 
+(sleep 60; kill $cmdpid) \
+& while ! waitForTor2beready 
+ do 
+	echo "Tor wait termintated"; 		
+	
+ done )	
+print_good "TOR loop checkup done";
+
+ 
+run_tor_if_vpn_is_off=$(cat $Jason_file_name | jq -r .TORonifVPNisoff);
+toriffy_Status=$(cat $Jason_file_name | jq -r .Toriffystatus);	
+print_good "Starting toriffy_Status is:$toriffy_Status and run_tor_if_vpn_is_off is :$run_tor_if_vpn_is_off"; 
+
+if [[ "$toriffy_Status" == *Yes* ]] 
+then	
+
+
+	# destinations you don't want routed through Tor
+	NON_TOR="192.168.1.0/24 192.168.0.0/24"
+
+	# the UID Tor runs as
+	TOR_UID="debian-tor"
+
+	# Tor's TransPort
+	TRANS_PORT="9051"
+
+	# Clean firewal just for testing
+	#iptables -F
+	#iptables -t nat -F
+
+     
+	#notify-send -i $notifyIcon "Tor value $?";
+	#exit
+
+	# Add firewall rediect rules
+	comment="kodachi_torify_system";
+
+	# clean
+	sudo iptables -t nat -S | grep "${comment}" | cut -d " " -f 2- | xargs -rL1 iptables -t nat -D
+	sudo iptables -S | grep "${comment}" | cut -d " " -f 2- | xargs -rL1 iptables -D
+
+   
+   
+
+	iptables -t nat -A OUTPUT -m owner --uid-owner $TOR_UID -j RETURN -m comment --comment $comment
+	iptables -t nat -A OUTPUT -p tcp --dport 53 -j REDIRECT --to-ports 9061 -m comment --comment $comment
+	iptables -t nat -A OUTPUT -p udp --dport 53 -j REDIRECT --to-ports 9061 -m comment --comment $comment
+	iptables -t nat -A OUTPUT -p udp -m owner --uid-owner $TOR_UID -m udp --dport 53 -j REDIRECT --to-ports 9061 -m comment --comment $comment
+	
+	for NET in $NON_TOR 127.0.0.0/9 127.128.0.0/10; do
+		iptables -t nat -A OUTPUT -d $NET -j RETURN -m comment --comment $comment
+	done
+	
+	iptables -t nat -A OUTPUT -p tcp --syn -j REDIRECT --to-ports $TRANS_PORT -m comment --comment $comment
+	iptables -t nat -A OUTPUT -p udp -j REDIRECT --to-ports $TRANS_PORT -m comment --comment $comment
+	iptables -t nat -A OUTPUT -p icmp -j REDIRECT --to-ports $TRANS_PORT -m comment --comment $comment
+
+	iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT -m comment --comment $comment
+	
+	for NET in $NON_TOR 127.0.0.0/8; do
+		iptables -A OUTPUT -d $NET -j ACCEPT -m comment --comment $comment
+	done
+	
+	iptables -A OUTPUT -m owner --uid-owner $TOR_UID -j ACCEPT -m comment --comment $comment
+	iptables -A OUTPUT -j REJECT -m comment --comment $comment
+
+	print_good "Firewall rules have been set up check for TOR page";
+	
+	 		  
+
+	
+	
+	# Stop dnscrypt
+	sudo service dnscrypt-proxy stop;
+	
+	
+     
+	# Stop dnscrypt if not stopped
+	if systemctl is-active dnscrypt-proxy.service > /dev/null 2>&1; 
+	then	 
+		sudo service dnscrypt-proxy stop;    
+	fi
+	
+	# Add dns entries
+	dnsname="TOR";
+    writeToJason "$dnsname" "DNSprovider"; 		
+	
+	notify-send -i $notifyIcon "Entire system network will go via TOR network including DNS"; 
+	
+	#else
+	#notify-send -i $notifyIcon "Force Traffic via VPN is on! Disable it first by clicking on:
+	#Allow all Internet Traffic"	
+
+	#fi
+	writeToJason "1" "systemhealthactionpicker";
+    exit 1;
+else
+
+	TorCon=$(cat $Jason_file_name | jq -r .$jsonvarName);
+	echo "TorCon value is: $TorCon"
+	if [[ $TorCon -eq 0 ]]
+	then
+		sudo bash $Mykodachi_path/stoptor;
+		notify-send -t 30000 -i $notifyIcon "$OS_name failed to torrify please try again";
+		writeToJason "No" "Toriffystatus";
+		exit 1;
+	fi	
+
+fi	
+exit 1;

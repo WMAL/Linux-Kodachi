@@ -1,0 +1,63 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2022 Founder of Eagle Eye Digital Solutions
+# Discord channel https://discord.gg/KEFErEx
+# Twitter http://twitter.com/warith2020
+# Linkedin http://www.linkedin.com/in/warith1977
+# http://www.digi77.com
+# http://www.om77.net
+# Kodachi  OS/Software/Code are strictly protected by LICENSE terms at /home/kodachi/LICENSE
+#
+#
+# script starts here:
+
+
+
+cd $(dirname $0) 
+source Globalconfig;
+
+
+
+
+
+netStatustxt=$(cat $Jason_file_name | jq -r .InternetStatus);
+if [[ $netStatustxt == *Online* ]]
+then
+	print_good "Internet is working cool...";
+    print_good "#### Getting updates please wait 1/2...";
+    sleep 5;
+	sudo apt update;
+	sleep 5;
+	echo "";
+	print_good "#### Getting updates please wait 2/2...";
+	echo -e "\n"; 
+    sudo ubuntu-drivers autoinstall;
+
+
+else
+	notify-send -i $notifyIcon -t 20000 "No Internet connection found so we will skip apt update 
+please run again if you have Internet connection for better results";
+	sudo ubuntu-drivers autoinstall;
+	#notify-send -i $notifyIcon -t 20000 "Sorry No Internet connection this script requires Internet to function quiting now..";
+	print_error "######### Attention #########";
+	print_error "No Internet connection found so we will skip apt update please run again if you have Internet connection for better results";
+	exit 1
+
+fi
+	
+echo -e "\n\n";
+
+exit 1
+
+
+
+
+
+
+
+
+
+ 
+
+
+

@@ -1,0 +1,103 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2022 Founder of Eagle Eye Digital Solutions
+# Discord channel https://discord.gg/KEFErEx
+# Twitter http://twitter.com/warith2020
+# Linkedin http://www.linkedin.com/in/warith1977
+# http://www.digi77.com
+# http://www.om77.net
+# Kodachi  OS/Software/Code are strictly protected by LICENSE terms at /home/kodachi/LICENSE
+#
+#
+# script starts here:
+
+cd $(dirname $0) 
+source Globalconfig;
+
+unset torifiedwason;
+unset toriffy_Status;
+
+
+
+
+
+function rest_TOR_IP()
+{
+	unset TOR_IP;
+    unset TOR_Country;
+    unset TORRIFY_IP;
+    unset TORRIFY_Country;
+	writeToJason "$tempjqdash" "TORIP";
+	writeToJason "$tempjqdash" "TORCountry";
+	writeToJason "$tempjqdash" "TORRIFYIP";
+	writeToJason "$tempjqdash" "TORRIFYCountry";
+}
+
+
+toriffy_Status=$(cat $Jason_file_name | jq -r .Toriffystatus);
+
+
+if [[ "$toriffy_Status" == *Yes* ]]
+then
+	torifiedwason="Yes";
+fi
+
+
+
+
+
+
+# clean torify system
+comment="kodachi_torify_system";
+sudo iptables -t nat -S | grep "${comment}" | cut -d " " -f 2- | xargs -rL1 iptables -t nat -D
+sudo iptables -S | grep "${comment}" | cut -d " " -f 2- | xargs -rL1 iptables -D
+
+# Clean Tor dns
+comment="kodachi_tor_dns";
+sudo iptables -t nat -S | grep "${comment}" | cut -d " " -f 2- | xargs -rL1 iptables -t nat -D
+
+dns_provider=$(cat $Jason_file_name | jq -r .DNSprovider);
+if  [[ ! "$dns_provider" == "Dnscrypt" ]]
+then
+	# Set DNS to Dnscrypt
+	dnsname="Dnscrypt";
+fi		
+	
+
+
+SERVICE='tor-service';	
+if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+then
+	writeToJason "No" "TORenabled";  
+	 sudo /etc/init.d/tor stop;
+	notify-send -i $notifyIcon "Tor client disabled"; 	
+	
+fi
+
+if [[ "$torifiedwason" == *Yes* ]]
+then
+	rest_TOR_IP;
+fi
+
+if [[ "$toriffy_Status" == *Yes* ]]
+then
+	notify-send -i $notifyIcon "Toriffy system disabled"; 
+fi
+
+writeToJason "$dnsname" "DNSprovider";  
+writeToJason "-" "TORonifVPNisoff"; 
+writeToJason "No" "Toriffystatus";
+
+TorCon=0;
+jsonvarName="proxychainstor";
+writeToJason "$TorCon" "$jsonvarName";
+jsonvarName="Bisqtor";
+writeToJason "$TorCon" "$jsonvarName";
+jsonvarName="spheretor";	
+writeToJason "$TorCon" "$jsonvarName";
+jsonvarName="torrifytorstatus";
+writeToJason "$TorCon" "$jsonvarName";
+
+sleep 2;
+writeToJason "1" "systemhealthactionpicker";
+exit 1;

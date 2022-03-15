@@ -1,0 +1,442 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2021 Founder of Eagle Eye Digital Solutions
+# Discord channel https://discord.gg/KEFErEx
+# Twitter http://twitter.com/warith2020
+# Linkedin http://www.linkedin.com/in/warith1977
+# http://www.digi77.com
+# http://www.om77.net
+# Kodachi  OS/Software/Code are strictly protected by LICENSE terms at /home/kodachi/LICENSE
+#
+#
+# script starts here:
+
+#CS
+#Find mount labels
+#findmnt -lo source,target,fstype,label,options,used
+
+cd $(dirname $0) 
+source Globalconfig;
+
+while true
+do
+	userInput=0;
+	clear;
+	echo "Please choose which $OS_name system information you would like to see:";
+	echo -e "\n";
+	print_good "1) Show my Hardware ID";
+	print_good "2) Show my Hardware ID on mousepad";
+	print_good "3) Monitor $OS_name json iputs";
+	print_good "4) Display $OS_name json";
+	print_good "5) Display $OS_name web json";
+	print_good "6) Monitor system logs";
+	print_good "7) Show boot logs (/var/log/boot)";
+	print_good "8) Show boot logs (journalctl)";
+	print_good "9) Show boot logs (dmesg)";
+	print_good "10) Show system information";
+	print_good "11) Wipe $OS_name system logs";
+	print_good "12) Set random hostname for $OS_name";
+	print_good "13) Set $OS_name hostname to default";
+	print_good "14) Set $OS_name timezone based on current ip address";
+	print_good "15) Produce md5 checksum list of Kodachi directory";
+	print_good "16) Verify the md5 checksum list";
+	print_good "17) Scan $Mykodachi_path for integrity with Aide";
+	print_good "18) Scan entire system for integrity with Aide (Takes time!)";
+	print_good "19) Reinitialize Aide database for $Mykodachi_path";
+	print_good "20) Reinitialize Aide database for $OS_name (Takes time!)";
+	print_good "21) Exit";
+	echo -e "\n";
+	echo "Type the number of your selection";
+	read n
+	case $n in
+		1) userInput=1;;
+		2) userInput=2;;
+		3) userInput=3;;
+		4) userInput=4;;
+		5) userInput=5;;
+		6) userInput=6;;
+		7) userInput=7;;
+		8) userInput=8;;
+		9) userInput=9;;
+		10) userInput=10;;
+		11) userInput=11;;
+		12) userInput=12;;
+		13) userInput=13;;
+		14) userInput=14;;
+		15) userInput=15;;
+		16) userInput=16;;
+		17) userInput=17;;	
+		18) userInput=18;;
+		19) userInput=19;;
+		20) userInput=20;;	 
+		21) userInput=21;;	 
+		*) print_error "sorry wrong value";sleep 1;;
+	esac
+
+
+	if [[ $userInput = "21" ]]
+	then
+		print_good "bye";
+		echo -e "\n";
+		exit 1;
+	fi
+	
+	
+	if [[ $userInput = "19" ]]
+	then
+		echo -e "\n";
+		sudo aide -c /etc/aide/aide.conf --limit /home/kodachi/.kbase --u;
+		sudo cp /var/lib/aide/aide.db{.new,};
+		rm -f /var/lib/aide/aide.db.new;
+		echo -e "\n";
+		read -n 1 -s -r -p "${reset}Press any key to continue....."; 
+	fi 
+	
+	if [[ $userInput = "18" ]]
+	then
+		echo -e "\n";
+		sudo aide -c /etc/aide/aide.conf -C;
+		echo -e "\n";
+		read -n 1 -s -r -p "${reset}Press any key to continue....."; 
+	fi 
+	
+	
+	if [[ $userInput = "17" ]]
+	then
+		echo -e "\n";
+		sudo aide -c /etc/aide/aide.conf --limit /home/kodachi/.kbase --check;
+		echo -e "\n";
+		read -n 1 -s -r -p "${reset}Press any key to continue....."; 
+	fi 
+	
+	if [[ $userInput = "20" ]]
+	then
+		echo -e "\n";
+		sudo aideinit;
+		sudo cp /var/lib/aide/aide.db{.new,};
+		rm -f /var/lib/aide/aide.db.new;
+		echo -e "\n";
+		read -n 1 -s -r -p "${reset}Press any key to continue....."; 
+	fi 
+	
+	
+    if [[ $userInput = "15" ]]
+	then
+		echo -e "\n";
+		find "$PWD" -type d | sort | while read dir; do [ ! -f "${dir}"/@md5Sum.md5 ] && echo "Processing " "${dir}" > /dev/null|| echo "Skipped " "${dir}" " @md5Sum.md5 already present" > /dev/null; [ ! -f "${dir}"/@md5Sum.md5 ] &&  md5sum "${dir}"/* > "${dir}"/@md5Sum.md5 ; chmod a=r "${dir}"/@md5Sum.md5;done 
+		sudo chown $LOGED_USER.$LOGED_USER $Mykodachi_path/@md5Sum.md5;
+		gedit $Mykodachi_path/@md5Sum.md5;
+		echo -e "\n";
+		read -n 1 -s -r -p "${reset}Press any key to continue....."; 
+	fi 
+	
+	
+	if [[ $userInput = "16" ]]
+	then
+		echo -e "\n";
+		find "$PWD" -name @md5Sum.md5| sort | while read file; do cd "${file%/*}"; md5sum -c --status --ignore-missing --quiet  @md5Sum.md5; done > checklog.txt
+		sudo chown $LOGED_USER.$LOGED_USER $Mykodachi_path/checklog.txt;
+		gedit $Mykodachi_path/checklog.txt;
+		echo -e "\n";
+		read -n 1 -s -r -p "${reset}Press any key to continue....."; 
+	fi 
+
+	
+	if [[ $userInput = "14" ]]
+	then
+		echo -e "\n";
+		print_good "Your current time zone is:";
+		timedatectl status | grep "Time zone"|xargs;
+		randomdomain=$(cat $Jason_web_file_name | jq -r '.ServerFeed2[].kodachiipcheck'|xargs);
+		ISP_IP=$(sudo curl -s -m 30 $randomdomain|xargs);	
+		print_good "Your current ip address is: $ISP_IP";
+		TZURL=$(cat $Jason_web_file_name | jq -r '.ServerFeed2[].timzezoneurl'|xargs);
+		TZ=$(curl -s -m 30 $TZURL|xargs);
+		cd /etc;
+		ln -sf /usr/share/zoneinfo/$TZ localtime;
+		cd $(dirname $0);
+		print_good "Timezone changed to: $TZ";
+		timedatectl status | grep "Time zone"|xargs;
+		echo -e "\n";
+		read -n 1 -s -r -p "${reset}Press any key to continue....."; 
+	fi
+	
+		
+	if [[ $userInput = "13" ]]
+	then
+		 
+		if [[ $xP == 990 ]] 
+		then
+			echo -e "\n";
+			m=$(cat /etc/hostname);
+			print_good "Your current host name is: $m";
+			echo -e "\n";	
+			echo "127.0.0.1 localhost
+127.0.0.1 Live-OS
+
+# The following lines are desirable for IPv6 capable hosts
+::1     ip6-localhost ip6-loopback
+fe00::0 ip6-localnet
+ff00::0 ip6-mcastprefix
+ff02::1 ip6-allnodes
+ff02::2 ip6-allrouters" > /etc/hosts; 
+			echo "Live-OS" > /etc/hostname;
+			m=$(cat /etc/hostname);
+			print_good "Host name set back to: $m" ;
+			echo -e "\n";
+			print_good "Showing new host in action:";
+			cat /etc/hosts;
+			echo -e "\n";
+			read -n 1 -s -r -p "${reset}Press any key to continue.....";
+			echo -e "\n";
+hostnamectl set-hostname Live-OS			 
+		else
+			echo -e "\n";
+			m=$(cat /etc/hostname);
+			print_good "Your current host name is: $m";
+			echo -e "\n";	
+			echo "127.0.0.1 localhost
+127.0.0.1 Secure-OS
+
+# The following lines are desirable for IPv6 capable hosts
+::1     ip6-localhost ip6-loopback
+fe00::0 ip6-localnet
+ff00::0 ip6-mcastprefix
+ff02::1 ip6-allnodes
+ff02::2 ip6-allrouters" > /etc/hosts; 
+			echo "Secure-OS" > /etc/hostname;
+			m=$(cat /etc/hostname);
+			print_good "Host name set back to: $m" ;
+			echo -e "\n";
+			print_good "Showing new host in action:";
+			cat /etc/hosts;
+			echo -e "\n";
+			read -n 1 -s -r -p "${reset}Press any key to continue.....";
+			echo -e "\n";
+hostnamectl set-hostname Secure-OS			 
+		fi	
+		 
+		 
+	fi
+	
+	
+
+    if [[ $userInput = "12" ]]
+	then
+		echo -e "\n";
+		m=$(cat /etc/hostname);
+		print_good "Your current host name is: $m";
+		echo -e "\n";
+		
+		# hostname array
+		array[0]="Windows10-Enterprise "
+		array[1]="Windows10-Pro"
+		array[2]="Windows10-Enterprise-LTSC "
+		array[3]="Windows8.1O-EM"
+		array[4]="Windows8-Enterprise"
+		array[5]="Windows8.1-Pro"
+		array[6]="Windows7-Professional"
+		array[7]="Windows7-Enterprise"
+		array[8]="Windows7-Ultimate"
+		array[9]="Windows-Vista-Business"
+		array[10]="WindowsXP-Professional"
+		array[11]="macOS11"
+		array[12]="OSX10.11"
+		array[13]="MacBook-Air"
+		array[14]="MacBook"
+		array[15]="MacBook-Pro"
+
+		size=${#array[@]}
+		index=$(($RANDOM % $size))
+
+		echo "127.0.0.1 localhost
+127.0.0.1 ${array[$index]}		
+
+# The following lines are desirable for IPv6 capable hosts
+::1     ip6-localhost ip6-loopback
+fe00::0 ip6-localnet
+ff00::0 ip6-mcastprefix
+ff02::1 ip6-allnodes
+ff02::2 ip6-allrouters" > /etc/hosts; 
+		echo "${array[$index]}" > /etc/hostname;
+		hostnamectl set-hostname ${array[$index]}	
+		m=$(cat /etc/hostname);
+		print_good "New spoofed host name is: $m" ;
+		echo -e "\n";
+		print_good "Showing new host in action";
+		cat /etc/hosts;
+		echo -e "\n";
+		read -n 1 -s -r -p "${reset}Press any key to continue.....";
+		echo -e "\n";
+	fi
+
+	
+	if [[ $userInput = "10" ]]
+	then
+		echo -e "\n";
+		print_good "Showing hashes of local users";
+		echo -e "\n"
+		sudo cat /etc/shadow;
+		echo -e "\n"
+		read -n 1 -s -r -p "${reset}Press any key to continue.....";
+		echo -e "\n";
+		print_good "Showing local users";
+		sudo cat /etc/passwd;
+		echo -e "\n";
+		read -n 1 -s -r -p "${reset}Press any key to continue.....";
+		echo -e "\n";
+		print_good "Showing local groups";
+		sudo cat /etc/group;
+		echo -e "\n";
+		read -n 1 -s -r -p "${reset}Press any key to continue.....";
+		echo -e "\n";
+		print_good "Showing local hosts";
+		sudo cat /etc/hosts;
+		echo -e "\n";
+		read -n 1 -s -r -p "${reset}Press any key to continue.....";
+		echo -e "\n";
+		print_good "Showing current host";
+		sudo cat /etc/hostname;
+		echo -e "\n";
+		read -n 1 -s -r -p "${reset}Press any key to continue.....";
+		echo -e "\n";
+		print_good "Showing network information";
+		ifconfig;
+		echo -e "\n";
+		ip link show;
+		echo -e "\n";
+		nmcli device status;
+		echo -e "\n";
+		nmcli connection show;
+		echo -e "\n";
+		netstat -i;
+		echo -e "\n";
+		ip r;
+		echo -e "\n";
+		arp;
+		echo -e "\n";
+		read -n 1 -s -r -p "${reset}Press any key to continue.....";
+		echo -e "\n";
+		
+	fi
+	
+	
+	
+	if [[ $userInput = "11" ]]
+	then
+		sudo killall firefox;
+		sudo bleachbit -c system.rotated_logs firefox.* bash.history libreoffice.* system.clipboard system.tmp system.trash transmission.*;
+		python - <<END
+import os
+
+global logs
+global detected_logs
+
+detected_logs = []
+possible_logs_list = ['/var/adm/utmp','/usr/adm/utmp','/etc/utmp','/var/log/utmp','/var/run/utmp','/var/adm/utmp','/var/run/utmp','/usr/var/adm/utmp','/var/adm/wtmp','/usr/adm/wtmp','/etc/wtmp','/var/log/wtmp','/var/adm/wtmp','/var/run/wtmp','/usr/var/adm/wtmp','/var/adm/utmpx','/usr/adm/utmpx','/usr/run/utmpx','/etc/utmpx','/var/log/utmpx','/var/run/utmpx','/usr/var/adm/utmpx','/var/adm/wtmpx','/usr/adm/wtmpx','/etc/wtmpx','/var/log/wtmpx','/var/run/wtmpx','/usr/adm/wtmpx','/usr/var/adm/wtmpx','/var/adm/lastlog','/usr/adm/lastlog','/etc/lastlog','/var/log/lastlog','/usr/adm/lastlog','/usr/run/lastlog','/usr/var/adm/lastlog','/var/adm/pacct','/var/account/pacct','/var/log/acct','/var/log/pacct','/var/adm/acct','/var/adm/pacct','/var/account/acct','/usr/adm/acct','/var/log/prelude.log','/var/log/prelude/prelude.log','/var/adm/prelude/prelude.log','/var/adm/prelude/log/prelude.log','/var/adm/log/prelude.log','/var/ids/log/prelude.log','/var/ids/prelude/log/prelude.log','/var/ids/prelude.log','/var/prelude/prelude.log','/var/prelude/log/prelude.log','/home/log/prelude.log','/home/ids/log/prelude.log','/home/prelude/log/prelude.log','/home/ids/prelude.log','/home/prelude/prelude.log','/home/log/prelude.log','/usr/local/var/log/prelude.log','/var/log/prelude-xml.log','/var/log/prelude/prelude-xml.log','/var/adm/prelude/prelude-xml.log','/var/adm/prelude/log/prelude-xml.log','/var/adm/log/prelude-xml.log','/var/ids/log/prelude-xml.log','/var/ids/prelude/log/prelude-xml.log','/var/ids/prelude-xml.log','/var/prelude/prelude-xml.log','/var/prelude/log/prelude-xml.log','/home/log/prelude-xml.log','/home/ids/log/prelude-xml.log','/home/prelude/log/prelude-xml.log','/home/ids/prelude-xml.log','/home/prelude/prelude-xml.log','/home/log/prelude-xml.log','/usr/local/var/log/prelude-xml.log','/var/log/samba/log.smbd','/var/log/samba/log.nmbd','/var/log/log.smbd','/var/log/log.nmbd','/var/log/smb/log.smbd','/var/log/smb/log.nmbd','/home/samba/log.smbd','/home/samba/log.nmbd','/home/samba/log/log.smbd','/home/samba/log/log.nmbd','/home/samba/logs/log.smbd','/home/samba/logs/log.nmbd','/var/log/snort/snort.alert','/var/log/snort.alert','/var/log/ids/snort.alert','/var/ids/snort/snort.alert','/var/ids/snort.alert','/var/snort/snort.alert','/home/snort/snort.alert','/home/snort/log/snort.alert','/home/log/snort/snort.alert','/home/log/snort.alert','/home/ids/snort/snort.alert','/home/ids/snort.alert','/usr/local/ids/snort.alert','/usr/local/var/snort.alert','/usr/local/snort/snort.alert','/usr/local/var/log/snort.alert','/usr/local/snort/log/snort.alert','/usr/local/ids/log/snort.alert','/usr/local/log/snort.alert','/usr/local/log/snort/snort.alert','/var/log/apache2/audit_log','/var/log/apache1/audit_log','/var/log/apache/audit_log','/home/apache2/log/audit_log','/home/apache1/log/audit_log','/home/apache/log/audit_log','/home/http/log/audit_log','/home/httpd/log/audit_log','/var/log/http/audit_log','/var/log/httpd/audit_log','/usr/http/log/audit_log','/usr/httpd/log/audit_log','/usr/local/http/log/audit_log','/usr/local/httpd/log/audit_log','/usr/local/apache/log/audit_log','/usr/local/apache2/log/audit_log','/usr/local/apache1/log/audit_log','/var/www/log/audit_log','/var/http/log/audit_log','/var/httpd/log/audit_log','/var/apache/log/audit_log','/var/apache2/log/audit_log','/var/apache1/log/audit_log','/root/.bash_history','/root/.history','/root/.sh_history','/.bash_history','/.history','/.sh_history','/tmp/.bash_history','/tmp/.sh_history','/tmp/.history','/home/apache/.bash_history','/home/apache/.sh_history','/home/apache/.history','/home/apache1/.bash_history','/home/apache1/.sh_history','/home/apache1/.history','/home/apache2/.bash_history','/home/apache2/.sh_history','/home/apache2/.history','/home/httpd/.bash_history','/home/httpd/.sh_history','/home/httpd/.history','/home/ftpd/.bash_history','/home/ftpd/.sh_history','/home/ftpd/.history','/var/log/apache2/access_log','/var/log/apache2/access_log.1','/var/log/apache2/access_log.2','/var/log/apache2/error_log','/var/log/apache2/error_log.1','/var/log/apache2/error_log.2','/var/log/apache2/ssl_access_log','/var/log/apache2/ssl_access_log.1','/var/log/apache2/ssl_access_log.2','/var/log/apache2/ssl_error_log','/var/log/apache2/ssl_request_log','/var/log/apache2/request_log','/var/log/apache/access_log','/var/log/apache/access_log.1','/var/log/apache/access_log.2','/var/log/apache/error_log','/var/log/apache/error_log.1','/var/log/apache/error_log.2','/var/log/apache/ssl_access_log','/var/log/apache/ssl_error_log','/var/log/apache/ssl_request_log','/var/log/apache/request_log','/var/log/apache1/access_log','/var/log/apache1/error_log','/var/log/apache1/ssl_access_log','/var/log/apache1/ssl_error_log','/var/log/apache1/ssl_request_log','/var/log/apache1/request_log','/var/www/log/access_log','/var/www/log/error_log','/var/www/log/ssl_access_log','/var/www/log/ssl_error_log','/var/www/log/ssl_request_log','/var/www/log/request_log','/var/apache2/access_log','/var/apache2/error_log','/var/apache2/ssl_access_log','/var/apache2/ssl_error_log','/var/apache2/ssl_request_log','/var/apache2/request_log','/home/apache2/access_log','/home/apache2/error_log','/home/apache2/ssl_access_log','/home/apache2/ssl_error_log','/home/apache2/ssl_request_log','/home/apache2/request_log','/var/web/log/access_log','/var/web/log/error_log','/var/web/log/ssl_access_log','/var/web/log/ssl_error_log','/var/web/log/ssl_request_log','/var/web/log/request_log','/var/apache/access_log','/var/apache/error_log','/var/apache/ssl_access_log','/var/apache/ssl_error_log','/var/apache/ssl_request_log','/var/apache/request_log','/home/apache/access_log','/home/apache/error_log','/home/apache/ssl_access_log','/home/apache/ssl_error_log','/home/apache/ssl_request_log','/home/apache/request_log','/var/apache1/access_log','/var/apache1/error_log','/var/apache1/ssl_access_log','/var/apache1/ssl_error_log','/var/apache1/ssl_request_log','/var/apache1/request_log','/home/apache1/access_log','/home/apache1/error_log','/home/apache1/ssl_access_log','/home/apache1/ssl_error_log','/home/apache1/ssl_request_log','/home/apache1/request_log','/usr/apache1/error_log','/usr/apache1/ssl_access_log','/usr/apache1/ssl_error_log','/usr/apache1/ssl_request_log','/usr/apache1/request_log','/usr/local/apache1/error_log','/usr/local/apache1/ssl_access_log','/usr/local/apache1/ssl_error_log','/usr/local/apache1/ssl_request_log','/usr/local/apache1/request_log','/usr/apache2/error_log','/usr/apache2/ssl_access_log','/usr/apache2/ssl_error_log','/usr/apache2/ssl_request_log','/usr/apache2/request_log','/usr/local/apache2/error_log','/usr/local/apache2/ssl_access_log','/usr/local/apache2/ssl_error_log','/usr/local/apache2/ssl_request_log','/usr/local/apache2/request_log','/usr/apache/error_log','/usr/apache/ssl_access_log','/usr/apache/ssl_error_log','/usr/apache/ssl_request_log','/usr/apache/request_log','/usr/local/apache/error_log','/usr/local/apache/ssl_access_log','/usr/local/apache/ssl_error_log','/usr/local/apache/ssl_request_log','/usr/local/apache/request_log','/usr/local/httpd/access_log','/usr/local/httpd/ssl_access_log','/usr/local/httpd/error_log','/usr/local/httpd/ssl_error_log','/usr/local/httpd/ssl_request_log','/home/httpd/access_log','/home/httpd/ssl_access_log','/home/httpd/error_log','/home/httpd/ssl_error_log','/var/adm/SYSLOG','/var/adm/sulog','/var/adm/utmp','/var/adm/utmpx','/var/adm/wtmp','/var/adm/wtmpx','/var/adm/lastlog/username','/usr/spool/lp/log','/var/adm/lp/lpd-errs','/usr/lib/cron/log','/var/adm/loginlog','/var/adm/pacct','/var/adm/dtmp','/var/adm/acct/sum/loginlog','/var/adm/X0msgs','/var/adm/crash/vmcore','/var/adm/crash/unix','/var/adm/pacct','/var/adm/wtmp','/var/adm/dtmp','/var/adm/qacct','/var/adm/sulog','/var/adm/ras/errlog','/var/adm/ras/bootlog','/var/adm/cron/log','/etc/utmp','/etc/security/lastlog','/etc/security/failedlogin','/usr/spool/mqueue/syslog','/var/adm/messages','/var/adm/aculogs','/var/adm/aculog','/var/adm/sulog','/var/adm/vold.log','/var/adm/wtmp','/var/adm/wtmpx','/var/adm/utmp','/var/adm/utmpx','/var/adm/log/asppp.log','/var/log/syslog','/var/log/POPlog','/var/log/authlog','/var/log/auth1.log','/var/adm/pacct','/var/lp/logs/lpsched','/var/lp/logs/lpNet','/var/lp/logs/requests','/var/cron/log','/var/saf/_log','/var/saf/port/log','/var/adm/utmp','/var/log/utmp','/var/run/utmp','/var/adm/utmp','/var/run/utmp','/usr/var/adm/utmp','/var/adm/wtmp','/var/log/wtmp','/var/adm/wtmp','/var/run/wtmp','/usr/var/adm/wtmp','/var/adm/utmpx','/var/log/utmpx','/var/run/utmpx','/usr/var/adm/utmpx','/var/adm/wtmpx','/var/log/wtmpx','/var/run/wtmpx','/usr/var/adm/wtmpx','/var/adm/lastlog','/var/log/lastlog','/usr/var/adm/lastlog','/var/adm/pacct','/var/account/pacct','/var/log/acct','/var/log/pacct','/var/adm/acct','/var/adm/pacct','/var/account/acct','/var/log/prelude.log','/var/log/prelude/prelude.log','/var/adm/prelude/prelude.log','/var/adm/prelude/log/prelude.log','/var/adm/log/prelude.log','/var/ids/log/prelude.log','/var/ids/prelude/log/prelude.log','/var/ids/prelude.log','/var/prelude/prelude.log','/var/prelude/log/prelude.log','/usr/local/var/log/prelude.log','/var/log/prelude-xml.log','/var/log/prelude/prelude-xml.log','/var/adm/prelude/prelude-xml.log','/var/adm/prelude/log/prelude-xml.log','/var/adm/log/prelude-xml.log','/var/ids/log/prelude-xml.log','/var/ids/prelude/log/prelude-xml.log','/var/ids/prelude-xml.log','/var/prelude/prelude-xml.log','/var/prelude/log/prelude-xml.log','/usr/local/var/log/prelude-xml.log','/var/log/samba/log.smbd','/var/log/samba/log.nmbd','/var/log/log.smbd','/var/log/log.nmbd','/var/log/smb/log.smbd','/var/log/smb/log.nmbd','/var/log/snort/snort.alert','/var/log/snort.alert','/var/log/ids/snort.alert','/var/ids/snort/snort.alert','/var/ids/snort.alert','/var/snort/snort.alert','/usr/local/var/snort.alert','/usr/local/var/log/snort.alert','/var/log/apache2/audit_log','/var/log/apache1/audit_log','/var/log/apache/audit_log','/var/log/http/audit_log','/var/log/httpd/audit_log','/var/www/log/audit_log','/var/http/log/audit_log','/var/httpd/log/audit_log','/var/apache/log/audit_log','/var/apache2/log/audit_log','/var/apache1/log/audit_log','/var/log/apache2/access_log','/var/log/apache2/access_log.1','/var/log/apache2/access_log.2','/var/log/apache2/error_log','/var/log/apache2/error_log.1','/var/log/apache2/error_log.2','/var/log/apache2/ssl_access_log','/var/log/apache2/ssl_access_log.1','/var/log/apache2/ssl_access_log.2','/var/log/apache2/ssl_error_log','/var/log/apache2/ssl_request_log','/var/log/apache2/request_log','/var/log/apache/access_log','/var/log/apache/access_log.1','/var/log/apache/access_log.2','/var/log/apache/error_log','/var/log/apache/error_log.1','/var/log/apache/error_log.2','/var/log/apache/ssl_access_log','/var/log/apache/ssl_error_log','/var/log/apache/ssl_request_log','/var/log/apache/request_log','/var/log/apache1/access_log','/var/log/apache1/error_log','/var/log/apache1/ssl_access_log','/var/log/apache1/ssl_error_log','/var/log/apache1/ssl_request_log','/var/log/apache1/request_log','/var/www/log/access_log','/var/www/log/error_log','/var/www/log/ssl_access_log','/var/www/log/ssl_error_log','/var/www/log/ssl_request_log','/var/www/log/request_log','/var/apache2/access_log','/var/apache2/error_log','/var/apache2/ssl_access_log','/var/apache2/ssl_error_log','/var/apache2/ssl_request_log','/var/apache2/request_log','/var/web/log/access_log','/var/web/log/error_log','/var/web/log/ssl_access_log','/var/web/log/ssl_error_log','/var/web/log/ssl_request_log','/var/web/log/request_log','/var/apache/access_log','/var/apache/error_log','/var/apache/ssl_access_log','/var/apache/ssl_error_log','/var/apache/ssl_request_log','/var/apache/request_log','/var/apache1/access_log','/var/apache1/error_log','/var/apache1/ssl_access_log','/var/apache1/ssl_error_log','/var/apache1/ssl_request_log','/var/apache1/request_log','/var/log','/var/adm','/var/spool/mqueue','/var/mail','/var/log/emerge.log','/var/log/Xorg.0.log','/root/.bash_history','/root/.bash_logout','/usr/local/apache/logs','/usr/local/apache/log','/var/apache/logs','/var/apache/log','/var/run/utmp','/var/logs','/var/log','/var/adm','/etc/wtmp','/etc/utmp','/var/log/lastlog','/var/log/syslog','/var/log/messages','/var/log/httpd/access_log','/var/log/httpd/access.log','/var/log/httpd/error_log','/var/log/httpd/error.log','/var/log/apache2/access_log','/var/log/apache2/access.log','/var/log/apache2/error.log','/var/log/apache2/error_log','/var/log/wtmp','/var/log/secure','/var/log/xferlog','/var/log/auth.log','/var/log/lighttpd/lighttpd.error.log','/var/log/lighttpd/lighttpd.access.log','/var/run/utmp','/var/www/logs/access_log','/var/www/logs/access.log','/var/www/logs/error_log','/var/www/logs/error.log','/var/log/apache/access_log','/var/log/apache/access.log','/var/log/apache/error_log','/var/log/apache/error.log','/var/log/yum.log','/etc/httpd/logs/access_log','/etc/httpd/logs/access.log','/etc/httpd/logs/error_log','/etc/httpd/logs/error.log']
+
+for x in possible_logs_list:
+	if os.path.isfile(x) == True:
+		detected_logs.append(x)
+		clean_detected_logs = "shred -vfzu " + x + " > /dev/null 2>&1 && touch " + x + " > /dev/null 2>&1" 
+		os.system(clean_detected_logs)
+			
+END
+	 
+		command &&
+		for logs in `find / -name "*.log"`; do
+				shred -vfzu $logs 
+				touch $logs 
+		done &> /dev/null
+		shred -vfzu Authentication.log Log.log Test Tests.log &> /dev/null
+		sudo wipe -rf /var/log/;
+		sudo wipe -rf /home/kodachi/.kbase/core;
+		sudo wipe -rf /home/kodachi/core;
+		sudo wipe -rf /root/core;
+		sudo wipe -rf /core;
+		echo -e "\n";
+		read -n 1 -s -r -p "${reset}Press any key to continue.....";
+	fi
+	
+	
+	
+	
+
+	if [[ $userInput = "1" ]]
+	then
+		cat kodachi.json | jq -r .kodachihwid|xargs;		
+		echo -e "\n";
+		read -n 1 -s -r -p "${reset}Press any key to continue.....";
+	fi
+	
+	if [[ $userInput = "2" ]]
+	then		 
+	    
+	    hwd=$(cat kodachi.json | jq -r .kodachihwid|xargs);
+		echo $hwd > tempfile.txt
+		mousepad  tempfile.txt > /dev/null;
+		sudo rm -f tempfile.txt;
+		echo -e "\n";
+		read -n 1 -s -r -p "${reset}Press any key to continue.....";
+	fi
+	
+	
+	if [[ $userInput = "6" ]]
+	then
+		 sudo tail -f /var/log/syslog
+		 echo -e "\n";
+		 read -n 1 -s -r -p "${reset}Press any key to continue.....";
+	fi
+	
+	if [[ $userInput = "4" ]]
+	then
+		 cat $Jason_file_name | jq -r
+		 echo -e "\n";
+		 read -n 1 -s -r -p "${reset}Press any key to continue.....";
+	fi
+	
+		if [[ $userInput = "5" ]]
+	then
+		 cat $Jason_web_file_name | jq -r
+		 echo -e "\n";
+		 read -n 1 -s -r -p "${reset}Press any key to continue.....";
+	fi
+	
+	
+	if [[ $userInput = "3" ]]
+	then
+		 sudo tail -f $Mykodachi_path/json.log
+		 echo -e "\n";
+		 read -n 1 -s -r -p "${reset}Press any key to continue.....";
+	fi
+
+
+
+	if [[ $userInput = "7" ]]
+	then
+		 sudo cat /var/log/boot.log
+		 echo -e "\n";
+		 read -n 1 -s -r -p "${reset}Press any key to continue.....";
+	fi
+	
+	
+	if [[ $userInput = "8" ]]
+	then
+		 sudo journalctl -b;
+		 echo -e "\n";
+		 read -n 1 -s -r -p "${reset}Press any key to continue.....";
+	fi
+	
+	
+	
+	if [[ $userInput = "9" ]]
+	then
+		 sudo dmesg | less;
+		 echo -e "\n";
+		 read -n 1 -s -r -p "${reset}Press any key to continue.....";
+	fi
+
+
+done;
+
+

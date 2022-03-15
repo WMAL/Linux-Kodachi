@@ -1,0 +1,49 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2022 Founder of Eagle Eye Digital Solutions
+# Discord channel https://discord.gg/KEFErEx
+# Twitter http://twitter.com/warith2020
+# Linkedin http://www.linkedin.com/in/warith1977
+# http://www.digi77.com
+# http://www.om77.net
+# Kodachi  OS/Software/Code are strictly protected by LICENSE terms at /home/kodachi/LICENSE
+#
+#
+# script starts here:
+
+cd $(dirname $0) 
+source Globalconfig;
+
+
+
+# Check status 
+#sysctl -a|grep disable_ipv6
+
+v1="net.ipv6.conf.all.disable_ipv6 = 1";
+v2="net.ipv6.conf.default.disable_ipv6 = 1";
+v3="net.ipv6.conf.lo.disable_ipv6 = 1";
+v4="net.ipv6.conf.tun0.disable_ipv6 = 1";
+sudo sed -i "/$v1/d" /etc/sysctl.conf
+sudo sed -i "/$v2/d" /etc/sysctl.conf
+sudo sed -i "/$v3/d" /etc/sysctl.conf
+sudo sed -i "/$v4/d" /etc/sysctl.conf
+
+sudo bash -c "echo $v1 >> /etc/sysctl.conf";
+sudo bash -c "echo $v2 >> /etc/sysctl.conf";
+sudo bash -c "echo $v3 >> /etc/sysctl.conf";
+sudo bash -c "echo -n $v4 >> /etc/sysctl.conf";  
+echo -n "1" > /proc/sys/net/ipv6/conf/all/disable_ipv6;
+sudo sysctl -p; 
+# Alternative way but I use both to be sure
+sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1
+sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1
+notify-send -i $notifyIcon "IPv6 disabled"; 
+
+exit 1
+
+
+
+
+
+
+

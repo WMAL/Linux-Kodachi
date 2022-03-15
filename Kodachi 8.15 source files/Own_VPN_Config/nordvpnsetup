@@ -1,0 +1,21 @@
+# Nord VPN is a paid service you need to buy then get a user name and password from them 
+# Nord VPN website: https://nordvpn.com/ 
+# Below is Just an example only do not keep empty space between = and the first letter ':
+# NordVPNusername='myemail123@gmail.com' 
+# NordVPNpassword='MyStrongP@sswoRd323'
+# Examples ends here now what comes are real values used by system scripts
+###########################################
+
+# Set your user and password below this line:
+NordVPNusername=''    
+NordVPNpassword=''
+
+
+
+# You don't need to change below this line unless you don't want the script to pick a random node for you
+
+# If you don't want random vpn node to be selected then set below value to 0 then change nordprofilenametouse value to what you wish:
+randomnordvpn='1'
+
+# Specify the profile name you want to be used if randomnordvpn value is 0 pick a profile name from here /home/kodachi/Own_VPN_Config/NordVPN/
+nordprofilenametouse='nl268.nordvpn.com.udp.ovpn' 

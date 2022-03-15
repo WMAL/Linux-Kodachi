@@ -1,0 +1,165 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2022 Founder of Eagle Eye Digital Solutions
+# Discord channel https://discord.gg/KEFErEx
+# Twitter http://twitter.com/warith2020
+# Linkedin http://www.linkedin.com/in/warith1977
+# http://www.digi77.com
+# http://www.om77.net
+# Kodachi  OS/Software/Code are strictly protected by LICENSE terms at /home/kodachi/LICENSE
+#
+#
+# script starts here:
+
+cd $(dirname $0) 
+source Globalconfig;
+
+
+netStatustxt=$(cat $Jason_file_name | jq -r .InternetStatus);
+if [[ $netStatustxt == *Online* ]]
+then
+	
+	#xP=$(id -u $LOGED_USER);
+	if [[ $xP == 1000 ]]  
+	then
+
+		
+		#if (apt-mark showhold|grep cryptsetup-bin  > /dev/null) 
+		#then
+
+		goAhead=0;
+
+		dialog --backtitle "Remove $OS_name Nuke setup" \
+		--title "Disable $OS_name Nuke setup" \
+		--yes-label "YES! I don't care about my security" --no-label "No I was just trying it" --yesno "Are you sure?" 6 40
+		response=$?
+		case $response in
+			0) goAhead=1 ;;
+			1) goAhead=0 ;;
+			255) ctrl_c ;;
+		esac
+		 
+		if [[ $goAhead == 1 ]]
+		then
+			clear;
+			# Check if system is nuked or not
+			#getSDA=$(lsblk|egrep crypt|cut -d _ -f 1| sed 's/[^a-zA-Z0-9]//g'|head -n 1);
+			getSDA=$(blkid -t TYPE=crypto_LUKS|cut -d : -f 1|cut -d / -f 3|head -n 1);
+			All_Slots=$(cryptsetup luksDump /dev/$getSDA | grep Slot | wc -l)
+			Free_Slots=$(cryptsetup luksDump /dev/$getSDA | grep DISABLED | wc -l)
+			Used_Slots=$(cryptsetup luksDump /dev/$getSDA | grep ENABLED | wc -l)
+			print_good "LUKS-Slots insgesamt: $All_Slots";
+			print_good "Used LUKS-Slots: $Used_Slots";
+			print_good "Free LUKS-Slots: $Free_Slots";
+			# Get saved records	
+			if [[ -f  $Mykodachi_path/osnukevars ]]
+			then
+				source $Mykodachi_path/osnukevars
+			else
+				osisnuked=0;
+			fi
+			echo "";
+			echo "Old saved drive:$drive";
+			echo "";
+			
+			#if [[ "$Used_Slots" -lt 2 ]]
+			if [[ $osisnuked != 1 ]]
+			then
+
+				print_error "$OS_name is not nuked bye..";
+				notify-send -i $notifyIcon "$OS_name is not nuked bye..";
+				exit 1;
+
+			else
+				lsblk
+				echo "";
+				while true; do
+					read -p "${cayn}Is the selected device ${reset}$getSDA${cayn} correct|Yes/No?  ${reset}" yn 
+					echo;
+					case $yn in
+						[Yy]* ) break;;
+						[Nn]* ) read -p "${cayn}Ok please type the correct device only the name without the path / and hit enter e.g. sda4 or sdb3 ..etc ${reset}";echo;getSDA=$REPLY;;
+						* ) echo "${cayn}Please answer ${reset}yes ${cayn}or ${reset}no.";;
+					esac
+				done
+				
+				if [[ $getSDA == $drive ]]
+				then
+					print_good "${cayn}Drive selected ${reset}$getSDA ${cayn}is same as we have in config ${reset}$drive";
+				else
+					print_error "${cayn}Warning! Drive selected ${reset}$getSDA ${cayn}is not same as we have in config ${reset}$drive";				
+				fi
+				
+				if !(lsblk|grep $getSDA > /dev/nul)
+				then
+					print_error "/dev/$getSDA you selected does not exist";
+					exit 1;
+				fi
+				
+				if [[ -f $Myhome_path/Desktop/header-backup ]]
+				then
+					print_error "Found $Myhome_path/Desktop/header-backup please delete it first";
+					exit 1;
+				fi 
+			
+				if [[ -f $Myhome_path/Desktop/header-backup.enc ]]
+				then
+					print_error "Found $Myhome_path/Desktop/header-backup.enc please delete it first";
+					exit 1;
+				fi 
+				
+				echo "";
+				print_good "$OS_name is nuked we will disable it now";
+				#notify-send -i $notifyIcon "Disabling the $OS_name OS nuke";
+				read -n 1 -s -r -p "${reset}Press any key to continue.....";				
+				echo "";
+				
+				print_good "Decrypting the encryption header file you will be asked for the header backup password";
+				read -n 1 -s -r -p "${reset}Press any key to continue.....";				
+				echo "";
+				if (sudo openssl enc -d -aes-256-cbc -in $Mykodachi_path/header-backup.enc -out $Myhome_path/Desktop/header-backup)
+				then
+					echo "";
+					print_good "Restoring the encryption header you will be asked for the $OS_name OS bootup password";
+					if (sudo cryptsetup luksHeaderRestore /dev/$getSDA --header-backup-file $Myhome_path/Desktop/header-backup)
+					then
+						echo "Removing custom cryptsetup packeges";
+						sudo apt-mark unhold cryptsetup-bin libcryptsetup12;
+						sudo apt -y update;
+						sudo apt -y --reinstall install cryptsetup-bin libcryptsetup12 cryptsetup;
+						rm -f $Myhome_path/Desktop/header-backup;
+						echo "";
+						notify-send -i $notifyIcon "$OS_name Nuke setup disabled";
+						echo -e "\n";
+						print_good  "${cayn}$OS_name Nuke setup disabled${reset}";
+						echo -e "drive=$getSDA \nosisnuked=0" > $Mykodachi_path/osnukevars;
+					else
+						print_error "Restoring the encryption header file failed";
+					fi
+				else
+					print_error "Decrypting the encryption header file failed";
+				fi
+				exit 1;
+			fi	
+		fi
+
+
+		#else
+			#notify-send -i $notifyIcon "$OS_name is not setup on Nuke";
+			#print_error "$OS_name is not nuked bye..";
+			#exit 1;
+		#fi 											
+
+
+	else
+		print_error "$OS_name Nuke is for installed system only";
+		notify-send -i $notifyIcon "$OS_name Nuke is for installed system only";
+		exit 1;
+	fi
+else
+	notify-send -i $notifyIcon "Please connect to Internet first!";
+	print_error "${cayn}Please connect to Internet first!${reset}";
+	exit 1;
+fi
+
+exit 1;

@@ -1,0 +1,75 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2022 Founder of Eagle Eye Digital Solutions
+# Discord channel https://discord.gg/KEFErEx
+# Twitter http://twitter.com/warith2020
+# Linkedin http://www.linkedin.com/in/warith1977
+# http://www.digi77.com
+# http://www.om77.net
+# Kodachi  OS/Software/Code are strictly protected by LICENSE terms at /home/kodachi/LICENSE
+#
+#
+# script starts here:
+
+
+cd $(dirname $0) 
+source Globalconfig;
+
+
+
+
+
+#xP=$(id -u $LOGED_USER);
+if [[ $xP == 1000 ]]  
+then
+
+	reply=$1;
+
+	
+	if [[ "$reply" = *"on"* ]]
+	then
+
+
+		if (sudo swapon -a)
+		then
+			numberOfcSwaps=$(sudo swapon -s|grep -v Filename|wc -l);
+			notify-send -i $notifyIcon "Swap memory enabled
+Total swap files: $numberOfcSwaps";
+			writeToJason "Yes" "swapstatus";					
+		else
+			sudo  dd if=/dev/zero of=/swapfile bs=1G count=2
+			sudo chown root:root /swapfile
+			sudo chmod 0600 /swapfile
+			sudo ls -lh /swapfile
+			sudo mkswap /swapfile 
+			notify-send -i $notifyIcon "Swap memory enabling failed 
+Changing settings please try again once again";
+			exit 1;
+		fi
+	fi
+	
+		
+		
+	if [[ "$reply" = *"off"* ]]
+	then
+
+		if (sudo swapoff -a)
+		then
+			notify-send -i $notifyIcon "Swap memory disabled";
+			writeToJason "No" "swapstatus";
+		else
+			notify-send -i $notifyIcon "Swap memory disabling failed";
+			exit 1;
+		fi
+	fi
+	
+
+
+else
+
+	print_error "$OS_name swap is for installed system only";
+	notify-send -i $notifyIcon "$OS_name swap is for installed system only";
+	exit 1;
+fi
+
+exit 1;

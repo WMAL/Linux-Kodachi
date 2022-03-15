@@ -1,0 +1,30 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2022 Founder of Eagle Eye Digital Solutions
+# Discord channel https://discord.gg/KEFErEx
+# Twitter http://twitter.com/warith2020
+# Linkedin http://www.linkedin.com/in/warith1977
+# http://www.digi77.com
+# http://www.om77.net
+# Kodachi  OS/Software/Code are strictly protected by LICENSE terms at /home/kodachi/LICENSE
+#
+#
+# script starts here:
+
+cd $(dirname $0) 
+source Globalconfig;
+
+ 
+# Any modification scripts will be placed here after this line
+
+#Cleaner
+    print_good "Cleanup processs..";	
+	rm -f *update-pack*; 
+	rm -f wget-log		
+	rm -f -r /tmp/home;
+	
+# Do not delete this!
+exit 1;
+
+
+
