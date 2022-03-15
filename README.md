@@ -50,9 +50,11 @@ https://www.digi77.com/software/kodachi/APC-Magazine--496-August-2021-Australia.
 All donations are highly appreciated if you would like to donate use the following:
 
 BTC Donations: 
+
 19pufEJUkQGPJYXCfA1b7GaKSUNeYEsApU
 
 XMR Donations:
+
 44SFJtdWqp85xnRRA8vRs6PimuZXzq36ZHW8fYHFjCk98jpYxNWeJQ7DxwQmWxzeuPQWfp7uqpq9gMQxpdQq3C3dV1taKDE
 
 Paypal:
