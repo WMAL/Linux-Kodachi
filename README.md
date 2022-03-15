@@ -21,10 +21,13 @@ First place at Techradar magazine two consecutive years (2020 – 2021) Original
 https://www.techradar.com/news/best-linux-distro-privacy-security
 https://www.digi77.com/software/kodachi/TechRadar2020.pdf
 https://www.digi77.com/software/kodachi/TechRadar2021.pdf
+
 First place at Linux Format world UK magazine on privacy distribution round up (2020) Linux Format PDF – Original link.
 https://www.digi77.com/software/kodachi/Linux_Format_UK_Issue_267_September_2020.pdf
+
 First place on privacy at DistroWatch (2019) DistroWatch.
 https://twitter.com/warith2020/status/1105179632935075840?s=20
+
 The Lab hot product award August 2021 by Australian APC Magazine
 https://www.digi77.com/software/kodachi/APC-Magazine--496-August-2021-Australia.pdf
 
