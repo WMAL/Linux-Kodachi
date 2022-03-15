@@ -1,6 +1,7 @@
 # kodachi
 
 Latest Kodachi video:
+
 https://www.youtube.com/watch?v=P3i1zGZVOY8
 
 Kodachi website: 
@@ -12,9 +13,11 @@ Please check the above links before posting. 🤖
 Kodachi change log: 
 
 https://digi77.com/software/kodachi/Kodachi-Log.txt
+
 History of all changes made to Linux Kodachi
 
 Kodachi source code:
+
 https://github.com/WMAL/kodachi/
 
 Kodachi latest direct download link:
