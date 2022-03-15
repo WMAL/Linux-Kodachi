@@ -1,0 +1,18 @@
+==================================================
+Filename          : kodachi-8.15-64.iso
+MD5               : 4e4b9c239817995fa524ad7ed87776eb
+SHA1              : 1fd42b36843b610400777c40a02734dc3736b5a9
+CRC32             : 2763ae5f
+SHA-256           : 8db2a2cd61d4a1a293d92b8b4995966447c9ad00d76323883737722b17743ef9
+SHA-512           : 6628466cb9b234439d7d445c2407df72c64d6cf11590ddd50b26d2c9c8091cd17f9337c0b111d8427b2ca19b0da09f1d185c52029893c05b196944921125e7c0
+SHA-384           : 81993990cc03ec69830a3246f754a04c4f192a56f22c99ca4b845ad0df7d29dafb20aa072144cfdbf559cb38faac7b68
+Full Path         : https://www.digi77.com/software/kodachi/kodachi-8.15-64.iso
+Modified Time     : 2/14/2022 10:21:03 AM
+Created Time      : 2/14/2022 10:22:41 AM
+File Size         : 3,221,225,472
+File Version      : 8.15
+Product Version   : 8.15
+Extension         : iso
+File Attributes   : A
+==================================================
+
