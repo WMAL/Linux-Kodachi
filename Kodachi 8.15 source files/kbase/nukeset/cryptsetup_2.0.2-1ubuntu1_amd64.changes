@@ -1,0 +1,76 @@
+Format: 1.8
+Date: Fri, 06 Apr 2018 10:23:53 -0700
+Source: cryptsetup
+Binary: cryptsetup cryptsetup-bin libcryptsetup12 libcryptsetup-dev cryptsetup-udeb libcryptsetup12-udeb
+Architecture: amd64
+Version: 2:2.0.2-1ubuntu1
+Distribution: bionic
+Urgency: low
+Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
+Changed-By: Steve Langasek <steve.langasek@ubuntu.com>
+Description:
+ cryptsetup - disk encryption support - startup scripts
+ cryptsetup-bin - disk encryption support - command line tools
+ cryptsetup-udeb - disk encryption support - commandline tools (udeb) (udeb)
+ libcryptsetup-dev - disk encryption support - development files
+ libcryptsetup12 - disk encryption support - shared library
+ libcryptsetup12-udeb - disk encryption support - shared library (udeb) (udeb)
+Launchpad-Bugs-Fixed: 1755322
+Changes:
+ cryptsetup (2:2.0.2-1ubuntu1) bionic; urgency=low
+ .
+   * Merge from Debian unstable.
+     - bugfix upstream release, which solves problems with luks2 format
+       disks not unlocking.  LP: #1755322.
+   * Remaining changes:
+     - debian/control:
+       + Depend on plymouth.
+       + Invert the "busybox | busybox-static" Recommends, as the latter
+         is the one we ship in main as part of the ubuntu-standard task.
+       + Drop explicit libgcrypt20 dependency from libcryptsetup4.
+     - Drop _BSD_SOURCE in favor of _DEFAULT_SOURCE
+     - Drop c99 std, as the default is now higher than that
+     - Drop upstart system jobs.
+     - Add maintscript to drop removed upstart system jobs.
+       - debian has its own now, but we have different version numbers.
+         this delta can be dropped after 18.04 release.
+     - Drop the CRYPTSETUP variable warning from the initramfs hook, as
+       overlayroot package ships a dropin in conf-hooks.d triggering false
+       warnings.
+   * Dropped changes:
+     - debian/cryptdisks{,-udev}.maintscript: drop, there is no package named
+       'cryptdisks' or 'cryptdisks-udev'.
+Checksums-Sha1:
+ 7a4bb76d855b319401767914e0706446f747a5af 149868 cryptsetup-bin-dbgsym_2.0.2-1ubuntu1_amd64.ddeb
+ 41d3c625bb9f6616d11661ba9e673138743d8b35 284748 cryptsetup-bin_2.0.2-1ubuntu1_amd64.deb
+ 942131087e925e72c55457f520ad49c35c3de57c 17188 cryptsetup-dbgsym_2.0.2-1ubuntu1_amd64.ddeb
+ ceeb36b7005eb61b172b37625483687742755c0c 46456 cryptsetup-udeb_2.0.2-1ubuntu1_amd64.udeb
+ 33d2f1ea291dbc8b83f3794d1143a1b03165700d 8500 cryptsetup_2.0.2-1ubuntu1_amd64.buildinfo
+ 4ce188527b372ac315523b66325f35fa3f5526bb 204964 cryptsetup_2.0.2-1ubuntu1_amd64.deb
+ c85ad77327cb9c64e36f5cd825032e6f0366a257 72792 libcryptsetup-dev_2.0.2-1ubuntu1_amd64.deb
+ 0055e6eecdfbddddf51209c8ff9ad8d32c715f59 329424 libcryptsetup12-dbgsym_2.0.2-1ubuntu1_amd64.ddeb
+ bf4658889af2e57f921ba81bca35166fef226b97 124788 libcryptsetup12-udeb_2.0.2-1ubuntu1_amd64.udeb
+ 1c57b9ab1b78469b18abb6d167de141477cc862c 181444 libcryptsetup12_2.0.2-1ubuntu1_amd64.deb
+Checksums-Sha256:
+ c7733001f38435a57ff336cfab6497f08859ff822d15b2f6fee002b9df8c30b1 149868 cryptsetup-bin-dbgsym_2.0.2-1ubuntu1_amd64.ddeb
+ 094d41deb88f0c7a8c216883f03073e0c595f8786e73bf4ba207c1984c4c37e0 284748 cryptsetup-bin_2.0.2-1ubuntu1_amd64.deb
+ 3f79b0b8af6ee685f4efd4705c93ffd71bbcc72194363ffb4a0adba5f7c59f58 17188 cryptsetup-dbgsym_2.0.2-1ubuntu1_amd64.ddeb
+ 6f3acc1a4df4db010f9bfb68dc68f638ffa02b790bd6fd44180d89e5c051c8da 46456 cryptsetup-udeb_2.0.2-1ubuntu1_amd64.udeb
+ 303b381d5730a8d88aa5424ce06af3fde5834045bb6558e990a1b2bb442cf4bf 8500 cryptsetup_2.0.2-1ubuntu1_amd64.buildinfo
+ a7abc8ae70a2541ff45d3482ae57152ff39749d1feac1532e0e68b6e5645b147 204964 cryptsetup_2.0.2-1ubuntu1_amd64.deb
+ 0f6eb1512ef2c7bf37ea6ac3b7035ac6a6a17b1bb2f5161a4eec85d69bcb7952 72792 libcryptsetup-dev_2.0.2-1ubuntu1_amd64.deb
+ 957e53d23ba98595f2bf0b1ef3a337747f801ac2e8dac4205c3b7f505e8919dc 329424 libcryptsetup12-dbgsym_2.0.2-1ubuntu1_amd64.ddeb
+ f915e81a779826c8ecd647ef7b89f48425ec406046d7de5b57d7978bc1b75a77 124788 libcryptsetup12-udeb_2.0.2-1ubuntu1_amd64.udeb
+ ae693b17dbadddafc6e22d9b15da3531d57dcd3c1935b69e1cc804657814d6b2 181444 libcryptsetup12_2.0.2-1ubuntu1_amd64.deb
+Files:
+ ad0067ff69a02dc23ed238213d2c4121 149868 debug optional cryptsetup-bin-dbgsym_2.0.2-1ubuntu1_amd64.ddeb
+ abdc07b198132dceb846925a3e5875de 284748 admin optional cryptsetup-bin_2.0.2-1ubuntu1_amd64.deb
+ 0288297da8d3183bd46fe4e76ffb6995 17188 debug optional cryptsetup-dbgsym_2.0.2-1ubuntu1_amd64.ddeb
+ 09dac3fe05ffe97df9566b3eda4d31b4 46456 debian-installer optional cryptsetup-udeb_2.0.2-1ubuntu1_amd64.udeb
+ 073f0d10e73b3f0817de0295c680261a 8500 admin optional cryptsetup_2.0.2-1ubuntu1_amd64.buildinfo
+ a267c49e0f05b10ab778e5a4d526f0c2 204964 admin optional cryptsetup_2.0.2-1ubuntu1_amd64.deb
+ c45fb91791ef43fb42c70a03bbb472dc 72792 libdevel optional libcryptsetup-dev_2.0.2-1ubuntu1_amd64.deb
+ d9ea320b17a7827c3478f9e1862100b3 329424 debug optional libcryptsetup12-dbgsym_2.0.2-1ubuntu1_amd64.ddeb
+ ae5bb45204c4a216ac7ef2d8258f4f4a 124788 debian-installer optional libcryptsetup12-udeb_2.0.2-1ubuntu1_amd64.udeb
+ 84bce16997a24a4fcbaf53a02474651f 181444 libs optional libcryptsetup12_2.0.2-1ubuntu1_amd64.deb
+Original-Maintainer: Debian Cryptsetup Team <pkg-cryptsetup-devel@lists.alioth.debian.org>

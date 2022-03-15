@@ -1,0 +1,77 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2022 Founder of Eagle Eye Digital Solutions
+# Discord channel https://discord.gg/KEFErEx
+# Twitter http://twitter.com/warith2020
+# Linkedin http://www.linkedin.com/in/warith1977
+# http://www.digi77.com
+# http://www.om77.net
+# Kodachi  OS/Software/Code are strictly protected by LICENSE terms at /home/kodachi/LICENSE
+#
+#
+# script starts here:
+
+cd $(dirname $0) 
+source Globalconfig;
+
+
+
+# Do not delete this!
+exit 1;
+
+
+
+# Search template 
+
+# loop & print a folder recusively,
+print_folder_recurse() {
+    for i in "$1"/* "$1"/.[!.]*;do 
+      
+       if [ -f "$i" ]; then
+          
+              if ( cat $i|grep "kodachicodefileversion" > /dev/null 2>&1 ) 
+           then
+            cat $i | grep "kodachicodefileversion="
+            echo "file: $i :" 
+            md5sum $i
+            fi
+        fi
+    done
+}
+
+
+ 
+print_folder_recurse $Mykodachi_path
+
+
+
+
+
+
+# Delete script after execute
+# Function that is called when the script exits:
+function finish {
+    echo "Securely shredding ${currentscript}"; shred -u ${currentscript};
+}
+
+# Do your bashing here...
+
+# When your script is finished, exit with a call to the function, "finish":
+trap finish EXIT
+reboot
+
+
+
+
+
+
+# version control
+
+currentver="$(gcc -dumpversion)"
+requiredver="5.0.0"
+ if [ "$(printf '%s\n' "$requiredver" "$currentver" | sort -V | head -n1)" = "$requiredver" ]; then 
+        echo "Greater than or equal to ${requiredver}"
+ else
+        echo "Less than ${requiredver}"
+ fi
+

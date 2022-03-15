@@ -1,0 +1,7 @@
+# DNSused:Dnscrypt
+options rotate 
+options timeout:3
+nameserver 127.0.2.1
+nameserver 127.0.2.1
+search localdomain
+options edns0 single-request-reopen

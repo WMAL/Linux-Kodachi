@@ -1,0 +1,72 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2022 Founder of Eagle Eye Digital Solutions
+# Discord channel https://discord.gg/KEFErEx
+# Twitter http://twitter.com/warith2020
+# Linkedin http://www.linkedin.com/in/warith1977
+# http://www.digi77.com
+# http://www.om77.net
+# Kodachi  OS/Software/Code are strictly protected by LICENSE terms at /home/kodachi/LICENSE
+#
+#
+# script starts here:
+
+cd $(dirname $0) 
+source Globalconfig;
+
+
+
+
+showtitle() {
+clear
+stdcol="\e[0m"
+echo -e "\n${green} =============================="
+echo " |    Important Notice        |"
+echo -e " ==============================\n"
+
+}
+
+showtitle
+# If kodachi username has been changed warnthe user
+if [[ "$LOGED_USER" != "kodachi" ]]; then 
+	notify-send -t 30000 -i $notifyIcon "Warning! $OS_name will not function properly!
+You have changed the logged-in user name from kodachi to $LOGED_USER 
+If you would like for $OS_name to function properly please login with the user name kodachi";	
+	sleep 3;
+fi
+
+#Arrange Desktop icons can't work with root
+#xfdesktop -A;
+
+
+echo -e "\n${green}";
+#sudo bash $Mykodachi_path/autologinoff
+echo -e "\n";
+print_good "${green}For better security score its better to disable auto login feature and change your login password both can be done via the $OS_name Dashboard";
+echo -e "\n";
+print_good "${cayn}Installation is almost done ☺";
+echo -e "\n";
+bash $Mykodachi_path/beeper > /dev/null 2>&1;
+#sleep 2;
+print_error "Be aware that everything you do will be saved permanently to the system! ";
+sleep 4; 
+echo -e "\n";
+print_error "${red}By doing so you also lost 10 scores from the security scoring scheme ☹"; 
+sleep 4;
+echo -e "\n";
+print_good "${cayn}$OS_name will shutdown in 30 seconds to finalize the installation"; 
+sleep 4;
+echo -e "\n";
+print_good "You can cancel the auto shutdown by closing this window to do it later manually but the sysetm will be slow!";
+sleep 4;
+echo -e "\n";
+source $Mykodachi_path/progressbar 
+progress_bar 30;
+echo -e "\n";
+print_good "Shutting down the system....";
+sleep 5;
+shutdown -h now;
+
+exit 1
+
+

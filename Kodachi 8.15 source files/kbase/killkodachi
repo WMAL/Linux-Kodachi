@@ -1,0 +1,88 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2022 Founder of Eagle Eye Digital Solutions
+# Discord channel https://discord.gg/KEFErEx
+# Twitter http://twitter.com/warith2020
+# Linkedin http://www.linkedin.com/in/warith1977
+# http://www.digi77.com
+# http://www.om77.net
+# Kodachi  OS/Software/Code are strictly protected by LICENSE terms at /home/kodachi/LICENSE
+#
+#
+# script starts here:
+
+
+
+cd $(dirname $0) 
+source Globalconfig;
+
+
+
+goAhead=0;
+
+dialog --backtitle "OMG! Your just one step to destroy $OS_name" \
+--title "This will wipe everything on your system are you sure you want to do this?!!!" \
+--yes-label "YES! I am not drunk" --no-label "No I was just trying it" --yesno "Are you sure?" 6 40
+response=$?
+case $response in
+	0) goAhead=1 ;;
+	1) goAhead=0 ;;
+	255) ctrl_c ;;
+esac
+ 
+if [[ $goAhead == 1 ]]
+then
+	clear
+	print_error "ヽ༼ ಠ益ಠ ༽ﾉ Warning!!! ヽ༼ ಠ益ಠ ༽ﾉ"
+	echo "";
+	print_good "Please remove any attached media ($OS_name might wipe them!) then";
+	echo "";
+	read -n 1 -s -r -p "Press any key to confirm the system wipe! To stop it close this window!";
+	 
+	
+	notify-send -i $notifyIcon "$OS_name will be destroyed!!"
+	print_good "Wiping Swap";
+	sudo swapoff -a;
+	sudo wipe -q -f /swapfile	
+	print_good "Wiping /tmp!";
+	sleep 3;
+	sudo chown $LOGED_USER.$LOGED_USER /tmp -R;
+	sudo find /tmp -type f | xargs shred -v -u -z -f --remove;
+	sudo rm -f -r /tmp
+	print_good "Wiping logs!";
+	sleep 3;
+	sudo chown $LOGED_USER.$LOGED_USER /var -R;
+	sudo find /var/log -type f | xargs shred -v -u -z -f --remove;
+	print_good "Wiping home!";
+	sleep 3;    
+	sudo find -mount -type f -execdir shred -v -u -z -f '{}' \;
+	sudo find /home -mount -exec shred -u -z -v -f {} \;	
+	wipe -f -q -r /home
+	wipe -f -q -r /var/log
+	wipe -f -q -r /tmp
+	sudo rm -f -r /home	
+	sudo rm -f -r /var/log
+	sudo rm -f -r /tmp
+	print_good "Wiping other system folders!";
+	sleep 3;
+	sudo find /root -mount -exec shred -u -z -v -f {} \;
+	wipe -f -q -r /root
+	sudo find / -mount -exec shred -u -z -v -f {} \;
+	sudo find /usr -mount -exec shred -u -z -v -f {} \;
+	wipe -f -q -r /usr
+	sudo find /etc -mount -exec shred -u -z -v -f {} \;
+	wipe -f -q -r /etc
+	print_good "Bye Bye! I am clean now";
+	sleep 3;
+	sudo shutdown -h now
+	reboot 
+else
+  	print_error "Yes stay away from this script!";
+	exit 1; 
+fi
+# Never enable it will wipe all your attached medias
+#cd /
+#sudo rm -rf *
+ 
+	
+exit 1;

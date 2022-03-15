@@ -1,0 +1,135 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2021 Founder of Eagle Eye Digital Solutions
+# Discord channel https://discord.gg/KEFErEx
+# Twitter http://twitter.com/warith2020
+# Linkedin http://www.linkedin.com/in/warith1977
+# http://www.digi77.com
+# http://www.om77.net
+# Kodachi  OS/Software/Code are strictly protected by LICENSE terms at /home/kodachi/LICENSE
+#
+#
+# script starts here:
+
+cd $(dirname $0) 
+source Globalconfig;
+
+
+if [ ! -d $Mykodachi_path/tmp ]; then
+	mkdir -p $Mykodachi_path/tmp;
+	chown $LOGED_USER.$LOGED_USER $Mykodachi_path/tmp;
+fi;
+
+#NEW_UUID=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)
+NEW_UUID="mpWSUbCNvn8UjXumBnwZ5bRWDUAF0zDx@";
+me=$(basename "$(test -L "$0" && readlink "$0" || echo "$0")")
+
+lockdir="$Mykodachi_path/tmp/$NEW_UUID$me";
+mkdir $lockdir || {
+    echo "lock directory exists. exiting"
+    exit 1
+}
+# take pains to remove lock directory when script terminates
+trap "rmdir $lockdir" EXIT INT KILL TERM
+
+# rest of script here
+sudo chown $LOGED_USER.$LOGED_USER $Mykodachi_path/tmp/$NEW_UUID$me;
+	
+# end script locker
+
+
+
+
+# check if user has logged in
+if [[ $LOGED_USER = *kodachi* ]]; then
+
+ 
+ #notify-send -i $notifyIcon "Information display will start in few seconds";
+ #echo "Information display will start in few seconds";
+ 
+ 
+# Dell xps14 won;t stat with usbguard
+#SERVICE='usbguard-applet-qt';
+#if !(ps ax | grep -v grep | grep $SERVICE > /dev/null)
+#then
+	#usbguard=$(cat $Jason_file_name | jq -r .usbguardstatus);
+	#if [[ "$usbguard" == *Yes* ]]
+	#then
+		#sudo killall usbguard-applet-qt;
+		#sudo nohup usbguard-applet-qt &  > /dev/null 2>&1;   
+		#sleep 3;
+	#fi			
+#fi		
+ 
+	# First boot message
+	#xP=$(id -u $LOGED_USER)
+	if [[ $xP != 1000 ]] 
+	then
+		sleep 40;
+		xfdesktop -A;
+		xfce4-panel -r;
+	else
+		sleep 15;
+		xfce4-panel -r;
+	fi
+	
+	
+	 
+	while true; do
+		showConky=$(cat $Jason_file_name | jq -r .showconky);
+		if [[ "$showConky" == *Yes* ]]
+		then 
+			if [[ $LOGED_USER = $EXEC_USER ]]; then
+				SERVICE='conkyrc0';
+				if !(ps ax | grep -v grep | grep $SERVICE > /dev/null)
+				then		
+					
+					SERVICE='cairo-dock';
+					if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+					then
+						#sleep 1;
+						sudo killall conky;
+						sleep 5;
+						# use for cron for now killall is enopugh
+						#export pid=`ps aux | grep conkyrc7 | awk 'NR==1{print $2}' | cut -d' ' -f1`;kill -9 $pid;
+						sleep 1;
+						conky -d -c "$Mykodachi_path/.conkyrc0";	
+						sleep 1
+						conky -d -c "$Mykodachi_path/.conkyrc1";	
+						sleep 1
+						conky -d -c "$Mykodachi_path/.conkyrc3";	
+						sleep 1
+						conky -d -c "$Mykodachi_path/.conkyrc2";						
+						#sleep 1
+						#conky -d -c "$Mykodachi_path/.conkyrc4";	
+						# Fix Networkapplet showing twice
+												
+					fi
+				fi
+			fi
+		fi
+		sleep 5;
+		
+		# Replaced with xfce4-panel -r
+		#sleep 3;
+		
+		# Network applet issues fix
+		#theTotal=$(ps ax | grep -v grep | grep nm-applet|wc -l)	
+		#if [[ $theTotal -gt 1 ]]
+		#then 
+			#sudo pkill nm-applet && nm-applet & > /dev/null;
+			#echo "in 1";
+		#fi 	
+		
+		#sleep 3;
+		
+		#SERVICE='nm-applet';
+		#if !(ps ax | grep -v grep | grep $SERVICE > /dev/null)
+		#then	
+			#nm-applet;
+		#fi						
+		
+	 
+	done				
+
+fi

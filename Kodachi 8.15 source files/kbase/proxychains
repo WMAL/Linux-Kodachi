@@ -1,0 +1,176 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2022 Founder of Eagle Eye Digital Solutions
+# Discord channel https://discord.gg/KEFErEx
+# Twitter http://twitter.com/warith2020
+# Linkedin http://www.linkedin.com/in/warith1977
+# http://www.digi77.com
+# http://www.om77.net
+# Kodachi  OS/Software/Code are strictly protected by LICENSE terms at /home/kodachi/LICENSE
+#
+#
+# script starts here:
+
+
+cd $(dirname $0) 
+source Globalconfig;
+unset tornullipcounter;
+unset COuntryCode;
+unset rand;
+unset TorCon;
+unset appName;
+unset jsonvarName;
+appName="Proxychains";
+jsonvarName="proxychainstor";
+
+#arr[0]="ch";
+#arr[1]="be";
+#arr[2]="nl";
+#arr[3]="pl";
+#arr[4]="it";
+#arr[5]="at";
+#arr[6]="jp";
+
+arr[0]="ch";
+arr[1]="at";
+arr[2]="lu";
+arr[3]="ro";
+arr[4]="sc";
+arr[5]="pl";
+arr[6]="cz";
+arr[7]="za";
+arr[8]="kr";
+arr[9]="jp";
+arr[10]="th";
+arr[11]="br";
+arr[12]="is";
+arr[13]="ru";
+arr[14]="ua";
+arr[15]="md";
+arr[16]="bz";
+arr[17]="hu";
+arr[18]="bg";
+arr[19]="sg";
+arr[20]="fi";
+arr[21]="tr";
+
+
+function waitForTor2beready()
+{
+	
+	echo "waitForTor2beready function start";
+	tornullipcounter=0;
+	SERVICE='tor-service';
+	if (ps ax | grep -v grep | grep $SERVICE > /dev/null)	
+	then		
+		TorCon=0;
+		writeToJason "$TorCon" "$jsonvarName";
+		while [[ $TorCon -eq 0 ]]; do
+			tornullipcounter=$((tornullipcounter+1));
+			echo "*************************  waiting for Tor to be ready  **********************";
+			echo -e "\n"
+			#while [[ ! `timeout 50 torsocks curl --connect-timeout 15 --retry 5 $kodachiipcheck 2>/dev/null` ]]; do sleep 1; done
+			
+			local hostport="localhost:9050" 
+			local url=$(cat $Jason_web_file_name | jq -r '.ServerFeed2[].torstatuschecksite'|xargs);
+			if [[ ! -n "$url" ]]
+			then
+				url="https://check.torproject.org/";
+				print_error "Failed to get TOR site from json setting value to: $url";
+			fi
+				
+			
+			torsearchkeyword=$(cat $Jason_web_file_name | jq -r '.ServerFeed2[].torsearchkeyword'|xargs);
+			if [[ ! -n "$torsearchkeyword" ]]
+			then
+				torsearchkeyword="Congratulations";
+				print_error "Failed to get TOR search keyword from json setting value to: $torsearchkeyword";
+			fi
+			
+			
+			if curl -s -m 15 --socks5 "$hostport" --socks5-hostname "$hostport" -L "$url" | cat | tac | grep -q "$torsearchkeyword";  
+			then
+				TorCon=1;
+				tornullipcounter=0;	
+				writeToJason "$TorCon" "$jsonvarName";	
+				print_good "Torrify is on good site used: $url serachkeyword is:$torsearchkeyword";
+			else
+				TorCon=0;
+				writeToJason "$TorCon" "$jsonvarName";	
+				print_error "Torrify is off bad TOR will restart site used: $url serachkeyword is:$torsearchkeyword";
+					
+				rand=$[$RANDOM % ${#arr[@]}]
+				COuntryCode=${arr[$rand]};
+			
+				if [[ $tornullipcounter -le 5 ]]
+				then
+					# for some how some tor nodes are banned
+					sudo bash $Mykodachi_path/torforce off|(echo authenticate '"Auo2@s3ks@Wdq"';echo SETCONF ExitNodes={$COuntryCode};echo SETCONF StrictNodes=1 ;echo signal newnym; echo quit) | nc localhost 9060
+					print_error "Try to switch TOR to: $COuntryCode tornullipcounter is: $tornullipcounter";	
+				fi
+												
+				if [[ $tornullipcounter > 5 ]]
+				then
+					# for some how some tor nodes are banned
+					sudo bash $Mykodachi_path/torforce off|(echo authenticate '"Auo2@s3ks@Wdq"';echo SETCONF ExitNodes={$COuntryCode};echo SETCONF StrictNodes=1 ;echo signal newnym; echo quit) | nc localhost 9060
+					print_error "Try to switch TOR to: $COuntryCode tornullipcounter is: $tornullipcounter";	
+					sleep 1							
+					sudo /etc/init.d/tor restart;
+					print_error "Giving up on country atttempts restarting TOR";
+					sleep 1;
+				fi
+				echo "Tor while loop result: $TorCon";
+				sleep 5; 
+			fi
+			
+		done
+	fi
+}
+
+
+
+
+	
+		
+SERVICE='tor-service';
+if !(ps ax | grep -v grep | grep $SERVICE > /dev/null)
+then		
+		rand=$[$RANDOM % ${#arr[@]}]
+		COuntryCode=${arr[$rand]};		
+		print_error "Tor process was not found so let us restart it";
+		sudo /etc/init.d/tor restart;
+		writeToJason "Yes" "TORenabled";
+		writeToJason "Yes" "TORonifVPNisoff";
+		notify-send -i $notifyIcon "Changing TOR setting to start without VPN"; 	
+		sleep 3;
+		sudo bash $Mykodachi_path/torforce off|(echo authenticate '"Auo2@s3ks@Wdq"';echo SETCONF ExitNodes={$COuntryCode};echo SETCONF StrictNodes=1 ;echo signal newnym; echo quit) | nc localhost 9060
+		print_error "First try to switch TOR to: $COuntryCode";
+		sleep 3;
+fi
+
+# Wait for mr tor to be ready
+#waitForTor2beready;
+( cmdpid=$BASHPID; 
+(sleep 60; kill $cmdpid) \
+& while ! waitForTor2beready 
+ do 
+	 echo "Tor wait termintated"; 
+ done )			
+
+
+
+
+TorCon=$(cat $Jason_file_name | jq -r .$jsonvarName);
+echo "TorCon value is: $TorCon"
+if [[ $TorCon -eq 0 ]]
+then
+	notify-send -t 30000 -i $notifyIcon "$OS_name failed to start $appName TOR is not working please try again";
+	exit 1;
+
+else
+	# Set you actions here
+	proxychains firefox;
+	exit 1;
+fi
+
+exit 1;

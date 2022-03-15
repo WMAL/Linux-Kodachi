@@ -1,0 +1,102 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2022 Founder of Eagle Eye Digital Solutions
+# Discord channel https://discord.gg/KEFErEx
+# Twitter http://twitter.com/warith2020
+# Linkedin http://www.linkedin.com/in/warith1977
+# http://www.digi77.com
+# http://www.om77.net
+# Kodachi  OS/Software/Code are strictly protected by LICENSE terms at /home/kodachi/LICENSE
+#
+#
+# script starts here:
+
+
+cd $(dirname $0) 
+source Globalconfig;
+
+
+
+#Refrence
+#Yes, to comment line containing specific string with sed, simply do:
+#sed -i '/<pattern>/s/^/#/g' file
+
+#And to uncomment it:
+#sed -i '/<pattern>/s/^#//g' file
+
+reply=$1;
+
+#echo "Args:$reply";
+if [[ "$reply" = *"setoff"* ]]
+then
+	if [[ -f /etc/tor/torrc.custom ]]
+	then
+		notify-send -t 15000 -i $notifyIcon "Block Tor eyes countries is on disabling it now
+Please choose desired Tor exit country after 15 seconds";
+		echo "off matched executing commmands";
+		#sudo mv /etc/tor/torrc.custom /etc/tor/torrc.custom.pause;
+		rm -f /etc/tor/torrc.custom;
+		sudo sed -i '/torrc.custom/s/^/#/g' /etc/tor/torrc;
+		sudo /etc/init.d/tor restart;
+		writeToJason "1" "systemhealthactionpicker";	
+		#echo "Tor restarted Pasuing for 30";
+		#sleep 60 
+		#echo "done";
+		exit 1;
+	fi
+fi
+
+
+if [[ "$reply" = *"5"* ]]
+then
+	
+	notify-send -i $notifyIcon "Enabling 5 eyes countries TOR block";
+	echo "on matched executing commmands";
+	echo "#5eyes
+StrictNodes 1
+ExcludeNodes {us},{gb},{ca},{nz},{au}
+ExcludeExitNodes {us},{gb},{ca},{nz},{au}" > /etc/tor/torrc.custom;		
+	sudo sed -i '/torrc.custom/s/^#//g' /etc/tor/torrc;
+	sudo /etc/init.d/tor restart;	
+	writeToJason "1" "systemhealthactionpicker";		
+	exit 1;
+	
+fi
+
+
+if [[ "$reply" = *"9"* ]]
+then
+	
+	notify-send -i $notifyIcon "Enabling 9 eyes countries TOR block";
+	echo "on matched executing commmands";
+	echo "#9eyes
+StrictNodes 1
+ExcludeNodes {us},{gb},{ca},{nz},{au},{dk},{fr},{nl},{no}
+ExcludeExitNodes {us},{gb},{ca},{nz},{au},{dk},{fr},{nl},{no}" > /etc/tor/torrc.custom;		
+	sudo sed -i '/torrc.custom/s/^#//g' /etc/tor/torrc;
+	sudo /etc/init.d/tor restart;
+	writeToJason "1" "systemhealthactionpicker";		
+	exit 1;
+	
+fi
+
+
+if [[ "$reply" = *"14"* ]]
+then
+	
+	notify-send -i $notifyIcon "Enabling 14 eyes countries TOR block";
+	echo "on matched executing commmands";
+	echo "#14eyes
+StrictNodes 1
+ExcludeNodes {us},{gb},{ca},{nz},{au},{dk},{fr},{nl},{no},{de},{be},{es},{it},{se}
+ExcludeExitNodes {us},{gb},{ca},{nz},{au},{dk},{fr},{nl},{no},{de},{be},{es},{it},{se}" > /etc/tor/torrc.custom;		
+	sudo sed -i '/torrc.custom/s/^#//g' /etc/tor/torrc;
+	sudo /etc/init.d/tor restart;		
+	writeToJason "1" "systemhealthactionpicker";
+	exit 1;
+	
+fi
+
+
+
+exit 1;
