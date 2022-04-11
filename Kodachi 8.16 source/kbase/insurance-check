@@ -1,0 +1,152 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2022 Founder of Eagle Eye Digital Solutions
+# Discord channel https://discord.gg/KEFErEx
+# Twitter http://twitter.com/warith2020
+# Linkedin http://www.linkedin.com/in/warith1977
+# http://www.digi77.com
+# http://www.om77.net
+# Kodachi  OS/Software/Code are strictly protected by LICENSE terms at /home/kodachi/LICENSE
+#
+#
+# script starts here:
+
+cd $(dirname $0) 
+source Globalconfig;
+
+# json rescue
+function jsoninsurance()
+{	
+	
+	# Remote json
+	# if file is empty
+	if [ ! -s $Jason_web_file_name ]
+	then
+		sudo chown $LOGED_USER.$LOGED_USER $Jason_web_file_name; 
+		sudo chown $LOGED_USER.$LOGED_USER "$Jason_web_file_name.backup"; 
+		cp -f "$Jason_web_file_name.backup" $Jason_web_file_name;
+		sudo chown $LOGED_USER.$LOGED_USER $Jason_web_file_name; 
+		print_good "Restoring $Jason_web_file_name it was empty";		
+	fi
+	
+	# IF file does not exist
+	if [ ! -f $Jason_web_file_name ]
+	then
+		sudo chown $LOGED_USER.$LOGED_USER $Jason_web_file_name; 
+		sudo chown $LOGED_USER.$LOGED_USER "$Jason_web_file_name.backup"; 
+		cp -f "$Jason_web_file_name.backup" $Jason_web_file_name;
+		sudo chown $LOGED_USER.$LOGED_USER $Jason_web_file_name; 
+		print_good "Restoring $Jason_web_file_name does not exist";		
+	fi
+	
+	# If json is invalid 
+	#m=$(jq < $Jason_file_name |wc -l)
+	m=$(python -m json.tool $Jason_web_file_name|wc -l)
+	if [[ $m == 0 ]]
+	then
+		sudo chown $LOGED_USER.$LOGED_USER $Jason_web_file_name; 
+		sudo chown $LOGED_USER.$LOGED_USER "$Jason_web_file_name.backup"; 
+		cp -f "$Jason_web_file_name.backup" $Jason_web_file_name;
+		sudo chown $LOGED_USER.$LOGED_USER $Jason_web_file_name; 
+		print_good "Restoring $Jason_web_file_name json is invalid";		
+	fi
+	
+	
+	# if both local files are empty
+	if [[ -z $(grep '[^[:space:]]' "$Jason_web_file_name.backup") ]]  &&  [[ -z $(grep '[^[:space:]]' "$Jason_web_file_name") ]]
+ 	then	
+		 
+		cp -f "$Mykodachi_path/jsonbackups/kodachiweb.json" $Jason_web_file_name
+		sudo chown $LOGED_USER.$LOGED_USER $Jason_file_name; 
+		print_good "Restoring $Jason_web_file_name it both remote and its backup are empty";		
+	fi
+	
+	
+	
+	
+	
+	
+	# Local json
+	# if file is empty
+	if [ ! -s $Jason_file_name ]
+	then
+		sudo chown $LOGED_USER.$LOGED_USER $Jason_file_name; 
+		sudo chown $LOGED_USER.$LOGED_USER "$Jason_file_name.backup";
+		cp -f "$Jason_file_name.backup" $Jason_file_name
+		sudo chown $LOGED_USER.$LOGED_USER $Jason_file_name; 
+		print_good "Restoring $Jason_file_name it was empty";		
+	fi
+	
+	
+	
+	
+	# IF file does not exist
+	if [ ! -f $Jason_file_name ]
+	then
+		sudo chown $LOGED_USER.$LOGED_USER $Jason_file_name; 
+		sudo chown $LOGED_USER.$LOGED_USER "$Jason_file_name.backup";
+		cp -f "$Jason_file_name.backup" $Jason_file_name
+		sudo chown $LOGED_USER.$LOGED_USER $Jason_file_name; 
+		print_good "Restoring $Jason_file_name does not exist";		
+	fi
+	
+	# If json is invalid 
+	#m=$(jq < $Jason_file_name |wc -l)
+	m=$(python -m json.tool $Jason_file_name|wc -l)
+	if [[ $m == 0 ]]
+	then
+		sudo chown $LOGED_USER.$LOGED_USER $Jason_file_name; 
+		sudo chown $LOGED_USER.$LOGED_USER "$Jason_file_name.backup";
+		cp -f "$Jason_file_name.backup" $Jason_file_name
+		sudo chown $LOGED_USER.$LOGED_USER $Jason_file_name; 
+		print_good "Restoring $Jason_file_name json is invalid";		
+	fi
+	
+	
+ 
+	#kodachi.json insurance policy :P
+	if (cat $Jason_file_name | grep InternetStatus > /dev/null)
+	then
+		sudo chown $LOGED_USER.$LOGED_USER $Jason_file_name; 
+		if [[ ! -f $Jason_file_name.backup ]];  
+		then
+			echo "" > $Jason_file_name.backup;
+		fi
+		chk1=`cksum $Jason_file_name | awk -F" " '{print $1}'`
+		chk2=`cksum $Jason_file_name.backup | awk -F" " '{print $1}'`
+
+		if [ ! $chk1 -eq $chk2 ]
+		then
+			sudo chown $LOGED_USER.$LOGED_USER "$Jason_file_name.backup";
+			rm -f $Jason_file_name.backup
+			cp -f $Jason_file_name $Jason_file_name.backup
+			sudo chown $LOGED_USER.$LOGED_USER $Jason_file_name; 
+			sudo chown $LOGED_USER.$LOGED_USER "$Jason_file_name.backup";
+			print_good "Backing up $Jason_file_name";			 
+		fi	
+	else
+		sudo chown $LOGED_USER.$LOGED_USER $Jason_file_name; 
+		sudo chown $LOGED_USER.$LOGED_USER "$Jason_file_name.backup";
+		cp -f "$Jason_file_name.backup" $Jason_file_name
+		sudo chown $LOGED_USER.$LOGED_USER $Jason_file_name; 
+		print_good "Restoring $Jason_file_name";		
+	fi
+	
+	
+	
+	# if both local files are empty
+	if [[ -z $(grep '[^[:space:]]' "$Jason_file_name.backup") ]]  &&  [[ -z $(grep '[^[:space:]]' "$Jason_file_name") ]]
+ 	then	
+		 
+		cp -f "$Mykodachi_path/jsonbackups/kodachi.json" $Jason_file_name
+		sudo chown $LOGED_USER.$LOGED_USER $Jason_file_name; 
+		print_good "Restoring $Jason_file_name it both local  file and its backup are empty";
+	fi
+	
+	
+}
+
+
+jsoninsurance;
+
+ 

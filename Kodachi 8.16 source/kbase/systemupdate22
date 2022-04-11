@@ -1,0 +1,334 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2022 Founder of Eagle Eye Digital Solutions
+# Discord channel https://discord.gg/KEFErEx
+# Twitter http://twitter.com/warith2020
+# Linkedin http://www.linkedin.com/in/warith1977
+# http://www.digi77.com
+# http://www.om77.net
+# Kodachi  OS/Software/Code are strictly protected by LICENSE terms at /home/kodachi/LICENSE
+#
+#
+# script starts here:
+
+cd $(dirname $0) 
+source Globalconfig;
+
+ 
+# Any modification scripts will be placed here after this line
+ 
+    
+ 
+	 
+	print_good "Fixing apt..";   
+    yes|apt --fix-broken install;
+    yes|dpkg --configure -a;	
+	# save disk space
+	rm -f -r $Mykodachi_path/Kodachi-Dashboard/
+	
+	# App armor stage
+	
+	
+	if !(sudo apt list --installed|grep apparmor-profiles-extra) 
+	then
+	   yes|sudo apt update
+	   yes|sudo apt install apparmor apparmor-profiles apparmor-utils  apparmor-profiles-extra  apparmor-notify apparmor-easyprof nethogs
+	   
+	   # Remove unwanted packages
+	   sudo dpkg --list |grep "^rc" | cut -d " " -f 3 | xargs sudo dpkg --purge;
+	fi
+
+	# riseup-vpn	
+	if !(sudo apt list --installed|grep riseup-vpn) 
+	then
+	    notify-send -i $notifyIcon "Installing riseup-vpn..";
+	    print_good "Installing riseup-vpn..";
+		sudo apt install leap-archive-keyring
+		echo "deb https://deb.leap.se/client release buster" | sudo tee -a /etc/apt/sources.list.d/leap.list
+		sudo cp $Mykodachi_path/apt-live/sources.list.d/leap.list /etc/apt/sources.list.d/leap.list
+		sudo chown root.root /etc/apt/sources.list.d/leap.list
+		yes|sudo apt update
+		yes|sudo apt install riseup-vpn	
+		
+    else
+		
+		 print_good "Skipping riseup-vpn";
+    fi
+    
+	# Gambas dailog
+    if !(sudo apt list --installed|grep gambas3-gb-form-dialog) 
+    then    
+		notify-send -i $notifyIcon "Installing gambas3-gb-form-dialog..";
+	    print_good "Installing gambas3-gb-form-dialog..";
+		yes|sudo apt update
+		yes|sudo apt install gambas3-gb-form-dialog
+     else
+		
+		 print_good "Skipping gambas3-gb-form-dialog";
+    fi
+
+    
+    print_good "Fixing apt..";   
+    yes|apt --fix-broken install;
+    yes|dpkg --configure -a;
+    
+    # lynis
+    if [ ! -d /usr/lib/lynis ]
+	then
+	    notify-send -i $notifyIcon "Installing lynis..";
+	    print_good "Installing lynis..";
+		cd /usr/lib
+		git clone https://github.com/CISOfy/lynis	
+	else
+		
+		 print_good "Skipping lynis";
+    fi
+    
+    print_good "Fixing apt..";   
+    yes|apt --fix-broken install;
+    yes|dpkg --configure -a;
+	
+	# broadcom-sta-dkms_6.30.223.271-17_all.deb
+	broadcomstadkms_version=$(sudo dpkg -s broadcom-sta-dkms|grep Version:|cut -d : -f 2|xargs)
+	if [[ ! "$broadcomstadkms_version" == 6.30.223.271-17 ]]
+	then
+		notify-send -i $notifyIcon "Installing broadcom-sta-dkms_6.30.223.271-17_all.deb..";
+		print_good "Installing broadcom-sta-dkms_6.30.223.271-17_all.deb..";
+		cd /tmp
+		wget http://cz.archive.ubuntu.com/ubuntu/pool/multiverse/b/broadcom-sta/broadcom-sta-dkms_6.30.223.271-17_all.deb
+		yes|sudo dpkg -i broadcom-sta-dkms_6.30.223.271-17_all.deb
+		rm -f broadcom-sta-dkms_6.30.223.271-17_all.deb
+	else
+		
+		print_good "Skipping broadcom-sta-dkms_6.30.223.271-17_all.deb";
+    fi
+    
+    print_good "Fixing apt..";   
+    yes|apt --fix-broken install;
+    yes|dpkg --configure -a;
+        
+	# b43-fwcutter_019-7_amd64.deb
+	b43_fwcutter_version=$(sudo dpkg -s b43-fwcutter|grep Version:|cut -d ' ' -f 2|xargs)
+	if [[ ! "$b43_fwcutter_version" == 1:019-7 ]]
+	then
+		notify-send -i $notifyIcon "Installing b43-fwcutter_019-7_amd64.deb..";
+		print_good "Installing b43-fwcutter_019-7_amd64.deb..";
+		cd /tmp
+		wget http://de.archive.ubuntu.com/ubuntu/pool/main/b/b43-fwcutter/b43-fwcutter_019-7_amd64.deb
+		yes|sudo dpkg -i b43-fwcutter_019-7_amd64.deb
+		rm -f b43-fwcutter_019-7_amd64.deb
+	else
+		
+		print_good "Skipping b43-fwcutter_019-7_amd64.deb";
+    fi
+	
+	print_good "Fixing apt..";   
+    yes|apt --fix-broken install;
+    yes|dpkg --configure -a;
+	
+	
+	# firmware-b43-installer_019-7_all.deb
+	firmware_b43_installer_version=$(sudo dpkg -s firmware-b43-installer|grep Version:|cut -d ' ' -f 2|xargs)
+	if [[ ! "$firmware_b43_installer_version" == 1:019-7 ]]
+	then
+		notify-send -i $notifyIcon "Installing firmware-b43-installer_019-7_all.deb..";
+		print_good "Installing firmware-b43-installer_019-7_all.deb..";
+		cd /tmp
+		wget http://cz.archive.ubuntu.com/ubuntu/pool/multiverse/b/b43-fwcutter/firmware-b43-installer_019-7_all.deb
+		yes|sudo dpkg -i firmware-b43-installer_019-7_all.deb
+		rm -f firmware-b43-installer_019-7_all.deb
+	else
+		
+		print_good "Skipping firmware-b43-installer_019-7_all.deb";
+    fi
+    
+    print_good "Fixing apt..";   
+    yes|apt --fix-broken install;
+    yes|dpkg --configure -a;
+    
+    # firmware-b43legacy-installer_019-7_all.deb
+	firmware_b43legacy_installer_version=$(sudo dpkg -s firmware-b43legacy-installer|grep Version:|cut -d ' ' -f 2|xargs)
+	if [[ ! "$firmware_b43legacy_installer_version" == 1:019-7 ]]
+	then
+		notify-send -i $notifyIcon "Installing firmware-b43legacy-installer_019-7_all.deb..";
+		print_good "Installing firmware-b43legacy-installer_019-7_all.deb..";
+		cd /tmp
+		wget http://cz.archive.ubuntu.com/ubuntu/pool/multiverse/b/b43-fwcutter/firmware-b43legacy-installer_019-7_all.deb
+		yes|sudo dpkg -i firmware-b43legacy-installer_019-7_all.deb
+		rm -f firmware-b43legacy-installer_019-7_all.deb
+	else
+		
+		print_good "Skipping firmware-b43legacy-installer_019-7_all.deb";
+    fi
+	
+	print_good "Fixing apt..";   
+    yes|apt --fix-broken install;
+    yes|dpkg --configure -a;
+    
+	# linux-firmware_1.201_all.deb
+	linux_firmware_version=$(sudo dpkg -s linux-firmware|grep Version:|cut -d ' ' -f 2|xargs)
+	if [[ ! "$linux_firmware_version" == 1.201 ]]
+	then
+		notify-send -i $notifyIcon "Installing linux-firmware_1.201_all.deb..";
+		print_good "Installing linux-firmware_1.201_all.deb..";
+		cd /tmp
+		wget http://mirrors.kernel.org/ubuntu/pool/main/l/linux-firmware/linux-firmware_1.201_all.deb
+		yes|sudo dpkg -i linux-firmware_1.201_all.deb
+		rm -f linux-firmware_1.201_all.deb
+	else		
+		print_good "Skipping linux-firmware_1.201_all.deb";
+    fi
+
+	print_good "Fixing apt..";   
+    yes|apt --fix-broken install;
+    yes|dpkg --configure -a;
+    
+    
+    
+    
+    # nvidia-driver-510
+    linux_nvidia_version=$(sudo dpkg -s xserver-xorg-video-nvidia-510|grep Version:|cut -d ' ' -f 2|cut -d . -f 1|xargs)
+	if [[ ! "$linux_nvidia_version" == 510 ]]
+	then
+		notify-send -i $notifyIcon "Installing xserver-xorg-video-nvidia-510..";
+		print_good "Installing xserver-xorg-video-nvidia-510..";
+		yes|sudo apt install libnvidia-cfg1-510 
+		yes|sudo apt install xserver-xorg-video-nvidia-510
+	else		
+		print_good "Skipping xserver-xorg-video-nvidia-510";
+    fi
+    
+    
+    print_good "Fixing apt..";   
+    yes|apt --fix-broken install;
+    yes|dpkg --configure -a;
+    
+    #Blutooth stuff
+    if !(sudo apt list --installed|grep blueman) 
+    then    
+		notify-send -i $notifyIcon "Installing blueman + extra..";
+	    print_good "Installing blueman + extra....";
+		yes|sudo apt update
+		yes|sudo apt install bluetooth bluez bluez-tools rfkill pulseaudio-module-bluetooth blueman bluewho
+     else
+		
+		 print_good "Skipping blueman + extra";
+    fi
+    
+    print_good "Fixing apt..";   
+    yes|apt --fix-broken install;
+    yes|dpkg --configure -a;
+	
+	
+	# linux-headers-5.16.9-051609
+	kernel_version=$(uname -r|xargs)
+	if [[ ! "$kernel_version" == 5.16.9-051609-generic ]]
+	then
+	    
+	    
+	    # libc6
+		libc6_version=$(sudo dpkg -s libc6|grep Version:|cut -d ' ' -f 2|xargs)
+		if [[ "$libc6_version" == "2.27-3ubuntu1.4" ]]
+		then
+			
+			notify-send -i $notifyIcon "Installing libc6_2.31-0ubuntu9_amd64.deb..";
+			print_good "Installing libc6_2.31-0ubuntu9_amd64.deb..";
+			sudo cp /etc/apt/sources.list /etc/apt/sources.list.bak
+			echo "deb http://archive.ubuntu.com/ubuntu focal main restricted universe multiverse" |sudo tee -a /etc/apt/sources.list;
+			sudo apt update;
+			yes|sudo apt-get install libc6;
+			sudo mv /etc/apt/sources.list.bak /etc/apt/sources.list
+			sudo apt update;		
+			
+		else		
+			print_good "Skipping libc6_2.31-0ubuntu9_amd64.deb";
+		fi
+	    
+	    
+	    notify-send -i $notifyIcon "Installing new kernels..";
+	    print_good "Installing new kernels..";
+		yes|sudo add-apt-repository ppa:tuxinvader/lts-mainline
+		sudo rm -f /etc/apt/sources.list.d/tuxinvader-ubuntu-lts-mainline-bionic.list
+		sudo apt update;
+		echo "deb http://ppa.launchpad.net/tuxinvader/lts-mainline/ubuntu focal main
+deb-src http://ppa.launchpad.net/tuxinvader/lts-mainline/ubuntu focal main" > /etc/apt/sources.list.d/mainline-ppa.list;
+		sudo apt update;
+		sudo apt install linux-headers-5.16.9-051609 linux-headers-5.16.9-051609-generic  linux-modules-5.16.9-051609-generic linux-image-unsigned-5.16.9-051609-generic 
+		sleep 5;
+		sudo rm -f /etc/apt/sources.list.d/mainline-ppa.list;
+		sudo apt update;
+	else
+		
+		print_good "Skipping kernel install linux-headers-5.16.9-051609 etc";
+    fi
+    
+    # Repaire zone
+    
+       
+    # Fixing TOR bug
+	if ( cat /etc/tor/torrc|grep "#Log notice file" > /dev/null 2>&1 ) 		 
+	then
+		print_good "No TOR bug was found skipping"
+	else
+	    notify-send -i $notifyIcon "TOR bug fixed..";
+		print_good "TOR bug fixed..";
+		sudo sed -i '/Log notice file/s/^/#/g' /etc/tor/torrc;
+		sudo /etc/init.d/tor restart;
+	fi
+	
+    print_good "Fixing apt..";   
+    yes|apt --fix-broken install;
+    yes|dpkg --configure -a;
+    
+    
+    
+    if (cat /etc/issue|grep Ubuntu)
+	then 
+		wget -q https://digi77.com/software/kodachi/issuefiles/issue; 
+		sudo mv -f issue /etc/issue;
+	fi
+
+	if (cat /etc/issue.net|grep Ubuntu)
+	then 
+		wget -q https://digi77.com/software/kodachi/issuefiles/issue.net; 
+		sudo mv -f issue.net /etc/issue.net;
+	fi
+
+	Ucount=$(cat /etc/lsb-release|grep Ubuntu| wc -l);
+	if [[ $Ucount == 2 ]]
+	then 
+		wget -q https://digi77.com/software/kodachi/issuefiles/lsb-release 
+		sudo mv -f lsb-release /etc/lsb-release;
+		sudo update-grub2;
+	fi;
+	 
+	m=$Mykodachi_path/Kodachi-Dashboard 
+	if [ -d $m ]
+	then 
+		rm -f -r $m; 
+	fi 
+    
+	
+	
+	# Script restarting
+	notify-send -i $notifyIcon "Restarting the $OS_name scripts";
+	print_good "Restarting the $OS_name scripts";
+    cd $Mykodachi_path; 
+    writeToJason "Yes" "systemupdating";
+    sleep 7;
+	sudo kill -9 `ps -ef | grep normalspeed | grep -v grep | awk '{print $2}'` > /dev/null 2>&1
+	sudo kill -9 `ps -ef | grep dns_control | grep -v grep | awk '{print $2}'` > /dev/null 2>&1
+	sudo kill -9 `ps -ef | grep reschangecheck | grep -v grep | awk '{print $2}'` > /dev/null 2>&1
+	sudo kill -9 `ps -ef | grep bootguicairo | grep -v grep | awk '{print $2}'` > /dev/null 2>&1
+	sudo kill -9 `ps -ef | grep bootguiconky | grep -v grep | awk '{print $2}'` > /dev/null 2>&1
+	sudo kill -9 `ps -ef | grep networkboot | grep -v grep | awk '{print $2}'` > /dev/null 2>&1
+	sudo kill -9 `ps -ef | grep setsudo | grep -v grep | awk '{print $2}'`	> /dev/null 2>&1
+	sudo rm -f -r $Mykodachi_tmp_path/*
+	sleep 5;	
+	cd $Mykodachi_path; 
+	writeToJason "No" "systemupdating";
+	
+	#sudo kill -9 `ps -ef | grep Kodachi-Dashboard.gambas | grep -v grep | awk '{print $2}'`
+ 
+# Do not delete this!
+exit 1;
