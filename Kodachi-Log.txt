@@ -18,13 +18,51 @@
 4- Please donate to the project my life/pleasure/age is being wiped by this OS to reach up to this level!
 
 
-Milestones:
-1- I tried my best to get Encrypted persistence to work but Ubuntu has removed it from capser were Debian based distros can have it because its based on and running live-boot but Ubuntu uses casper let us hope they put it back.
+# Milestones:
+1- I tried my best to get Encrypted persistence to work but Ubuntu has removed it from casper were Debian based distros can have it because its based on and running live-boot but Ubuntu uses casper let us hope they put it back.
 2- I tried to move to Ubuntu 20.04 but Python deprecation was a hassle for me to continue so I continued with 18.04.6 for now bare in mind that 18.04 support is still valid for Ubuntu and it should reach end of life by April 2023.
-3- Riseup VPN uses Ipv6 this makes DNScrypt TOR DNS, and torify non functional I will try to find a solution in future releases.
+3- Riseup VPN uses Ipv6 this makes DNScrypt TOR DNS, and torrify non functional I will try to find a solution in future releases.
 
 
 
+
+
+Version 8.16: 
+Based on: Ubuntu 18.04.6 LTS 
+Kernel: 5.16.19
+System: 64bit
+Release date: 10.4.2022
+Tag: Security is the chief enemy of mortals.! | Tag line by William Shakespeare
+Code name: Smooth ride
++ Kernel upgrade from  5.16.9 to  5.16.19
++ Added encrypt swap feature on the Dashboard
++ Added periodic features on Dashboard - Settings
++ Added new predefined profiles on  Dashboard - Settings 
++ Added process killer on  Dashboard - Settings
++ Added NetHogs on system monitor section of the Dashboard
++ Added new bookmarks on Kodachi browsers + redundant plugin removed 
++ GUI spinners added to the Dashboard
++ Added Apparmor extra tools and profiles 
++ Added panic script placed on XFCE panel
++ Added Warrant Canary on the OS /home/kodachi/LICENSE
+! Dashboard will run once only
+! IPV6 options is more stable on Dashboard
+! Settings will be auto saved on Dashboard quit
+! System packages update 
+! WPA error fixed
+! Improved script control on dashboard
+- Xpra removed
+- Exif cleaner removed
+- Broadcom sta dkms removed and replaced with bcmwl-kernel-source  
+
+Note 8.16: Next major release could be based on Debian or MX Linux tell me what do you prefer via Discord or twitter
+
+
+
+
+
+
+ 
 
 Version 8.15: 
 Based on: Ubuntu 18.04.6 LTS
@@ -1260,3 +1298,48 @@ Version 1.0:
 Based on Linux Mint 
 Release date: 20.10.2013
 
+
+
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+# Warrant Canary
+
+I as Warith Al Maawali confirm that I take full control of the scripts
+included on the Linux Kodachi OS. 
+The OS has never been compromised or suffered a data breach. 
+I have not disclosed any information of Kodachi users, and I have not been
+forced to modify the OS to allow access or data leakage to a third party of
+any kind.
+
+As of April 06, 2022 I state the following:
+
+I have NOT received any National Security letters regarding the Linux
+Kodachi OS;
+I have NOT received any gag orders;
+I have NOT received any warrants from any government organization.
+I am 100% committed to ensure users ultimate privacy and security on my
+humble knowledge with he help and support of the Linux Kodachi community.
+Kodachi nodes are very secure I use them my self and I also have TLS
+authentication enabled in all of them. Meanwhile I regularly destroy VPS
+nodes and create new once so system logs are all wiped out and we all have
+new fresh ips to enjoy private and peaceful Internet 
+
+-----BEGIN PGP SIGNATURE-----
+Version: PGP Desktop 10.2.0 (Build 1672)
+Charset: utf-8
+
+wsFVAwUBYk1FY3OSWwmfhT0FAQp5MQ/+J0NACBKYFcUr+mdpKeOuDUSR+nfVtQd0
+JjSX9arGHLZQUojO0owz1DkJde8dhX4lltWU5gOJgjf/BK/pie1uX3O5OW0doSSL
+kzqi2qqvsmHdENv3EDqCj4CcdA9cErNS9Jjn1rxd10yUIJ/teAHXQ3jnX3lEY2kg
+S8bR6b3BFVYOLgZQ+TPHE2hU0fa9TYVZ8Z1IYgkcebg5GxcJ17vkUOyGTV9JpOTf
+HFbgtk7lvDGmMu1QVH7Kc7mlNPCQ9PQyFzLOCjFFq8a60dPndPPTAwgCnmkc46hI
+kyOXPzj0AaHSuCcwQ1O1w4rsRBvJ1RvIUedNVpFGPItGCDfTxxNsjSOuPHtlhEsc
+by8+A60y+FUZqRo5edXj2zl3g2da3zpxPTT2guyv5kl4ZETdukMlEN/zoysH/qB0
+IYg5DdCrYwbn4LXhI3xzo9jsmB4gyc5D++gTuxFAeWo728IYZGZd/+HPh3G7QgfY
+LRGVy+crw7E0E9nUmUVHnlUxmjZG2NJuoGzHHMBFnTuNzFVAgUJanUe+nGmXM6/6
+9ncCnzZCKe+vTykTJdOLAXsHkTZxVC+I76WNIEbMFUsohCfuwl7E0PIPBlzbYJai
+HNsdbYwIQhOnKxgxWKbvzZJM9P2QDDBTvi7lCmb9B83A0H1k8vs1YVzDY1MKPV3V
+qu5ahzzP/oY=
+=X/WE
+-----END PGP SIGNATURE-----
