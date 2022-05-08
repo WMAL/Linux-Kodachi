@@ -26,6 +26,71 @@
 
 
 
+Version 8.21: 
+Based on: Ubuntu 18.04.6 LTS 
+Kernel: 5.4.0-110
+System: 64bit
+Release date: 28.4.2022
+Tag: Security is the chief enemy of mortals.! | Tag line by William Shakespeare
+Code name: Smooth ride
++ Added Whisker menu to application menu
++ Added feature to change fonts color on Dashboard
+! Dashboard bug fixed with periodic tasks timer
+! Sphere borwser fix
+! Apparmor fix disabled notifications
+! Kodachi bookmarks modified new web wallets and online OTP
+! Themes bug fixed now we have few more themes and icon sets
+
+
+Notes: 
+1. Better get the fresh ISO instead of Dashboard upgrade 
+If you do Dashboard upgrade reboot and uninstall the old kernels by:
+sudo apt purge linux-image-unsigned-5.16.* linux-headers-5.16.*  linux-headers-5.16.*  linux-modules-5.16.* 
+2.This should be stable release before we move to Debian.
+
+
+
+
+
+
+Version 8.20: 
+Based on: Ubuntu 18.04.6 LTS 
+Kernel: 5.4.0-108
+System: 64bit
+Release date: 21.4.2022
+Tag: Security is the chief enemy of mortals.! | Tag line by William Shakespeare
+Code name: Smooth ride
+! Steam not installing fixed 
+! Fixed TOR issue with Apparmor 
+! System packages update 
+! New icon themes
+- One of the mixers was removed from Kodachi browser bookmarks
+  
+
+
+
+
+
+
+Version 8.17: 
+Based on: Ubuntu 18.04.6 LTS 
+Kernel: 5.4.0-108
+System: 64bit
+Release date: 20.4.2022
+Tag: Security is the chief enemy of mortals.! | Tag line by William Shakespeare
+Code name: Smooth ride
++ Added Steam installer just run: 
+sudo bash ~/.kbase/steaminstall 
+
+! Fixed TOR issue with Apparmor ignore the Apparmor message TOR should work now
+! System packages update 
+! Few scripts were fixed
+- One of the mixers was removed from Kodachi browser bookmarks
+- Kernel downgrade from  5.16.19 to  5.4.0-108 
+
+
+
+
 
 Version 8.16: 
 Based on: Ubuntu 18.04.6 LTS 

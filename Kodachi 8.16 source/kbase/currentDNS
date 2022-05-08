@@ -1,7 +1,0 @@
-# DNSused:TOR
-options rotate 
-options timeout:3
-nameserver 127.0.0.1
-nameserver 127.0.0.1
-search localdomain
-options edns0 single-request-reopen
