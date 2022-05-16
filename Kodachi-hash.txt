@@ -1,18 +1,17 @@
 ==================================================
-Filename          : kodachi-8.21-64.iso
-MD5               : 0c10275022db490b6241ed5a54f851d7
-SHA1              : 95926e7ad2aca729c24c58c1c7a6a216878df431
-CRC32             : 7212e3e8
-SHA-256           : e4f841ceda1d543f270902d3de9450247d9c7cce1903de5354decbb66e698c70
-SHA-512           : c4f4f88bc6d105d88e04e178685166766c4052c01d2d176996af7261d228cce65ac12971c9a50ad4936a5e38b1c3b423943ae1201761b7d3939f7b0e7ffe4942
-SHA-384           : 8e3a516ea985ba0804bba52212f64b05abff321a904083296a04bc52c4d40c3d794fc0add006c4e2c880aae6a0a9e7ae
-Full Path         : https://www.digi77.com/software/kodachi/kodachi-8.21-64.iso
-Modified Time     : 4/28/2022 6:00:48 PM
-Created Time      : 4/28/2022 6:36:10 PM
-File Size         : 3,011,051,520
-File Version      : 8.21
-Product Version   : 8.21
+Filename          : kodachi-8.22-64.iso
+MD5               : 125adcfe2c0dfa15ff4f497765597201
+SHA1              : a815c04de496994495d947ad7e2bfcd6b9e6694b
+CRC32             : b93c0411
+SHA-256           : addcaaed469a05453933b4602bac8ce85f89170338f903082972b07956809ec4
+SHA-512           : 8565315047109d820e5a8299612f1371a9d47cc1a0343e2af5d4e924306b6813be60da9b32063a09d368edab38368765df77f111f5ca516ec2b53e8c02470f9d
+SHA-384           : 74e3e1fad4455e02ea76eff4c031eac21a64169173fa96c6a80607c036f4a45515b44ae779a9e62f19f1e2c83a6161aa
+Full Path         : https://sourceforge.net/projects/linuxkodachi/files/latest/download
+Modified Time     : 5/16/2022 10:07:55 AM
+Created Time      : 5/16/2022 10:09:13 AM
+File Size         : 2,988,457,984
+File Version      : 8.22
+Product Version   : 8.22
 Extension         : iso
 File Attributes   : A
 ==================================================
-
