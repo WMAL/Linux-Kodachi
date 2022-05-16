@@ -22,7 +22,7 @@ https://github.com/WMAL/kodachi/
 
 Kodachi latest direct download link:
 
-https://www.digi77.com/software/kodachi/kodachi-8.21-64.iso
+https://sourceforge.net/projects/linuxkodachi/files/latest/download
 
 
 Achievements:
