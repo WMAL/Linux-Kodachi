@@ -1,0 +1,2 @@
+/home/kodachi/.kbase/json.log: FAILED
+/home/kodachi/.kbase/kodachi.json: FAILED

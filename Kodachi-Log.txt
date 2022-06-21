@@ -27,6 +27,25 @@
 
 
 
+
+Version 8.23: 
+Based on: Ubuntu 18.04.6 LTS 
+Kernel: 5.18.4
+System: 64bit
+Release date: 16.6.2022
+Tag: Security is the chief enemy of mortals.! | Tag line by William Shakespeare
+Code name: Smooth ride
++ Kernel upgrade from  5.4.0-112 to  5.18.4
+! System packages update + system upgrade
+
+
+Notes: 
+1.Better get the fresh ISO instead of Dashboard upgrade 
+2.This should be stable release before we move to Debian.
+
+
+
+
 Version 8.22: 
 Based on: Ubuntu 18.04.6 LTS 
 Kernel: 5.4.0-112
@@ -41,11 +60,7 @@ Code name: Smooth ride
 ! System packages update 
 
 
-Notes: 
-1.Better get the fresh ISO instead of Dashboard upgrade 
-2.This should be stable release before we move to Debian.
-
-
+ 
 
 
 Version 8.21: 
