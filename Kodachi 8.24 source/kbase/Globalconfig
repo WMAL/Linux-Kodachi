@@ -26,7 +26,7 @@ function print_error(){
 }
 
  
-Kodachi_version="8.24";
+Kodachi_version="8.25";
 xP=990;
 LOGED_USER=$(who | awk '{ print $1 }'|head -1);
 if [[ ! -n $LOGED_USER ]] 

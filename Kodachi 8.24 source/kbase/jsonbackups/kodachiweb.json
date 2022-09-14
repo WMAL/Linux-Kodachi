@@ -90,15 +90,15 @@
     ]
   },
   "product": "Linux Kodachi",
-  "cpuLoad": "1.78",
+  "cpuLoad": "2.42",
   "powerby": "NSSG",
-  "version": "8.23",
+  "version": "8.24",
   "isactive": "Active",
   "ServerFeed1": {
     "Cryptostatus": {
-      "btcPrice": "$20260",
-      "xmrPrice": "$123.94",
-      "walletBlance": "0.03956670"
+      "btcPrice": "$19810.93",
+      "xmrPrice": "$157.68",
+      "walletBlance": "0.03982217"
     }
   },
   "ServerFeed2": {
@@ -113,8 +113,8 @@
       "kodachinodes": "https://digi77.com/software/kodachi/kodachi-vpn.zip",
       "kodachinodesanonymouse": "https://digi77.com/software/kodachi/kodachi-vpn-anon.zip",
       "kodachiupdatepack": "https://digi77.com/software/kodachi/update-pack.zip",
-      "kodachiupdatepacksha512": "560144e40add6c55f71ab2bbaa94cd93d147742eba26fb0b8673eb57855fab85057b61422c14a56b7d9a1bf9e60a37e17f0e9f7e8052f038d3e1acfc561f6b2e",
-      "availableiso": "kodachi-8.23-64.iso",
+      "kodachiupdatepacksha512": "fdce3797eabd462f2f1d323d70be2c950a89e7801e4542f9a110283a1ffe8d8b623e7aaaafae230ec37d5db9c507613538764dae638a51e382a4093818f2ad0e",
+      "availableiso": "kodachi-8.24-64.iso",
       "kodachiurl": "https://www.digi77.com/linux-kodachi/",
       "kodachikiturl": "https://lkk.nssgo.com",
       "timzezoneurl": "https://www.digi77.com/software/vpn/timezone.php",
@@ -124,12 +124,12 @@
       "vguideurl": "https://www.youtube.com/watch?v=P3i1zGZVOY8",
       "kodachiremoteupdatesurl": "https://www.digi77.com/software/kodachi/kodachiremoteupdates7921731054/",
       "kodachiremoteupdatesurldir": "https://www.digi77.com/software/kodachi/kodachiremoteupdates7921731054/status_R_updates",
-      "kodachimainisomd5": "f79a4fcdcd2199fd9d43b8305758a7a9",
-      "kodachimainisosha256": "599e211977f042b361c1a141bde55f18b5eaf9916445b99d230159437e4ff601",
-      "kodachimainisosha384": "2589add1efcc4a3f9b7fa3845e3c7227f318a09036d3ad1e75948b1c5a47412e4c842a85b330fb552408004f327e3252",
-      "kodachimainisosha512": "4488a066b706d9bdee864eee5fcda7bb669dca36784edccf7d92c28f704ac3e3fb5f461c70eba92b7078063eaebaeaad0efdc894c7cae15ab2787874bb5c656e",
+      "kodachimainisomd5": "8d30d07bae33faa2f2991fed3c48824d",
+      "kodachimainisosha256": "c542746cb0851716a00cc0bf38bdc992773f86d8400f995e4a65d50ae0175165",
+      "kodachimainisosha384": "9632a05152cbb9f8cef11d79d36b706c494242e50ad30bed3c5d198e8f4f9394122674dda9ccd5bb6cbbd100b09c07f2",
+      "kodachimainisosha512": "66d2cce20ec8bd1437bacdd4ae5302b052a1c69a14e08e993ac3905b2a218b0eb9f52041fbc09b77f50eb24f7260c859b900b1a135bece7d54152b6354ed3cfe",
       "kodachimainisopath": "https://sourceforge.net/projects/linuxkodachi/files/latest/download",
-      "kodachimainisogpgpath": "https://digi77.com/software/kodachi/kodachi-8.23-64.iso.sig"
+      "kodachimainisogpgpath": "https://digi77.com/software/kodachi/kodachi-8.24-64.iso.sig"
     }
   },
   "ServerFeed3": {
