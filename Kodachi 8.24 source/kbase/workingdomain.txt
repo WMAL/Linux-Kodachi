@@ -1,1 +1,11 @@
-https://www.digi77.com/software/vpn/ipcheckplain.php
+ifconfig.me
+icanhazip.com
+ipecho.net/plain
+ip.anysrc.net/plain
+api.ipify.org
+wtfismyip.com/text
+ipinfo.io/ip
+https://md5calc.com/ip.plain
+curlmyip.net
+ident.me
+myexternalip.com/raw
