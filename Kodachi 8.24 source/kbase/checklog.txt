@@ -1,2 +1,0 @@
-/home/kodachi/.kbase/checklog.txt: FAILED
-/home/kodachi/.kbase/kodachi.json.backup: FAILED

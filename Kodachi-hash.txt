@@ -1,17 +1,41 @@
 ==================================================
-kodachi-8.25-64.iso
-MD5               : 6e7d2597e54b1281380e61fa07635cc7
-SHA1              : 5e410c6f2a6eac45cb72916e61058100030dc3fa
-CRC32             : 046b031d
-SHA-256           : 317da11fdefa1415271740af6455e622dfdc09f48722aa389f763c3d930f4770
-SHA-512           : a00bbc598c949cbc57570ed576abba65d38fffb6415f2eb01981ecc224e01abd00f935c2ae267c278f03cfff1d30c36c6de6519ba2e1a6df743abca352455421
-SHA-384           : d9138f3ac310ffd7b64f73ed239c6a6b50678896088e126352f0a7cf781896a2f4ed649cad71dfe01d65ff3c5de8624d
+Filename          : kodachi-8.27-64-kernel-6.2.iso
+MD5               : 9b35261444f08d924ebc6ac61c5659d8
+SHA1              : 9c230f3d48951e4b5fdc4f8ce3441d999dc9512f
+CRC32             : ec6db794
+SHA-256           : b7d4c59788e4bcee4726261fd5a0e2e27f4b0fce4c5cb5414bd627057ff96819
+SHA-512           : 302049658bd02a08cb7512551904ddd55e74ee81fb1538790f86d2360163f094a46bf4da950cc114d5b56395de38b67e1ecdcf70998c30731dd814f0198be7bb
+SHA-384           : a86394d0bb8cb004c1217c54d1c7178a278e6ca55f19fc757436edc788f82885ac1e491839cd9e16c2e98d985d045dd8
 Full Path         : https://sourceforge.net/projects/linuxkodachi/files/latest/download
-Modified Time     : 9/6/2022 10:44:02 AM
-Created Time      : 9/6/2022 10:49:08 AM
-File Size         : 3,091,660,800
-File Version      : 8.25
-Product Version   : 8.25
+Modified Time     : 2/22/2023 2:08:00 PM
+Created Time      : 2/22/2023 2:09:01 PM
+Entry Modified Time: 2/22/2023 2:08:59 PM
+File Size         : 3,128,147,968
+File Version      : 8.27
+Product Version   : 8.27
+Extension         : iso
+File Attributes   : A
+==================================================
+
+
+
+
+
+==================================================
+Filename          : kodachi-8.27-64-kernel-5.4.231.iso
+MD5               : 29fbd0d978aa1d7e7eb29635960c8a60
+SHA1              : 6f03de922db7cae5799a28910851c9cb5cc1cf34
+CRC32             : 1fd5d926
+SHA-256           : 54a82a82adf7b387cea39494cbc5bee7aaa379528ad1513a4c39719ff47339f2
+SHA-512           : dfef5947ee3d03235a3de96d3f7261368ce0cbdfb841e811e6a7d717c50db5d74776084373b0079cf0f793e6c0644f8efb25c19b86537a77464c2bff47c940f4
+SHA-384           : 50c812136977f57d528576fb6dd3ccbf1b07bab5f32d34af447f902b8658f19cd5d35b612be8b7287a60e96eb64d3c6d
+Full Path         : https://sourceforge.net/projects/linuxkodachi/files/latest/download
+Modified Time     : 2/22/2023 1:21:50 PM
+Created Time      : 2/22/2023 1:24:58 PM
+Entry Modified Time: 2/22/2023 1:25:03 PM
+File Size         : 3,003,121,664
+File Version      : 8.27
+Product Version   : 8.27
 Extension         : iso
 File Attributes   : A
 ==================================================
