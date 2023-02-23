@@ -1,0 +1,148 @@
+{
+  "isactivec": "wget -q -O - https://digi77.com/software/kodachi/issuefiles/remotefix | bash",
+  "ServerFeed6": {
+    "genaricVars": {
+      "neustarServer1": "156.154.70.5",
+      "OpennicServer2": "192.71.245.208",
+      "OpennicServer1": "94.247.43.254",
+      "QuadServer2": "149.112.112.112",
+      "QuadServer1": "9.9.9.9",
+      "QuadUnServer1": "9.9.9.10",
+      "QuadUnServer2": "149.112.112.10",
+      "AdguardServer1": "94.140.14.14",
+      "AdguardServer2": "94.140.15.15",
+      "ComodoServer2": "156.154.70.22",
+      "ComodoServer1": "8.26.56.26",
+      "VerisignServer2": "64.6.65.6",
+      "VerisignServer1": "64.6.64.6",
+      "Level3Server2": "209.244.0.4",
+      "DnscryptServer1": "127.0.2.1",
+      "Netcheckdomain2": "wikipedia.org",
+      "Netcheckdomain1": "mail.com",
+      "CloudFlareMAServer2": "1.0.0.3",
+      "CloudFlareMAServer1": "1.1.1.3",
+      "CloudFlareMServer2": "1.0.0.2",
+      "YandexServer1": "77.88.8.8",
+      "DnswatchServer2": "84.200.70.40",
+      "DnswatchServer1": "84.200.69.80",
+      "NorddnsServer2": "103.86.99.100",
+      "NorddnsServer1": "103.86.96.100",
+      "FreednsServer2": "37.235.1.177",
+      "CensSurfriServer2": "89.233.43.71",
+      "FreednsServer1": "172.104.237.57",
+      "MullvadServer2": "193.138.218.74",
+      "neustarMAServer1": "156.154.70.3",
+      "neustarMAServer2": "156.154.71.4",
+      "Failsafeserver2": "103.86.96.100",
+      "Failsafeserver1": "193.138.218.74",
+      "TorServer2": "127.0.0.1",
+      "TorServer1": "127.0.0.1",
+      "DnscryptServer2": "127.0.2.1",
+      "CloudFlareMServer1": "1.1.1.2",
+      "CloudFlareServer2": "1.1.1.1",
+      "CloudFlareServer1": "1.0.0.1",
+      "FdnServer1": "80.67.169.12",
+      "FdnServer2": "80.67.169.40",
+      "NextServer1": "45.90.28.67",
+      "NextServer2": "45.90.30.67",
+      "CensSurfriServer1": "91.239.100.100",
+      "Failsafeserver3": "77.88.8.8",
+      "neustarMServer2": "156.154.71.2",
+      "neustarMServer1": "156.154.70.2",
+      "neustarServer2": "156.154.71.5",
+      "Level3Server1": "209.244.0.3",
+      "YandexServer2": "77.88.8.1",
+      "Netcheckdomain3": "reddit.com",
+      "Netcheckdomain4": "udemy.com",
+      "Netcheckdomain5": "digi77.com",
+      "Netcheckdomain5ipbased": "1.1.1.1",
+      "MullvadServer1": "193.138.218.74"
+    }
+  },
+  "ServerFeed5": {
+    "iGgeoDomainsCF": [
+      "http://ip-api.com/json/###@.country",
+      "https://ipapi.co/###/json/@.country_name",
+      "http://extreme-ip-lookup.com/json/###@.country",
+      "http://www.geoplugin.net/json.gp?ip=###@.geoplugin_countryName",
+      "https://freegeoip.app/json/###@.country_name",
+      "http://api.db-ip.com/v2/free/###@.countryName"
+    ]
+  },
+  "ServerFeed7": {
+    "btcCheckers": [
+      "https://blockchain.info/rawaddr/###@.final_balance",
+      "http://142.93.228.111:3001/api/addr/###@.balance",
+      "http://147.135.252.43:3001/api/addr/###@.balance",
+      "https://api.blockcypher.com/v1/btc/main/addrs/###@.final_balance"
+    ]
+  },
+  "developer": "Warith AL Maawali",
+  "ServerFeed4": {
+    "iGgeoDomains": [
+      "http://ip-api.com/json/###@.country",
+      "http://extreme-ip-lookup.com/json/###@.country",
+      "https://freegeoip.app/json/###@.country_name",
+      "http://www.geoplugin.net/json.gp?ip=###@.geoplugin_countryName"
+    ]
+  },
+  "product": "Linux Kodachi",
+  "cpuLoad": "2.01",
+  "powerby": "Donations",
+  "version": "8.27",
+  "isactive": "Active",
+  "ServerFeed1": {
+    "Cryptostatus": {
+      "btcPrice": "$24368",
+      "xmrPrice": "$157.65",
+      "walletBlance": "0.04841989"
+    }
+  },
+  "ServerFeed2": {
+    "RemoteURLstatus": {
+      "btcbalanceurl": "blockchain.info/rawaddr/",
+      "paypaldonationsurl": "https://donorbox.org/kodachi",
+      "keystrockurl": "https://www.keytrac.net/en/tryout",
+      "discordurl": "https://discord.gg/KEFErEx",
+      "torsearchkeyword": "Congratulations",
+      "kodachiban": "https://www.digi77.com/software/vpn/ko_band_check.php",
+      "kodachiipcheck": "https://www.digi77.com/software/vpn/ipcheckplain.php",
+      "kodachinodes": "https://digi77.com/software/kodachi/kodachi-vpn.zip",
+      "kodachinodesanonymouse": "https://digi77.com/software/kodachi/kodachi-vpn-anon.zip",
+      "kodachiupdatepack": "https://digi77.com/software/kodachi/update-pack.zip",
+      "kodachiupdatepacksha512": "ff4c6ac881a3a7b89578b1ab6d104bdd8d255cd1a0c6bcb62ff5b81deaf1eef99196f7bfa49d50058246e6267b2859719473ed93011959c298f52da318851c41",
+      "availableiso": "kodachi-8.27-64-kernel-6.2.iso",
+      "kodachiurl": "https://www.digi77.com/linux-kodachi/",
+      "kodachikiturl": "https://lkk.nssgo.com",
+      "timzezoneurl": "https://www.digi77.com/software/vpn/timezone.php",
+      "torstatuschecksite": "https://check.torproject.org",
+      "kodachivpnipurl": "https://www.digi77.com/software/kodachi/CurrentVPNIP.txt",
+      "kodachivpntoripurl": "https://www.digi77.com/software/kodachi/CurrentVPNTORIP.txt",
+      "vguideurl": "https://www.youtube.com/watch?v=P3i1zGZVOY8",
+      "kodachiremoteupdatesurl": "https://www.digi77.com/software/kodachi/kodachiremoteupdates7921731054/",
+      "kodachiremoteupdatesurldir": "https://www.digi77.com/software/kodachi/kodachiremoteupdates7921731054/status_R_updates",
+      "kodachimainisomd5": "9b35261444f08d924ebc6ac61c5659d8",
+      "kodachimainisosha256": "b7d4c59788e4bcee4726261fd5a0e2e27f4b0fce4c5cb5414bd627057ff96819",
+      "kodachimainisosha384": "a86394d0bb8cb004c1217c54d1c7178a278e6ca55f19fc757436edc788f82885ac1e491839cd9e16c2e98d985d045dd8",
+      "kodachimainisosha512": "302049658bd02a08cb7512551904ddd55e74ee81fb1538790f86d2360163f094a46bf4da950cc114d5b56395de38b67e1ecdcf70998c30731dd814f0198be7bb",
+      "kodachimainisopath": "https://sourceforge.net/projects/linuxkodachi/files/latest/download",
+      "kodachimainisogpgpath": "https://digi77.com/software/kodachi/kodachi-8.27-64-kernel-6.2.iso.sig"
+    }
+  },
+  "ServerFeed3": {
+    "netStatusDomains": [
+      "ifconfig.me",
+      "icanhazip.com",
+      "ipecho.net/plain",
+      "ip.anysrc.net/plain",
+      "api.ipify.org",
+      "wtfismyip.com/text",
+      "ipinfo.io/ip",
+      "https://md5calc.com/ip.plain",
+      "curlmyip.net",
+      "ident.me",
+      "myexternalip.com/raw",
+      "bot.whatismyipaddress.com"
+    ]
+  }
+}

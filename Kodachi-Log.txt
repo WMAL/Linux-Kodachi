@@ -1,5 +1,5 @@
 # Linux Kodachi change log Written by Warith Al Maawali  
-# (c) 2022 Founder of Eagle Eye Digital Solutions
+# (c) 2023 Founder of Eagle Eye Digital Solutions
 # http://www.digi77.com
 # http://www.om77.net
 # Discord channel https://discord.gg/KEFErEx
@@ -25,6 +25,50 @@
 
 
 
+Version 8.27: 
+Based on: Ubuntu 18.04.6 LTS 
+Kernels: 
+6.2 is the latest kernel is set as default for downloads & has no dkms support
+5.4.231 stable kernel supports Broadcom NIC
+System: 64bit
+Release date: 22.02.2023
+Tag: Security is the chief enemy of mortals.! | Tag line by William Shakespeare
+Code name: Smooth ride
++ Kernel upgrade
+! System packages update + Openssl + Syncthing + Crypto wallets + Tor browser
++ Added Pico crypt application
++ Added new bookmarks on Kodachi browsers + plugins update
++ Added one new wall paper 
+! Random hardware id is on by default and status added to conky
+! Fixed a bug with ip locator within the Dashboard GUI changed
+! Fixed a bug with folder shreding within the Dashboard
+! Fixed a bug with BTC balance checker within the Dashboard
+! Fixed and repostioned items on conky
+! browser.disableResetPrompt was set to true  
+- Demonsaw chat removed EOL
+
+
+Notes: 
+1.Better get the fresh ISO instead of Dashboard upgrade 
+2.This should be stable release before we move to Debian.
+
+
+Version 8.26: 
+Based on: Ubuntu 18.04.6 LTS 
+Kernel: 5.4.217 &  6.0.1
+System: 64bit
+Release date: 13.10.2022
+Tag: Security is the chief enemy of mortals.! | Tag line by William Shakespeare
+Code name: Smooth ride
++ Kernel upgrade
+! System packages update + system upgrade
+
+
+Notes: 
+1.Better get the fresh ISO instead of Dashboard upgrade 
+2.This should be stable release before we move to Debian.
+
+
 
 Version 8.25: 
 Based on: Ubuntu 18.04.6 LTS 
@@ -36,12 +80,7 @@ Code name: Smooth ride
 + Added new bookmarks on Kodachi browsers
 ! System packages update + system upgrade
 
-
-Notes: 
-1.Better get the fresh ISO instead of Dashboard upgrade 
-2.This should be stable release before we move to Debian.
-
-
+ 
 
 
 Version 8.24: 
