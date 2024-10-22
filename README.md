@@ -1,4 +1,4 @@
-# Linux Kodachi
+# Linux Kodachi - Kodachi 9 soon 🚀
 
 ## Overview
 
