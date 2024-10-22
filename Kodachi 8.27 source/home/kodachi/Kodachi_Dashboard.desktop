@@ -1,0 +1,10 @@
+[Desktop Entry]
+Comment=
+Encoding=UTF-8
+Exec='/home/kodachi/.kbase/Kodachi-Dashboard.gambas'
+Icon=/home/kodachi/.kbase/icons/kodachi-green-128.png
+Name=Kodachi Dashboard
+StartupNotify=true
+Terminal=false
+TerminalOptions=
+Type=Application

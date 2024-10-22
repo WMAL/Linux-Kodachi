@@ -1,0 +1,220 @@
+# Enriki theme
+
+Window.GetMaxWidth = fun (){
+  i = 0;
+  width = 0;
+  while (Window.GetWidth(i)){
+    width = Math.Max(width, Window.GetWidth(i));
+    i++;
+    }
+  return width;
+};
+
+Window.GetMaxHeight = fun (){
+  i = 0;
+  height = 0;
+  while (Window.GetHeight(i)){
+    height = Math.Max(height, Window.GetHeight(i));
+    i++;
+    }
+  return height;
+};
+
+anim.imagecount = 32;
+anim.target_width =  0.2* 0.46 * Window.GetWidth();
+anim.target_height =  0.2* 0.46 * Window.GetWidth();
+
+fun RotatedImage (index){
+	index = Math.Int(index);
+	if (!RotatedImageCache[index])
+		RotatedImageCache[index] = anim.original_image.Rotate((Math.Pi*2*index)/anim.imagecount).Scale(anim.target_width, anim.target_height);
+
+	return RotatedImageCache[index];
+	}
+
+
+if (Plymouth.GetMode() == "suspend" || Plymouth.GetMode() == "resume") {
+  background.original_image = ImageNew("suspend.png");
+  Window.SetBackgroundTopColor(1, 0, 0);
+  Window.SetBackgroundBottomColor(0, 1, 0);
+}
+else {
+  logo.original_image = ImageNew("logo.png");
+  background.original_image = ImageNew("background.png");
+  Window.SetBackgroundTopColor(0.234, 0.43, 0.705);
+  Window.SetBackgroundBottomColor(0.16, 0.25, 0.44);
+
+  anim.image= ImageNew("animation.png");
+  anim.original_image= anim.image.Scale(anim.target_width, anim.target_width);
+
+  anim.sprite = SpriteNew();
+  anim.sprite.SetImage(RotatedImage (0));
+  anim.sprite.SetX((Window.GetX() + Window.GetWidth() - RotatedImage(0).GetWidth()) / 2);
+  anim.sprite.SetY(Window.GetY() + Window.GetHeight() * 0.37);
+  anim.angle = 0;
+  anim.index = 0;
+
+ 
+}
+
+ratio =  logo.original_image.GetWidth() / logo.original_image.GetHeight();
+reduction = 0.4;
+logo.image = logo.original_image.Scale(reduction * Window.GetMaxWidth() , reduction / ratio *  Window.GetMaxWidth());
+logo.sprite = SpriteNew();
+logo.sprite.SetImage(logo.image);
+logo.opacity_angle = 0;
+logo.sprite.SetX((Window.GetX() + Window.GetMaxWidth()  - logo.image.GetWidth())  / 2);
+logo.sprite.SetY(Window.GetY() + Window.GetHeight() * 0.37);
+
+background.image = background.original_image.Scale(Window.GetMaxWidth() , Window.GetMaxHeight());
+background.sprite = SpriteNew();
+background.sprite.SetImage(background.image);
+background.sprite.SetPosition(Window.GetX(), Window.GetY(), -10);
+
+sprite_prompt = SpriteNew();
+
+fun refresh_callback ()
+  {
+    if (status == "normal")
+      {
+	anim.index += 1;
+	anim.index %= anim.imagecount;
+	anim.sprite.SetImage(RotatedImage (anim.index));
+        #anim.sprite.SetOpacity (1);
+	motif.sprite.SetOpacity(motif.opacity);
+      }
+    else
+      {
+        anim.sprite.SetOpacity(0);
+	motif.sprite.SetOpacity(0);
+      }
+
+  }
+ 
+if (Plymouth.GetMode() != "suspend" && Plymouth.GetMode() != "resume") {
+  Plymouth.SetRefreshFunction (refresh_callback);
+}
+
+#----------------------------------------- Dialog --------------------------------
+
+status = "normal";
+
+fun dialog_setup()
+  {
+    local.box;
+    local.lock;
+    local.entry;
+    local.prompt_sprite;
+    
+    box.image = ImageNew("box.png");
+    lock.image = ImageNew("lock.png");
+    entry.image = ImageNew("entry.png");
+    
+    box.sprite = SpriteNew();
+    box.sprite.SetImage(box.image);
+    box.x = Window.GetX() + Window.GetWidth()  / 2 - box.image.GetWidth()/2;
+    box.y = Window.GetY() + Window.GetHeight() / 2 - box.image.GetHeight()/2;
+    box.z = 10000;
+    box.sprite.SetPosition(box.x, box.y, box.z);
+    
+    lock.sprite = SpriteNew();
+    lock.sprite.SetImage(lock.image);
+    lock.x = box.x + box.image.GetWidth()/2 - (lock.image.GetWidth() + entry.image.GetWidth()) / 2;
+    lock.y = box.y + box.image.GetHeight()/2 - lock.image.GetHeight()/2;
+    lock.z = box.z + 1;
+    lock.sprite.SetPosition(lock.x, lock.y, lock.z);
+    
+    entry.sprite = SpriteNew();
+    entry.sprite.SetImage(entry.image);
+    entry.x = lock.x + lock.image.GetWidth();
+    entry.y = box.y + box.image.GetHeight()/2 - entry.image.GetHeight()/2;
+    entry.z = box.z + 1;
+    entry.sprite.SetPosition(entry.x, entry.y, entry.z);
+
+    prompt_sprite = SpriteNew();
+    prompt_sprite.SetPosition(box.x, box.y - 20, box.z);
+    
+    global.dialog.box = box;
+    global.dialog.lock = lock;
+    global.dialog.entry = entry;
+    global.dialog.bullet_image = ImageNew("bullet.png");
+    global.dialog.prompt_sprite = prompt_sprite;
+    dialog_opacity (1);
+  }
+    
+fun dialog_opacity(opacity)
+  {
+    dialog.box.sprite.SetOpacity(opacity);
+    dialog.lock.sprite.SetOpacity(opacity);
+    dialog.entry.sprite.SetOpacity(opacity);
+    dialog.prompt_sprite.SetOpacity(opacity);
+    for (index = 0; dialog.bullet[index]; index++)
+      {
+        dialog.bullet[index].sprite.SetOpacity(opacity);
+      }
+  }
+
+fun display_normal_callback ()
+  {
+    global.status = "normal";
+    if (global.dialog)
+      dialog_opacity (0);
+  }
+
+fun display_password_callback (prompt, bullets)
+  {
+    global.status = "password";
+    if (!global.dialog) 
+	dialog_setup();
+    else 
+	dialog_opacity(1);
+    motif.sprite.SetOpacity(0);
+    anim.sprite.SetOpacity(0);
+	
+    dialog.prompt_sprite.SetImage(Image.Text(prompt, 1.0, 1.0, 1.0));
+    for (index = 0; dialog.bullet[index] || index < bullets; index++)
+      { 
+	
+        if (!dialog.bullet[index])
+          {
+            dialog.bullet[index].sprite = SpriteNew();
+            dialog.bullet[index].sprite.SetImage(dialog.bullet_image);
+            dialog.bullet[index].x = dialog.entry.x + index * dialog.bullet_image.GetWidth();
+            dialog.bullet[index].y = dialog.entry.y + dialog.entry.image.GetHeight() / 2 - dialog.bullet_image.GetHeight() / 2;
+            dialog.bullet[index].z = dialog.entry.z + 1;
+            dialog.bullet[index].sprite.SetPosition(dialog.bullet[index].x, dialog.bullet[index].y, dialog.bullet[index].z);
+          }
+        if (index < bullets)
+          dialog.bullet[index].sprite.SetOpacity(1);
+        else
+          dialog.bullet[index].sprite.SetOpacity(0);
+      }
+  }
+
+fun display_message_callback (prompt)
+  {
+  
+prompt = Image.Text(prompt,1.0, 1.0, 1.0);
+sprite_prompt.SetImage(prompt);
+sprite_prompt.SetPosition(Window.GetX() + (Window.GetWidth() - prompt.GetWidth()) / 2, Window.GetY() + Window.GetHeight() * 0.93, 2);
+  }
+
+/* instantiate dialog at startup, to ensure all icons are loaded in memory before initrd is unmounted, in case /usr isn't mounted yet */
+dialog_setup(); dialog_opacity(0);
+Plymouth.SetDisplayNormalFunction(display_normal_callback);
+Plymouth.SetDisplayPasswordFunction(display_password_callback);
+Plymouth.SetMessageFunction(display_message_callback);
+
+
+#----------------------------------------- Quit --------------------------------
+
+fun quit_callback ()
+{
+ anim.sprite.SetOpacity (0);
+  if (Plymouth.GetMode() == "shutdown") {
+   motif.sprite.SetOpacity(0);
+  }
+}
+
+Plymouth.SetQuitFunction(quit_callback);
+

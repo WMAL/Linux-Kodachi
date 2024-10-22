@@ -1,0 +1,77 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2022 Founder of Eagle Eye Digital Solutions
+# Discord channel https://discord.gg/KEFErEx
+# Twitter http://twitter.com/warith2020
+# Linkedin http://www.linkedin.com/in/warith1977
+# http://www.digi77.com
+# http://www.om77.net
+# Kodachi  OS/Software/Code are strictly protected by LICENSE terms at /home/kodachi/LICENSE
+#
+#
+# script starts here:
+
+cd $(dirname $0) 
+source Globalconfig;
+
+    rm -f *update-pack* 
+	kodachipack=$(cat $Jason_web_file_name | jq -r '.ServerFeed2[].kodachiupdatepack'|xargs);
+	kodachipacksha512remote=$(cat $Jason_web_file_name | jq -r '.ServerFeed2[].kodachiupdatepacksha512'|xargs);
+	print_good "Downloading $OS_name restore package..";
+	if(sudo timeout 900 wget "$kodachipack" -q)
+	then
+		
+		
+		
+		notify-send -i $notifyIcon "SHA512 checksum verification...";
+		kodachipacksha512local=$(sha512sum update-pack*.zip|cut -d " " -f 1);
+		if [[ $kodachipacksha512local == $kodachipacksha512remote ]]
+		then
+			sleep 2
+			notify-send -i $notifyIcon "$OS_name SHA512 checksum passed...";	
+			print_good "$OS_name SHA512 checksum passed...";	
+			sleep 2;
+			notify-send -i $notifyIcon "Extracting files..";
+			print_good "Extracting files..";	
+			7z x *update-pack*.zip -pYDrjhKxIH5l0ZrsD7cra$@@V9E6 -o/tmp/ -y &> /dev/null;  
+			sleep 2;
+			notify-send -i $notifyIcon "Coping files.."; 
+			print_good "Coping files.."; 	
+			yes |  cp -rf /tmp/home/kodachi/Desktop/update-pack/* $Mykodachi_path;
+			yes |  cp -rf /tmp/home/kodachi/Desktop/update-pack/.* $Mykodachi_path;
+			sleep 2;						
+			notify-send -i $notifyIcon "Final step cleaning files..";
+			print_good "Final step cleaning files..";
+			#clean up
+			rm -f *update-pack*; 
+			rm -f -r /tmp/home;
+			rm -f wget-log		
+			
+			notify-send -t 10000 -i $notifyIcon "Files restore completed please restart your Dashboard.."; 
+			print_good "Files restore completed please restart your Dashboard.."; 
+		    writeToJason "No" "firstboot";
+		else
+			 sleep 2;
+			 notify-send -i $notifyIcon "$OS_name SHA512 checksum failed $OS_name files will not restore...";
+			 print_error "$OS_name SHA512 checksum failed $OS_name files will not restore...";
+			 exit ;
+		fi
+		 
+		
+		
+			
+	else
+		notify-send t 10000 -i $notifyIcon "Failed to download $OS_name restore 
+Please check your internet speed or disconnect VPN or disable torrifiy then try again";
+		print_error "Failed to download $OS_name restore 
+Please check your internet speed or disconnect VPN or disable torrifiy then try again";
+		notify-send -i $notifyIcon "Final step cleaning files..";
+		print_good "Final step cleaning files..";
+		rm -f *update-pack* 
+		rm -f -r /tmp/home
+		rm -f wget-log
+	fi	
+
+# Do not delete this!
+exit 1;
+

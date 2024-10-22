@@ -1,0 +1,7 @@
+Light fluid bar based on green, yellow and red colors. Gradient base color switch from green to yellow or red for high values.
+ - Crop effect : Give accurate value display.
+ - Multi gauges : Shared space between all indicators.
+ - Resize friendly : Based on fluid gradient, you can change the height/width ratio.
+You can play with all those abilities together to adjust the display the way you like.
+
+Using 3 images, base color will change from green to yellow or red to better show higher values.

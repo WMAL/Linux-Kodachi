@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Kodachi Browser with Proxychains:TOR
+Comment=
+Exec=bash /home/kodachi/.kbase/proxychains
+Icon=/home/kodachi/.config/cairo-dock/current_theme/icons/proxyb.png
+Path=
+Terminal=true
+StartupNotify=false

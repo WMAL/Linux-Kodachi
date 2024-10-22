@@ -1,0 +1,98 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2022 Founder of Eagle Eye Digital Solutions
+# Discord channel https://discord.gg/KEFErEx
+# Twitter http://twitter.com/warith2020
+# Linkedin http://www.linkedin.com/in/warith1977
+# http://www.digi77.com
+# http://www.om77.net
+# Kodachi  OS/Software/Code are strictly protected by LICENSE terms at /home/kodachi/LICENSE
+#
+#
+# script starts here:
+
+
+
+cd $(dirname $0) 
+source Globalconfig;
+
+
+
+toriffy_Status=$(cat $Jason_file_name | jq -r .Toriffystatus);
+if [[ "$toriffy_Status" == *Yes* ]]
+then
+	notify-send -i $notifyIcon "Please Disable Torify system then try again";
+else
+
+	notify-send -i $notifyIcon "Online Installation will start shortly";
+	sleep 5;
+	notify-send -i $notifyIcon "VPN TOR DNS Crypt will be disabled now"
+	sleep 5;
+
+	notify-send -i $notifyIcon "VPN TOR DNS Crypt will be disabled now"
+	writeToJason "Quad9" "DNSprovider";
+	writeToJason "Novpn" "VPNtype";	
+
+
+
+	SERVICE='networkboot';
+	if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+	then
+		sudo kill -9 `ps -ef | grep $SERVICE | grep -v grep | awk '{print $2}'`
+	fi	
+
+	SERVICE='openvpn';
+	if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+	then
+		sudo kill -9 `ps -ef | grep $SERVICE | grep -v grep | awk '{print $2}'`
+	fi
+
+	SERVICE='tor-service';
+	if systemctl is-active tor.service > /dev/null 2>&1; 
+	then
+		 sudo /etc/init.d/tor stop;
+		 
+	fi
+
+	SERVICE='dnscrypt-proxy';
+	if systemctl is-active dnscrypt-proxy.service > /dev/null 2>&1; 
+	then	 
+		sudo service dnscrypt-proxy stop    
+	fi
+
+	# stop fw and torrify
+	notify-send -i $notifyIcon "Clear firewall rules and stopping system toriffy";
+	sudo timeout 40 sudo bash $Mykodachi_path/allowalltraffic 
+	sudo timeout 40 sudo bash $Mykodachi_path/stoptor; 
+
+	notify-send -i $notifyIcon "Starting the Installation process";
+
+	# Start installing
+	sudo killall ubiquity
+	#sudo sh -c 'ubiquity gtk_ui'
+	sudo --preserve-env=DBUS_SESSION_BUS_ADDRESS,XDG_RUNTIME_DIR sh -c 'ubiquity gtk_ui'
+	#sleep 60;
+	notify-send -i $notifyIcon "Installation complete";
+
+
+	exit 1;
+
+	 
+
+	sleep 1;
+
+	notify-send -i $notifyIcon "VPN TOR DNS Crypt will be enabled now"	
+
+
+	writeToJason "Dnscrypt" "DNSprovider";
+    writeToJason "Yes" "TORenabled";
+	sudo /etc/init.d/tor restart;
+	writeToJason "kodachivpn" "VPNtype";	
+fi
+
+
+
+ 
+
+
+exit 1;

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Kodachi Loaded Browser:TOR
+Comment=Browse the World Wide Web Securely
+Exec=firefox -p KodachiBrowser
+Icon=/home/kodachi/.config/cairo-dock/current_theme/icons/loaded.png
+Path=
+Terminal=false
+StartupNotify=true

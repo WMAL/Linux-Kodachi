@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<channel name="xfce4-power-manager" version="1.0">
+  <property name="xfce4-power-manager" type="empty">
+    <property name="power-button-action" type="empty"/>
+    <property name="lock-screen-suspend-hibernate" type="empty"/>
+    <property name="logind-handle-lid-switch" type="bool" value="true"/>
+    <property name="blank-on-ac" type="empty"/>
+    <property name="blank-on-battery" type="empty"/>
+    <property name="dpms-enabled" type="bool" value="true"/>
+    <property name="dpms-on-ac-sleep" type="uint" value="50"/>
+    <property name="dpms-on-ac-off" type="empty"/>
+    <property name="dpms-on-battery-sleep" type="empty"/>
+    <property name="dpms-on-battery-off" type="empty"/>
+    <property name="show-panel-label" type="int" value="0"/>
+    <property name="sleep-button-action" type="uint" value="3"/>
+    <property name="hibernate-button-action" type="uint" value="3"/>
+    <property name="general-notification" type="bool" value="false"/>
+    <property name="show-tray-icon" type="bool" value="false"/>
+  </property>
+</channel>

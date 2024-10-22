@@ -1,0 +1,64 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2022 Founder of Eagle Eye Digital Solutions
+# Discord channel https://discord.gg/KEFErEx
+# Twitter http://twitter.com/warith2020
+# Linkedin http://www.linkedin.com/in/warith1977
+# http://www.digi77.com
+# http://www.om77.net
+# Kodachi  OS/Software/Code are strictly protected by LICENSE terms at /home/kodachi/LICENSE
+#
+#
+# script starts here:
+
+cd $(dirname $0) 
+source Globalconfig;
+
+
+
+function writeToJason()
+{
+	parm1=$(echo $1|xargs);
+	parm2=$(echo $2|xargs);
+	date=$(date '+%Y-%m-%d %H:%M:%S');
+	prevaluecheck=$(cat $Jason_file_name | jq -r .$parm2);
+	#echo "$date prevaluecheck = $prevaluecheck new value = $parm1" >> "json.log"
+	if [[ -n $parm1 ]] && [[ -n $parm2 ]]
+    then 
+	if [[ $prevaluecheck != $parm1 ]]
+		then	
+			
+			#m=$(jq < $Jason_file_name |wc -l)
+			m=$(python -m json.tool $Jason_file_name|wc -l)
+			if [[ $m != 0 ]]
+			then
+			
+				print_good "$date Sending json value to $parm2 the value is $parm1";
+				echo "$date Sending json value to $parm2 the value is $parm1" >> "json.log";
+				#sleep 1;  # To slow down the script for debug
+				jq --arg v "$parm1" --arg keyvar "$parm2" '.[$keyvar]= $v' $Jason_file_name|sponge $Jason_file_name;	
+				if [[ "$parm2" == *VPNtype* ]] ||  [[ "$parm2" == *DNSprovider* ]] ||  [[ "$parm2" == *TORonifVPNisoff* ]] ||  [[ "$parm2" == *Ipdomainsource* ]] ||  [[ "$parm2" == *InternetStatus* ]] ||  [[ "$parm2" == *Toriffystatus* ]] 
+				then
+					parm2="systemhealthactionpicker";
+					parm1="1";
+					echo "$date SOS Sending json value to $parm2 the value is $parm1" >> "json.log";
+					jq --arg v "$parm1" --arg keyvar "$parm2" '.[$keyvar]= $v' $Jason_file_name|sponge $Jason_file_name;
+				fi   
+			fi	
+			
+		
+		fi
+	fi	
+	
+	
+	sudo chown $LOGED_USER.$LOGED_USER $Jason_file_name; 
+	sudo chown $LOGED_USER.$LOGED_USER json.log; 
+	
+}
+
+
+ 
+
+writeToJason "$1" "$2";
+
+ 

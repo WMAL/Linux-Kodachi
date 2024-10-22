@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Sphere Tor Browser
+Comment=
+Exec=bash /home/kodachi/.kbase/sphere
+Icon=/usr/lib/sphere_nix/ls.png
+Path=
+Terminal=false
+StartupNotify=false

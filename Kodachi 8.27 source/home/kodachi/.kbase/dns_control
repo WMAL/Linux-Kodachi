@@ -1,0 +1,1180 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2022 Founder of Eagle Eye Digital Solutions
+# Discord channel https://discord.gg/KEFErEx
+# Twitter http://twitter.com/warith2020
+# Linkedin http://www.linkedin.com/in/warith1977
+# http://www.digi77.com
+# http://www.om77.net
+# Kodachi  OS/Software/Code are strictly protected by LICENSE terms at /home/kodachi/LICENSE
+#
+#
+# script starts here:
+
+
+cd $(dirname $0) 
+source Globalconfig;
+#Globals
+unset netIP;
+unset dnsname;
+unset permenetDNS;
+unset dnsserver1;
+unset dnsserver2;
+unset dnsserver3;
+unset dns_provider;
+unset netStatustxt;
+unset netStatustxtbydomainonly;
+unset Netcheckdomain1;
+unset Netcheckdomain2;
+unset Netcheckdomain3;
+unset Netcheckdomain4;
+unset Netcheckdomain5;
+unset server1;
+unset server2;
+unset server3;
+unset DnscryptServer1;
+unset DnscryptServer2;
+unset Failsafeserver1;
+unset Failsafeserver2;
+unset Failsafeserver3;
+unset onlinetimecounter;
+unset tornullipcounter;
+unset COuntryCode;
+unset rand;
+unset TorCon;
+unset appName;
+unset jsonvarName;
+appName="DNS control";
+jsonvarName="dnscontroltorstatus";
+onlinetimecounter=0;
+#arr[0]="ch";
+#arr[1]="be";
+#arr[2]="nl";
+#arr[3]="pl";
+#arr[4]="it";
+#arr[5]="at";
+#arr[6]="jp";
+
+arr[0]="ch";
+arr[1]="at";
+arr[2]="lu";
+arr[3]="ro";
+arr[4]="sc";
+arr[5]="pl";
+arr[6]="cz";
+arr[7]="za";
+arr[8]="kr";
+arr[9]="jp";
+arr[10]="th";
+arr[11]="br";
+arr[12]="is";
+arr[13]="ru";
+arr[14]="ua";
+arr[15]="md";
+arr[16]="bz";
+arr[17]="hu";
+arr[18]="bg";
+arr[19]="sg";
+arr[20]="fi";
+arr[21]="tr";
+
+
+
+if [ ! -d $Mykodachi_path/tmp ]; then
+	mkdir -p $Mykodachi_path/tmp;
+	chown $LOGED_USER.$LOGED_USER $Mykodachi_path/tmp;
+fi;
+
+
+#NEW_UUID=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)
+NEW_UUID="D4k1arhRSKjt0emBOYT0YKg6bwC9gTBH@";
+me=$(basename "$(test -L "$0" && readlink "$0" || echo "$0")")
+
+lockdir=$Mykodachi_path/tmp/$NEW_UUID$me
+mkdir $lockdir || {
+    echo "lock directory exists. exiting"
+    exit 1
+}
+# take pains to remove lock directory when script terminates
+trap "rmdir $lockdir" EXIT INT KILL TERM 
+
+# rest of script here
+sudo chown $LOGED_USER.$LOGED_USER $Mykodachi_path/tmp/$NEW_UUID$me;
+	
+# end script locker
+
+
+
+
+getJsonVars()
+{
+	#echo "boom1";
+	if [[ -f $Jason_web_file_name ]]
+	then	    
+		#echo "boom2";
+		if ( cat $Jason_web_file_name|grep Netcheckdomain > /dev/null 2>&1 ) 
+		then
+			#echo "boom3";
+			print_good "Kodachi web json found setting values";
+			# Remote json vars
+			Netcheckdomain1=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].Netcheckdomain1'|xargs);
+			Netcheckdomain2=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].Netcheckdomain2'|xargs);
+			Netcheckdomain3=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].Netcheckdomain3'|xargs);
+			Netcheckdomain4=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].Netcheckdomain4'|xargs);
+			Netcheckdomain5=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].Netcheckdomain5'|xargs);
+			
+		fi
+	fi		
+	
+	# Validate jsons here			
+	if [[ ! -n "$Netcheckdomain1" ]]
+	then
+		Netcheckdomain1="mail.com";
+		print_error "Failed to get json variable Netcheckdomain1 setting it to: $Netcheckdomain1";
+	fi	
+	if [[ ! -n "$Netcheckdomain2" ]]
+	then
+		Netcheckdomain2="wikipedia.org";
+		print_error "Failed to get json variable Netcheckdomain2 setting it to: $Netcheckdomain2";
+	fi		
+	if [[ ! -n "$Netcheckdomain3" ]]
+	then
+		Netcheckdomain3="reddit.com";
+		print_error "Failed to get json variable Netcheckdomain3 setting it to: $Netcheckdomain3";
+	fi		
+	if [[ ! -n "$Netcheckdomain4" ]]
+	then
+		Netcheckdomain4="udemy.com";
+		print_error "Failed to get json variable Netcheckdomain4 setting it to: $Netcheckdomain4";
+	fi		
+	if [[ ! -n "$Netcheckdomain5" ]]
+	then
+		Netcheckdomain5="digi77.com";
+		print_error "Failed to get json variable Netcheckdomain5 setting it to: $Netcheckdomain5";
+	fi	
+
+}
+
+
+connected_to_internet() 
+{
+  
+  getJsonVars;
+  
+  test_urls="\
+  $Netcheckdomain5/ \
+  $Netcheckdomain3/ \
+  $Netcheckdomain2/ \
+  "
+
+  processes="0"
+  pids=""
+
+  for test_url in $test_urls; do
+    curl -m 10 --silent --head "$test_url" > /dev/null &
+    pids="$pids $!"
+    processes=$(($processes + 1))
+  done
+
+  while [ $processes -gt 0 ]; do
+    for pid in $pids; do
+      if ! ps | grep "^[[:blank:]]*$pid[[:blank:]]" > /dev/null; then
+        # Process no longer running
+        processes=$(($processes - 1))
+        pids=$(echo "$pids" | sed --regexp-extended "s/(^| )$pid($| )/ /g")
+
+        if wait $pid; then
+          # Success! We have a connection to at least one public site, so the
+          # internet is up. Ignore other exit statuses.
+          kill -TERM $pids > /dev/null 2>&1 || true
+          wait $pids
+          return 0
+        fi
+      fi
+    done
+     wait -n $pids # Better than sleep, but not supported on all systems
+    #sleep 0.1
+  done
+
+  return 1
+}
+
+
+
+
+
+
+
+
+
+# Critical function all scripts will depend on this
+function check_net_status()
+{
+		
+		if connected_to_internet; 
+		then
+			writeToJason "Online" "InternetStatus";
+			writeToJason "Online" "InternetStatusbydomainonly";
+			print_good "First online check passed skip rest of checking methods";
+		else
+
+
+		
+		print_good "Inside check_net_status counter is:$onlinetimecounter"; 
+	
+		Netcheckdomain5ipbased=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].Netcheckdomain5ipbased'|xargs);	
+		
+		# Validate json here
+		if [[ ! -n "$Netcheckdomain5ipbased" ]]
+		then
+			Netcheckdomain5ipbased="8.8.8.8";
+			print_error "Failed to get json variable Netcheckdomain5ipbased setting it to: $Netcheckdomain5ipbased";
+		fi
+		
+		netIP=$Netcheckdomain5ipbased;
+		if [[ "$(timeout 10 fping -t 2000 $netIP | grep 'alive' )" != "" ]] 
+		then		
+			print_good "Ip based is online skip counter reset";
+			writeToJason "Online" "InternetStatus";
+		else
+			onlinetimecounter=0;
+			print_error "Ip based fping failed setting counter to 0 netIP is :$netIP";	
+			writeToJason "Offline" "InternetStatus";	
+		fi
+		
+		if [[ $onlinetimecounter -eq 0 ]] 
+		then
+				
+				
+		 
+				
+			# First attempt
+			netIP=$Netcheckdomain1;
+			echo "Netcheckdomain1 from json is $netIP";
+			timeout 17 wget --timeout=5 --waitretry=0 --tries=3 --retry-connrefused -q --spider $netIP &> /dev/null;
+			if [ $? -eq 0 ]; 
+			then
+				#writeToJason "Online" "InternetStatus";		
+				writeToJason "Online" "InternetStatusbydomainonly";
+				print_good "Net check pass method: 1 IP used: $netIP";				
+			else
+				#writeToJason "Offline" "InternetStatus";
+				writeToJason "Offline" "InternetStatusbydomainonly";
+				print_error "Net check fail method: 1 IP used: $netIP";
+				onlinetimecounter=0;
+				
+			fi
+			
+			
+			
+			# Second attempt
+			netStatustxtbydomainonly=$(cat $Jason_file_name | jq -r .InternetStatusbydomainonly);
+			if [[ $netStatustxtbydomainonly == *Offline* ]]
+			then
+				netIP=$Netcheckdomain2;
+				echo "Netcheckdomain2 from json is $netIP";
+				timeout 6 wget --timeout=5 --waitretry=0 --tries=3 --retry-connrefused -q --spider $netIP &> /dev/null;
+				if [ $? -eq 0 ]; 
+				then
+					#writeToJason "Online" "InternetStatus";
+					writeToJason "Online" "InternetStatusbydomainonly";
+					print_good "Net check pass method: 2 IP used: $netIP";					
+				else
+					#writeToJason "Offline" "InternetStatus";
+					writeToJason "Offline" "InternetStatusbydomainonly";
+					print_error "Net check fail method: 2 IP used: $netIP";
+					onlinetimecounter=0;
+				fi
+			
+			fi	
+			
+			# third attempt
+			netStatustxtbydomainonly=$(cat $Jason_file_name | jq -r .InternetStatusbydomainonly);
+			if [[ $netStatustxtbydomainonly == *Offline* ]]
+			then
+						
+				netIP=$Netcheckdomain3;	
+				echo "Netcheckdomain3 from json is $netIP";
+				timeout 6 ping -c 1 -W 5 "$netIP" &> /dev/null ;			
+				if [ $? -eq 0 ]; 
+				then
+					#writeToJason "Online" "InternetStatus";
+					writeToJason "Online" "InternetStatusbydomainonly";
+					print_good "Net check pass method: 3 IP used: $netIPP";					
+				else
+					#writeToJason "Offline" "InternetStatus";
+					writeToJason "Offline" "InternetStatusbydomainonly";
+					print_error "Net check fail method: 3 IP used: $netIP";
+					onlinetimecounter=0;
+				fi
+			
+			fi
+			
+
+			
+			# forth attempt
+			netStatustxtbydomainonly=$(cat $Jason_file_name | jq -r .InternetStatusbydomainonly);
+			if [[ $netStatustxtbydomainonly == *Offline* ]]
+			then
+				netIP=$Netcheckdomain4;
+				echo "Netcheckdomain4 from json is $netIP";
+				if [[ "$(timeout 5 fping -t 2000 $netIP | grep 'alive' )" != "" ]] 
+				then			
+					#writeToJason "Online" "InternetStatus";
+					writeToJason "Online" "InternetStatusbydomainonly";
+					print_good "Net check pass method: 4 IP used: $netIP";					
+				else
+					#writeToJason "Offline" "InternetStatus";
+					writeToJason "Offline" "InternetStatusbydomainonly";
+					print_error "Net check fail method: 4 IP used: $netIP";
+					onlinetimecounter=0;
+				fi
+			
+			fi
+			
+			dnsforce=$(cat $Jason_file_name | jq -r .Forcetempdns);
+			if [[ "$dnsforce" == *Yes* ]]
+			then
+				print_good "Entering DNS force zone dnsforce is :$dnsforce";
+				netIP=$Netcheckdomain1;
+				# fifth attempt
+				netStatustxtbydomainonly=$(cat $Jason_file_name | jq -r .InternetStatusbydomainonly);
+				if [[ $netStatustxtbydomainonly == *Offline* ]]
+				then
+					
+					
+					if [[ "$(timeout 5 fping -t 2000 $netIP | grep 'alive' )" != "" ]] 
+					then			
+						writeToJason "Online" "InternetStatus";
+						writeToJason "Online" "InternetStatusbydomainonly";
+						print_good "Net check pass method: 5 IP used: $netIP";						
+					else
+						#netIP="amazon.com";
+						#Netcheckdomain1="amazon.com";
+						echo "Netcheckdomain1 hard reset is $netIP";
+						writeToJason "Offline" "InternetStatus";
+						writeToJason "Offline" "InternetStatusbydomainonly";
+						print_error "Net check fail method: 5 IP used: $netIP";
+						server1="193.138.218.74";
+						server2="103.86.96.100";
+						server3="77.88.8.8";
+						Failsafeserver1=$server1;
+						Failsafeserver2=$server2;
+						Failsafeserver3=$server3; 
+						
+						DnscryptServer1="127.0.2.1";
+						DnscryptServer2="127.0.2.1";
+						onlinetimecounter=0;						
+					fi
+				
+				fi
+			fi
+		fi	
+	
+	 
+		
+	fi
+	
+	 
+}
+ 
+
+function send_dns_details()
+{
+	if [[ ! "$dns_provider" == Manual ]]
+	then
+		dnsname=$1;
+		dnsserver1=$2;
+		dnsserver2=$3;
+		dnsserver3=$4;
+		# allow to change resolve 
+		sudo chattr -i /etc/resolv.conf
+		
+		
+		
+		
+		if [[ ! "$dns_provider" == *Fail-safe* ]]
+		then
+		
+
+sudo echo -n "# DNSused:$dnsname
+options rotate 
+options timeout:3
+nameserver $dnsserver1
+nameserver $dnsserver2
+search localdomain
+options edns0 single-request-reopen" > currentDNS; 
+
+sudo echo -n "# DNSused:$dnsname
+options rotate 
+options timeout:3
+nameserver $dnsserver1
+nameserver $dnsserver2
+search localdomain
+options edns0 single-request-reopen" > /etc/resolv.conf; 
+		else
+sudo echo -n "# DNSused:$dnsname
+options rotate 
+options timeout:3
+nameserver $dnsserver1
+nameserver $dnsserver2
+nameserver $dnsserver3
+search localdomain
+options edns0 single-request-reopen" > currentDNS; 
+
+sudo echo -n "# DNSused:$dnsname
+options rotate 
+options timeout:3
+nameserver $dnsserver1
+nameserver $dnsserver2
+nameserver $dnsserver3
+search localdomain
+options edns0 single-request-reopen" > /etc/resolv.conf; 		
+		
+		 
+		
+		
+	
+		
+		fi
+		print_good "Dns changed to $dnsserver1 - $dnsserver2 - $dnsserver3";	
+		
+		 
+		#Protect reolve file
+		sudo chattr +i /etc/resolv.conf
+		writeToJason "$dnsname" "DNSprovider"; 	
+	 
+	else
+		echo "Skipping DNS changes its on Manual";
+	    dnsname="Manual";
+	    writeToJason "$dnsname" "DNSprovider";
+	fi    
+}	  
+
+
+function getJsonVals()
+{
+	    
+	    
+	    #echo "boom1";
+	    if [[ -f $Jason_web_file_name ]]
+	    then	    
+			#echo "boom2";
+			if ( cat $Jason_web_file_name|grep Netcheckdomain > /dev/null 2>&1 ) 
+			then
+				#echo "boom3";
+				print_good "Kodachi web json found setting values";
+				# Remote json vars
+				 
+				
+				MullvadServer1=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].MullvadServer1'|xargs);
+				MullvadServer2=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].MullvadServer2'|xargs);
+				FreednsServer1=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].FreednsServer1'|xargs);
+				FreednsServer2=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].FreednsServer2'|xargs);
+				NorddnsServer1=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].NorddnsServer1'|xargs);
+				NorddnsServer2=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].NorddnsServer2'|xargs);
+				DnswatchServer1=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].DnswatchServer1'|xargs);
+				DnswatchServer2=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].DnswatchServer2'|xargs);
+				YandexServer1=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].YandexServer1'|xargs);
+				YandexServer2=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].YandexServer2'|xargs);
+				Level3Server1=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].Level3Server1'|xargs);
+				Level3Server2=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].Level3Server2'|xargs);
+				VerisignServer1=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].VerisignServer1'|xargs);
+				VerisignServer2=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].VerisignServer2'|xargs);
+				ComodoServer1=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].ComodoServer1'|xargs);
+				ComodoServer2=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].ComodoServer2'|xargs);
+				FdnServer1=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].FdnServer1'|xargs);
+				FdnServer2=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].FdnServer2'|xargs);
+				NextServer1=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].NextServer1'|xargs);
+				NextServer2=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].NextServer2'|xargs);
+				CensSurfriServer1=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].CensSurfriServer1'|xargs);
+				CensSurfriServer2=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].CensSurfriServer2'|xargs);
+				QuadServer1=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].QuadServer1'|xargs);
+				QuadServer2=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].QuadServer2'|xargs);
+				QuadUnServer1=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].QuadUnServer1'|xargs);
+				QuadUnServer2=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].QuadUnServer2'|xargs);
+				AdguardServer1=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].AdguardServer1'|xargs);
+				AdguardServer2=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].AdguardServer2'|xargs);
+				OpennicServer1=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].OpennicServer1'|xargs);
+				OpennicServer2=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].OpennicServer2'|xargs);
+				neustarServer1=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].neustarServer1'|xargs);
+				neustarServer2=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].neustarServer2'|xargs);
+				neustarMServer1=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].neustarMServer1'|xargs);
+				neustarMServer2=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].neustarMServer2'|xargs);
+				neustarMAServer1=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].neustarMAServer1'|xargs);
+				neustarMAServer2=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].neustarMAServer2'|xargs);
+				CloudFlareServer1=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].CloudFlareServer1'|xargs);
+				CloudFlareServer2=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].CloudFlareServer2'|xargs);
+				CloudFlareMServer1=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].CloudFlareMServer1'|xargs);
+				CloudFlareMServer2=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].CloudFlareMServer2'|xargs);
+				CloudFlareMAServer1=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].CloudFlareMAServer1'|xargs);
+				CloudFlareMAServer2=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].CloudFlareMAServer2'|xargs);
+				DnscryptServer1=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].DnscryptServer1'|xargs);
+				DnscryptServer2=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].DnscryptServer2'|xargs);
+				TorServer1=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].TorServer1'|xargs);
+				TorServer2=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].TorServer2'|xargs);
+				Failsafeserver1=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].Failsafeserver1'|xargs);
+				Failsafeserver2=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].Failsafeserver2'|xargs);
+				Failsafeserver3=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].Failsafeserver3'|xargs);
+			fi	
+		fi
+		
+		
+		
+		if [[ -f $Jason_file_name ]]
+		then
+		
+			if ( cat $Jason_file_name|grep CustomServer > /dev/null 2>&1 ) 
+			then
+				# Local json	
+				CustomServer1=$(cat $Jason_file_name | jq -r .CustomServer1);
+				CustomServer2=$(cat $Jason_file_name | jq -r .CustomServer2);
+			 fi
+		fi
+	
+}
+
+
+
+function changeDNS()
+{
+			    		
+	getJsonVals;	
+	if [[ "$dns_provider" == Mullvad ]]
+	then
+		server1=$MullvadServer1;
+		server2=$MullvadServer2;
+		
+		if [[ -n $server1 ]]
+		then
+			send_dns_details "Mullvad" "$server1" "$server2"; 	
+		fi	
+	elif [[ "$dns_provider" == Freedns ]]
+	then
+		server1=$FreednsServer1;
+		server2=$FreednsServer2;
+		
+		if [[ -n $server1 ]]
+		then
+			send_dns_details "Freedns" "$server1" "$server2"; 	
+		fi	
+			
+	elif [[ "$dns_provider" == Nord* ]]
+	then
+		server1=$NorddnsServer1;
+		server2=$NorddnsServer2;
+		
+		if [[ -n $server1 ]]
+		then
+			send_dns_details "Nord" "$server1" "$server2";
+		fi	
+		
+	elif [[ "$dns_provider" == Dnswatch ]]
+	then
+		server1=$DnswatchServer1;
+		server2=$DnswatchServer2;
+		
+		if [[ -n $server1 ]]
+		then
+			send_dns_details "Dnswatch" "$server1" "$server2";
+		fi	
+	elif [[ "$dns_provider" == Yandex ]]
+	then
+		server1=$YandexServer1;
+		server2=$YandexServer2;
+		
+		if [[ -n $server1 ]]
+		then
+			send_dns_details "Yandex" "$server1" "$server2";
+		fi	
+	elif [[ "$dns_provider" == Level3 ]]
+	then
+		server1=$Level3Server1;
+		server2=$Level3Server2;
+		
+		if [[ -n $server1 ]]
+		then
+			send_dns_details "Level3" "$server1" "$server2";
+		fi	
+		
+	elif [[ "$dns_provider" == Verisign ]]
+	then
+		server1=$VerisignServer1;
+		server2=$VerisignServer2;
+		
+		if [[ -n $server1 ]]
+		then
+			send_dns_details "Verisign" "$server1" "$server2";
+		fi	
+	elif [[ "$dns_provider" == Comodo ]]
+	then
+		server1=$ComodoServer1;
+		server2=$ComodoServer2;
+		
+		if [[ -n $server1 ]]
+		then
+			send_dns_details "Comodo" "$server1" "$server2";
+		fi	
+	elif [[ "$dns_provider" == FDN ]]
+	then
+		server1=$FdnServer1;
+		server2=$FdnServer2;
+		
+		if [[ -n $server1 ]]
+		then
+			send_dns_details "FDN" "$server1" "$server2";
+		fi	
+	elif [[ "$dns_provider" == Next ]]
+	then
+		server1=$NextServer1;
+		server2=$NextServer2;
+		
+		if [[ -n $server1 ]]
+		then
+			send_dns_details "Next" "$server1" "$server2";
+		fi	
+	elif [[ "$dns_provider" == CensSurfri ]]
+	then
+		server1=$CensSurfriServer1;
+		server2=$CensSurfriServer2;
+		
+		if [[ -n $server1 ]]
+		then
+			send_dns_details "CensSurfri" "$server1" "$server2";
+		fi	
+	elif [[ "$dns_provider" == Quad9 ]]
+	then
+		server1=$QuadServer1;
+		server2=$QuadServer2;
+		 	
+		if [[ -n $server1 ]]
+		then
+			send_dns_details "Quad9" "$server1" "$server2";
+		fi	
+	elif [[ "$dns_provider" == Quad9Un ]]
+	then
+		server1=$QuadUnServer1;
+		server2=$QuadUnServer2;
+		 	
+		if [[ -n $server1 ]]
+		then
+			send_dns_details "Quad9Un" "$server1" "$server2";
+		fi	
+	elif [[ "$dns_provider" == Adguard ]]
+	then
+		server1=$AdguardServer1;
+		server2=$AdguardServer2;
+		 	
+		if [[ -n $server1 ]]
+		then
+			send_dns_details "Adguard" "$server1" "$server2";
+		fi			
+	elif [[ "$dns_provider" == neustar ]]
+	then
+		server1=$neustarServer1;
+		server2=$neustarServer2;
+		
+		if [[ -n $server1 ]]
+		then
+			send_dns_details "Neustar" "$server1" "$server2";
+		fi	
+	elif [[ "$dns_provider" == neustar-M ]]
+	then
+		server1=$neustarMServer1;
+		server2=$neustarMServer2;
+		
+		if [[ -n $server1 ]]
+		then
+			send_dns_details "Neustar-M" "$server1" "$server2";
+		fi	
+	elif [[ "$dns_provider" == neustar-MA ]]
+	then
+		server1=$neustarMAServer1;
+		server2=$neustarMAServer2;
+		
+		if [[ -n $server1 ]]
+		then
+			send_dns_details "Neustar-MA" "$server1" "$server2";
+		fi			
+	elif [[ "$dns_provider" == Opennic ]]
+	then
+		server1=$OpennicServer1;
+		server2=$OpennicServer2;
+		
+		if [[ -n $server1 ]]
+		then
+			send_dns_details "Opennic" "$server1" "$server2"; 	
+		fi				
+	elif [[ "$dns_provider" == CloudFlare ]]
+	then
+		server1=$CloudFlareServer1;
+		server2=$CloudFlareServer2;
+		
+		if [[ -n $server1 ]]
+		then
+			send_dns_details "CloudFlare" "$server1" "$server2";
+		fi			
+	elif [[ "$dns_provider" == CloudFlare-M ]]
+	then
+		server1=$CloudFlareMServer1;
+		server2=$CloudFlareMServer2;
+		
+		if [[ -n $server1 ]]
+		then
+			send_dns_details "CloudFlare-M" "$server1" "$server2";
+		fi				
+	elif [[ "$dns_provider" == CloudFlare-MA ]]
+	then
+		server1=$CloudFlareMAServer1;
+		server2=$CloudFlareMAServer2;
+		
+		if [[ -n $server1 ]]
+		then
+			send_dns_details "CloudFlare-MA" "$server1" "$server2";
+		fi			
+	elif [[ "$dns_provider" == Dnscrypt ]]
+	then		
+		server1=$DnscryptServer1;
+		server2=$DnscryptServer2;
+		
+		if [[ -n $server1 ]]
+		then
+			send_dns_details "Dnscrypt" "$server1" "$server2";	
+		fi			
+	elif [[ "$dns_provider" == TOR ]]
+	then
+		server1=$TorServer1;
+		server2=$TorServer2;
+				
+		if [[ -n $server1 ]]
+		then
+			send_dns_details "TOR" "$server1" "$server2";
+		fi			
+	elif [[ "$dns_provider" == custom ]]
+	then
+		server1=$CustomServer1;
+		server2=$CustomServer2;
+		
+		if [[ -n $server1 ]]
+		then
+			send_dns_details "Custom" "$server1" "$server2";	
+		fi			
+	elif [[ "$dns_provider" == Fail-safe ]]
+	then
+		server1=$Failsafeserver1;
+		server2=$Failsafeserver2;
+		server3=$Failsafeserver3;
+		
+		if [[ -n $server1 ]]
+		then
+			send_dns_details "Fail-safe" "$server1" "$server2" "$server3";		
+		fi			
+	fi
+}	
+
+
+function waitForTor2beready()
+{
+	
+	echo "waitForTor2beready function start";
+	tornullipcounter=0;
+	SERVICE='tor-service';
+	if (ps ax | grep -v grep | grep $SERVICE > /dev/null)	
+	then		
+		TorCon=0;
+		writeToJason "$TorCon" "$jsonvarName";
+		while [[ $TorCon -eq 0 ]]; do
+			tornullipcounter=$((tornullipcounter+1));
+			echo "*************************  waiting for Tor to be ready  **********************";
+			echo -e "\n"
+			#while [[ ! `timeout 50 torsocks curl --connect-timeout 15 --retry 5 $kodachiipcheck 2>/dev/null` ]]; do sleep 1; done
+			
+			local hostport="localhost:9050" 
+			local url=$(cat $Jason_web_file_name | jq -r '.ServerFeed2[].torstatuschecksite'|xargs);
+			if [[ ! -n "$url" ]]
+			then
+				url="https://check.torproject.org/";
+				print_error "Failed to get TOR site from json setting value to: $url";
+			fi
+				
+			
+			torsearchkeyword=$(cat $Jason_web_file_name | jq -r '.ServerFeed2[].torsearchkeyword'|xargs);
+			if [[ ! -n "$torsearchkeyword" ]]
+			then
+				torsearchkeyword="Congratulations";
+				print_error "Failed to get TOR search keyword from json setting value to: $torsearchkeyword";
+			fi
+			
+			
+			if curl -s -m 15 --socks5 "$hostport" --socks5-hostname "$hostport" -L "$url" | cat | tac | grep -q "$torsearchkeyword";  
+			then
+				TorCon=1;
+				tornullipcounter=0;	
+				writeToJason "$TorCon" "$jsonvarName";	
+				print_good "Torrify is on good site used: $url serachkeyword is:$torsearchkeyword";
+			else
+				TorCon=0;
+				writeToJason "$TorCon" "$jsonvarName";	
+				print_error "Torrify is off bad TOR will restart site used: $url serachkeyword is:$torsearchkeyword";
+					
+				rand=$[$RANDOM % ${#arr[@]}]
+				COuntryCode=${arr[$rand]};
+			
+				if [[ $tornullipcounter -le 5 ]]
+				then
+					# for some how some tor nodes are banned
+					sudo bash $Mykodachi_path/torforce off|(echo authenticate '"Auo2@s3ks@Wdq"';echo SETCONF ExitNodes={$COuntryCode};echo SETCONF StrictNodes=1 ;echo signal newnym; echo quit) | nc localhost 9060
+					print_error "Try to switch TOR to: $COuntryCode tornullipcounter is: $tornullipcounter";	
+				fi
+												
+				if [[ $tornullipcounter > 5 ]]
+				then
+					# for some how some tor nodes are banned
+					sudo bash $Mykodachi_path/torforce off|(echo authenticate '"Auo2@s3ks@Wdq"';echo SETCONF ExitNodes={$COuntryCode};echo SETCONF StrictNodes=1 ;echo signal newnym; echo quit) | nc localhost 9060
+					print_error "Try to switch TOR to: $COuntryCode tornullipcounter is: $tornullipcounter";	
+					sleep 1							
+					sudo /etc/init.d/tor restart;
+					print_error "Giving up on country atttempts restarting TOR";
+					sleep 1;
+				fi
+				echo "Tor while loop result: $TorCon";
+				sleep 5; 
+			fi
+			
+		done
+	fi
+}
+
+
+
+
+# End TOR functions
+
+writeToJason "Online" "InternetStatus";	
+writeToJason "Online" "InternetStatusbydomainonly";
+
+print_good "Starting with setting InternetStatusbydomainonly and InternetStatus as online";
+sleep 10;
+
+# Restart DNScrypt digi77.com is not resolvable on first start!
+dns_provider=$(cat $Jason_file_name | jq -r .DNSprovider);
+if [[ "$dns_provider" == Dnscrypt ]]
+then
+	
+	echo "Checked found dns_provider";	
+	
+	# third attempt
+	netStatustxtbydomainonly=$(cat $Jason_file_name | jq -r .InternetStatusbydomainonly);
+	if [[ $netStatustxtbydomainonly == *Online* ]]
+	then
+		Netcheckdomain5=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].Netcheckdomain5'|xargs);		
+		netIP=$Netcheckdomain5;	
+		
+		if [[ ! -n "$Netcheckdomain5" ]]
+		then
+			Netcheckdomain5="digi77.com";
+			print_error "Failed to get json variable Netcheckdomain5 setting it to: $Netcheckdomain5";
+		fi		
+		echo "Netcheckdomain5 from json is $netIP";
+		timeout 15 ping -c 1 -W 5 "$netIP" &> /dev/null ;			
+		if [ $? -eq 0 ]; 
+		then
+			echo "Digi77.com is online so skip";
+		else
+			sudo service dnscrypt-proxy stop; 
+			sleep 1;  
+			sudo service dnscrypt-proxy start;
+		fi
+	fi	
+	
+fi
+
+
+
+
+
+while true; do 
+    
+       
+	#Disable systemd-resolved and reboot. so nameserver 127.0.0.53 is not written to /etc/resolv.conf.
+	if systemctl is-active systemd-resolved.service > /dev/null 2>&1; 
+	then
+		sudo systemctl disable systemd-resolved;
+	fi
+	 
+	check_net_status;	
+	
+		
+	dns_provider=$(cat $Jason_file_name | jq -r .DNSprovider);
+	if [[ $permenetDNS != $dns_provider ]]
+	then
+		changeDNS;
+		check_net_status;
+		notify-send -i $notifyIcon "$dnsname DNS started"; 
+	fi
+	
+	cVj=$(cat $Jason_file_name | jq -r .DNSprovider);
+	cVj=$(echo $cVj|wc -c);
+	if [[ $cVj -lt 2 ]]
+	then
+		writeToJason "Dnscrypt" "DNSprovider";
+	fi
+	
+	# Start Dnscrypt			
+	if [[ "$dns_provider" == Dnscrypt ]]
+	then
+		# Disable Tor DNS
+		comment="kodachi_tor_dns";
+		sudo iptables -t nat -S | grep "${comment}" | cut -d " " -f 2- | xargs -rL1 iptables -t nat -D
+
+		
+		
+		SERVICE='dnscrypt-proxy';
+		if !(ps ax | grep -v grep | grep $SERVICE > /dev/null)
+		then	 
+			sudo service dnscrypt-proxy stop;  
+			sleep 1;   
+			sudo service dnscrypt-proxy start; 
+			print_good "Dnscrypt was not on starting it";
+			#sleep 5;  
+		fi	
+	else
+	    
+			SERVICE='dnscrypt-proxy';
+			if (ps ax | grep -v grep | grep $SERVICE > /dev/null)
+			then
+				if !(cat /etc/resolv.conf |grep "127.0.2.1" > /dev/null)
+				then
+					sudo service dnscrypt-proxy stop; 
+					echo "Killing dnscrypt";
+				else
+					print_error " I will not kill dnscrypt as I see the ip is there";
+				fi	
+			fi				
+	fi	
+		
+	
+	
+	
+
+	
+	
+	
+	
+	
+	#Start Tor DNS
+	if [[ $permenetDNS != $dns_provider ]]
+	then
+		dns_provider=$(cat $Jason_file_name | jq -r .DNSprovider);
+		if [[ "$dns_provider" == TOR ]]
+		then
+					
+			SERVICE='tor-service';
+			if (grep -R TOR /etc/resolv.conf)
+			then
+				if !(ps ax | grep -v grep | grep $SERVICE > /dev/null)
+				then	
+							
+					rand=$[$RANDOM % ${#arr[@]}]
+					COuntryCode=${arr[$rand]};		
+					print_error "Tor process was not found so let us restart it";
+					sudo /etc/init.d/tor restart;
+					writeToJason "Yes" "TORenabled";
+					writeToJason "Yes" "TORonifVPNisoff";
+					notify-send -i $notifyIcon "Changing TOR setting to start without VPN"; 	
+					sleep 3;
+					sudo bash $Mykodachi_path/torforce off|(echo authenticate '"Auo2@s3ks@Wdq"';echo SETCONF ExitNodes={$COuntryCode};echo SETCONF StrictNodes=1 ;echo signal newnym; echo quit) | nc localhost 9060
+					print_error "First try to switch TOR to: $COuntryCode";
+					sleep 3;													
+				fi	
+			else
+			
+				writeToJason "Yes" "TORonifVPNisoff";
+				print_good " TOR was already running so changing TOR setting to start without VPN";
+			fi
+
+          	
+				
+			# Wait for mr tor to be ready
+			#waitForTor2beready;
+			( cmdpid=$BASHPID; 
+			(sleep 60; kill $cmdpid) \
+			& while ! waitForTor2beready 
+			 do 
+				 echo "Tor wait termintated"; 
+			 done )		
+			 
+			 
+			TorCon=$(cat $Jason_file_name | jq -r .$jsonvarName);
+			echo "TorCon value is: $TorCon"
+			if [[ $TorCon -eq 0 ]]
+			then
+				notify-send -t 30000 -i $notifyIcon "$OS_name failed to start $appName TOR is not working please try again";
+				# Disable Tor DNS
+				comment="kodachi_tor_dns";
+				sudo iptables -t nat -S | grep "${comment}" | cut -d " " -f 2- | xargs -rL1 iptables -t nat -D				
+				 
+
+			else
+				# clean
+				comment="kodachi_tor_dns";
+				sudo iptables -t nat -S | grep "${comment}" | cut -d " " -f 2- | xargs -rL1 iptables -t nat -D
+
+				sleep 1;
+
+				# Add firewall rediect rules
+				comment="kodachi_tor_dns";
+				sudo iptables -t nat -A OUTPUT -m owner --uid-owner debian-tor -j RETURN -m comment --comment $comment
+				sudo iptables -t nat -A OUTPUT -p udp --dport 53 -j REDIRECT --to-ports 9061 -m comment --comment $comment
+			
+
+				
+				# Stop dnscrypt
+				if systemctl is-active dnscrypt-proxy.service > /dev/null 2>&1; 
+				then	 
+					sudo service dnscrypt-proxy stop;    
+				fi
+				 
+			fi		 
+			 	
+				
+		else
+		
+			# Disable Tor DNS
+			comment="kodachi_tor_dns";
+			sudo iptables -t nat -S | grep "${comment}" | cut -d " " -f 2- | xargs -rL1 iptables -t nat -D			 
+		
+		fi	
+	fi
+	
+	
+	
+	
+	
+	
+	
+	
+	
+
+	
+	# Force fail safe mode 
+	dnsforce=$(cat $Jason_file_name | jq -r .Forcetempdns);
+	netStatustxtbydomainonly=$(cat $Jason_file_name | jq -r .InternetStatusbydomainonly);
+	
+	if [[ "$dnsforce" == *Yes* ]]
+	then
+		if [[ $netStatustxtbydomainonly == Offline ]]
+		then
+			sleep 5;
+			check_net_status;
+		fi
+	fi
+	
+
+	
+	if [[ "$dnsforce" == *Yes* ]]
+	then
+		
+		
+		dns_provider=$(cat $Jason_file_name | jq -r .DNSprovider);
+		if [[ "$dns_provider" == Dnscrypt ]] || [[ "$dns_provider" == TOR ]]
+		then
+			sleep 15;
+		fi;
+		
+		netStatustxtbydomainonly=$(cat $Jason_file_name | jq -r .InternetStatusbydomainonly);
+		if [[ $netStatustxtbydomainonly == Online ]]
+		then
+			if [[ ! "$dns_provider" == Manual ]]
+			then
+				# allow to change resolve 
+				sudo chattr -i /etc/resolv.conf
+				#echo "The network is up";			 
+				sudo bash -c 'cat currentDNS > /etc/resolv.conf';
+				#Protect reolve file
+				sudo chattr +i /etc/resolv.conf			
+			fi
+			if [[ $dns_provider == *Fail-safe* ]]
+			then
+				
+				dnsname="Dnscrypt";
+				writeToJason "$dnsname" "DNSprovider"; 
+				#echo "Step 2";				
+			fi
+			unset dnsserver3;
+			
+		else
+			if [[ -n $permenetDNS ]]
+			then
+				#echo "Step 3";
+				#echo "The network is down"
+				dnsname="Fail-safe";
+				writeToJason "$dnsname" "DNSprovider"; 				
+				echo  "status $netStatustxtbydomainonly";				
+			fi	
+		fi
+		
+	else # If DNS file gets changed put it back
+		if [[ ! "$dns_provider" == Manual ]]
+		then
+			#Reset dns at startup
+			chk1=`cksum /etc/resolv.conf | awk -F" " '{print $1}'`
+			chk2=`cksum $Mykodachi_path/currentDNS | awk -F" " '{print $1}'`
+
+			if [ ! $chk1 -eq $chk2 ]
+			then
+				#echo "Step 4";
+				echo "Dns file is not identical"
+				# allow to change resolve 
+				sudo chattr -i /etc/resolv.conf
+				sudo bash -c 'cat currentDNS > /etc/resolv.conf'; 
+				#Protect reolve file
+				sudo chattr +i /etc/resolv.conf	
+			fi	
+		fi	
+		
+	fi
+	
+	
+	
+	
+	if (cat /etc/resolv.conf | grep "Generated by NetworkManager")
+	then
+		print_error "Found Generated by NetworkManager on DNS";
+		sudo rm -f /etc/resolv.conf 
+        sudo touch /etc/resolv.conf 
+        sudo bash -c 'cat currentDNS > /etc/resolv.conf';
+		dnsname="Dnscrypt";
+		changeDNS;
+		check_net_status;
+		notify-send -i $notifyIcon "$dnsname DNS started"; 
+	
+	fi
+	onlinetimecounter=$((onlinetimecounter+1));
+	actionpickervalue=$(cat $Jason_file_name | jq -r .systemhealthactionpicker);
+	netStatustxtbydomainonly=$(cat $Jason_file_name | jq -r .InternetStatusbydomainonly);
+	netStatustxt=$(cat $Jason_file_name | jq -r .InternetStatus);
+	randomSleeper=$((RANDOM %15));
+	#if [[ $netStatustxtbydomainonly == *Online* ]] && [[ $netStatustxt == *Online* ]]
+	if [[ $netStatustxtbydomainonly == *Online* ]]
+	then
+    
+		# Breath
+		print_good "We are online Sleeping for $randomSleeper sec";
+		sleep $randomSleeper;
+		    
+    else
+		print_error "We are offline Sleeping for 1 sec";
+		onlinetimecounter=0;
+		sleep 1;
+    
+    fi
+    
+    permenetDNS=$dns_provider;	
+    randomSleeper2=$((RANDOM %5));
+   	if [[ $onlinetimecounter -gt $randomSleeper2 ]]
+	then
+			onlinetimecounter=0;
+	fi
+    
+done

@@ -1,0 +1,246 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<channel name="xfce4-panel" version="1.0">
+  <property name="panels" type="array">
+    <value type="int" value="0"/>
+    <value type="int" value="1"/>
+    <property name="panel-0" type="empty">
+      <property name="position" type="string" value="p=6;x=0;y=0"/>
+      <property name="length" type="uint" value="100"/>
+      <property name="position-locked" type="bool" value="true"/>
+      <property name="plugin-ids" type="array">
+        <value type="int" value="18"/>
+        <value type="int" value="9"/>
+        <value type="int" value="16"/>
+        <value type="int" value="8"/>
+        <value type="int" value="5"/>
+        <value type="int" value="7"/>
+        <value type="int" value="20"/>
+        <value type="int" value="2"/>
+        <value type="int" value="3"/>
+        <value type="int" value="4"/>
+        <value type="int" value="28"/>
+        <value type="int" value="13"/>
+        <value type="int" value="30"/>
+        <value type="int" value="14"/>
+        <value type="int" value="29"/>
+        <value type="int" value="21"/>
+        <value type="int" value="17"/>
+        <value type="int" value="19"/>
+        <value type="int" value="15"/>
+        <value type="int" value="10"/>
+        <value type="int" value="12"/>
+        <value type="int" value="23"/>
+      </property>
+      <property name="background-style" type="uint" value="0"/>
+      <property name="background-alpha" type="uint" value="95"/>
+      <property name="size" type="uint" value="25"/>
+      <property name="length-adjust" type="bool" value="true"/>
+      <property name="span-monitors" type="bool" value="false"/>
+      <property name="enter-opacity" type="uint" value="100"/>
+      <property name="leave-opacity" type="uint" value="100"/>
+      <property name="mode" type="uint" value="2"/>
+      <property name="autohide-behavior" type="uint" value="0"/>
+      <property name="disable-struts" type="bool" value="false"/>
+      <property name="nrows" type="uint" value="1"/>
+    </property>
+    <property name="panel-1" type="empty">
+      <property name="position" type="string" value="p=4;x=2435;y=1067"/>
+      <property name="plugin-ids" type="array">
+        <value type="int" value="6"/>
+        <value type="int" value="22"/>
+        <value type="int" value="11"/>
+        <value type="int" value="26"/>
+        <value type="int" value="32"/>
+      </property>
+      <property name="mode" type="uint" value="2"/>
+      <property name="position-locked" type="bool" value="true"/>
+      <property name="disable-struts" type="bool" value="true"/>
+      <property name="autohide-behavior" type="uint" value="0"/>
+      <property name="length" type="uint" value="5"/>
+      <property name="size" type="uint" value="35"/>
+    </property>
+  </property>
+  <property name="plugins" type="empty">
+    <property name="plugin-2" type="string" value="tasklist">
+      <property name="flat-buttons" type="bool" value="true"/>
+      <property name="grouping" type="uint" value="1"/>
+    </property>
+    <property name="plugin-3" type="string" value="separator">
+      <property name="style" type="uint" value="0"/>
+      <property name="expand" type="bool" value="true"/>
+    </property>
+    <property name="plugin-4" type="string" value="systray">
+      <property name="show-frame" type="bool" value="false"/>
+      <property name="size-max" type="uint" value="22"/>
+      <property name="names-visible" type="array">
+        <value type="string" value="riseup-vpn"/>
+        <value type="string" value="thunar"/>
+        <value type="string" value="pglgui"/>
+        <value type="string" value="bettergram"/>
+        <value type="string" value="opensnitch-ui"/>
+        <value type="string" value="networkmanager applet"/>
+        <value type="string" value="task manager"/>
+        <value type="string" value="wicd-client.py"/>
+        <value type="string" value="network"/>
+        <value type="string" value="gnome-ring"/>
+        <value type="string" value="shutter"/>
+        <value type="string" value="wire-desktop"/>
+        <value type="string" value="blueman-applet"/>
+        <value type="string" value="clipman"/>
+        <value type="string" value="update-notifier"/>
+        <value type="string" value="xfce4-power-manager"/>
+        <value type="string" value="kodachi-dashboard.gambas"/>
+        <value type="string" value="florence"/>
+        <value type="string" value="usbguard-applet-qt"/>
+        <value type="string" value="cryptocat"/>
+        <value type="string" value="javaembeddedframe"/>
+        <value type="string" value="notes"/>
+        <value type="string" value="veracrypt"/>
+      </property>
+    </property>
+    <property name="plugin-5" type="string" value="notification-plugin"/>
+    <property name="plugin-7" type="string" value="statusnotifier">
+      <property name="icon-size" type="int" value="19"/>
+      <property name="menu-is-primary" type="bool" value="true"/>
+      <property name="mode-whitelist" type="bool" value="false"/>
+      <property name="single-row" type="bool" value="false"/>
+      <property name="square-icons" type="bool" value="false"/>
+      <property name="symbolic-icons" type="bool" value="true"/>
+      <property name="known-items" type="array">
+        <value type="string" value="veracrypt"/>
+        <value type="string" value="blueman"/>
+        <value type="string" value="systray"/>
+        <value type="string" value="opensnitch-ui"/>
+        <value type="string" value="qTox"/>
+        <value type="string" value="electrum"/>
+        <value type="string" value="Kodachi-Dashboard"/>
+        <value type="string" value="demonsaw"/>
+        <value type="string" value="Element1"/>
+        <value type="string" value="jami"/>
+        <value type="string" value="Bettergram"/>
+        <value type="string" value="software-update-available"/>
+        <value type="string" value="onionshare-gui"/>
+        <value type="string" value="usbguard-applet-qt"/>
+        <value type="string" value="SimpleScreenRecorder"/>
+        <value type="string" value="remmina-icon"/>
+        <value type="string" value="stacer"/>
+        <value type="string" value="Wire1"/>
+        <value type="string" value="vokoscreen"/>
+        <value type="string" value="run_electrum"/>
+        <value type="string" value="Fcitx"/>
+        <value type="string" value="SiriKali"/>
+        <value type="string" value="zuluCrypt"/>
+        <value type="string" value="zuluMount"/>
+        <value type="string" value="vlc"/>
+        <value type="string" value="redshift"/>
+        <value type="string" value="firetools"/>
+        <value type="string" value="Telegram Desktop"/>
+        <value type="string" value="nm-applet"/>
+      </property>
+      <property name="hidden-items" type="array">
+      </property>
+    </property>
+    <property name="plugin-8" type="string" value="power-manager-plugin"/>
+    <property name="plugin-9" type="string" value="pulseaudio">
+      <property name="enable-keyboard-shortcuts" type="bool" value="true"/>
+      <property name="enable-mpris" type="bool" value="true"/>
+      <property name="mixer-command" type="string" value="pavucontrol"/>
+      <property name="mpris-players" type="string" value="parole;vlc"/>
+      <property name="show-notifications" type="bool" value="true"/>
+    </property>
+    <property name="plugin-12" type="string" value="showdesktop"/>
+    <property name="plugin-13" type="string" value="launcher">
+      <property name="items" type="array">
+        <value type="string" value="15404915523.desktop"/>
+        <value type="string" value="15405800051.desktop"/>
+        <value type="string" value="15882712841.desktop"/>
+        <value type="string" value="15404915422.desktop"/>
+        <value type="string" value="15404918611.desktop"/>
+      </property>
+      <property name="move-first" type="bool" value="false"/>
+    </property>
+    <property name="plugin-14" type="string" value="launcher">
+      <property name="items" type="array">
+        <value type="string" value="15610221794.desktop"/>
+        <value type="string" value="15404914121.desktop"/>
+        <value type="string" value="15610221413.desktop"/>
+        <value type="string" value="15901521591.desktop"/>
+        <value type="string" value="15405214031.desktop"/>
+        <value type="string" value="16161754211.desktop"/>
+        <value type="string" value="15426409221.desktop"/>
+      </property>
+      <property name="move-first" type="bool" value="false"/>
+      <property name="arrow-position" type="uint" value="0"/>
+    </property>
+    <property name="plugin-16" type="string" value="xkb">
+      <property name="display-type" type="uint" value="1"/>
+      <property name="display-scale" type="uint" value="70"/>
+      <property name="display-name" type="uint" value="1"/>
+      <property name="display-tooltip-icon" type="bool" value="true"/>
+    </property>
+    <property name="plugin-18" type="string" value="datetime"/>
+    <property name="plugin-20" type="string" value="separator">
+      <property name="style" type="uint" value="1"/>
+    </property>
+    <property name="plugin-11" type="string" value="systemload"/>
+    <property name="plugin-22" type="string" value="netload"/>
+    <property name="plugin-26" type="string" value="diskperf"/>
+    <property name="plugin-28" type="string" value="separator">
+      <property name="style" type="uint" value="1"/>
+    </property>
+    <property name="plugin-29" type="string" value="separator">
+      <property name="style" type="uint" value="1"/>
+    </property>
+    <property name="plugin-30" type="string" value="separator">
+      <property name="style" type="uint" value="1"/>
+    </property>
+    <property name="plugin-15" type="string" value="xfce4-mount-plugin"/>
+    <property name="plugin-32" type="string" value="actions">
+      <property name="items" type="array">
+        <value type="string" value="+lock-screen"/>
+        <value type="string" value="-switch-user"/>
+        <value type="string" value="-separator"/>
+        <value type="string" value="-suspend"/>
+        <value type="string" value="-hibernate"/>
+        <value type="string" value="-separator"/>
+        <value type="string" value="-shutdown"/>
+        <value type="string" value="-restart"/>
+        <value type="string" value="-separator"/>
+        <value type="string" value="+logout"/>
+        <value type="string" value="-logout-dialog"/>
+      </property>
+      <property name="appearance" type="uint" value="0"/>
+      <property name="invert-orientation" type="bool" value="true"/>
+    </property>
+    <property name="clipman" type="empty">
+      <property name="tweaks" type="empty">
+        <property name="never-confirm-history-clear" type="bool" value="true"/>
+        <property name="popup-at-pointer" type="bool" value="false"/>
+      </property>
+      <property name="settings" type="empty">
+        <property name="max-texts-in-history" type="uint" value="20"/>
+      </property>
+    </property>
+    <property name="plugin-6" type="string" value="pager">
+      <property name="rows" type="uint" value="1"/>
+      <property name="miniature-view" type="bool" value="false"/>
+    </property>
+    <property name="plugin-10" type="string" value="launcher">
+      <property name="items" type="array">
+        <value type="string" value="15483491831.desktop"/>
+      </property>
+    </property>
+    <property name="plugin-17" type="string" value="xfce4-clipman-plugin"/>
+    <property name="plugin-19" type="string" value="directorymenu">
+      <property name="base-directory" type="string" value="/home/kodachi"/>
+    </property>
+    <property name="plugin-21" type="string" value="launcher">
+      <property name="items" type="array">
+        <value type="string" value="16505211851.desktop"/>
+      </property>
+    </property>
+    <property name="plugin-23" type="string" value="whiskermenu"/>
+  </property>
+  <property name="configver" type="int" value="2"/>
+</channel>

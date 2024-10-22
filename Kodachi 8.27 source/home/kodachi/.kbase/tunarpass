@@ -1,0 +1,87 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2022 Founder of Eagle Eye Digital Solutions
+# Discord channel https://discord.gg/KEFErEx
+# Twitter http://twitter.com/warith2020
+# Linkedin http://www.linkedin.com/in/warith1977
+# http://www.digi77.com
+# http://www.om77.net
+# Kodachi  OS/Software/Code are strictly protected by LICENSE terms at /home/kodachi/LICENSE
+#
+#
+# script starts here:
+
+
+
+cd $(dirname $0) 
+source Globalconfig;
+
+
+
+# detect empty arguments
+if [ $# -eq 0 ]; then
+	echo "No arguments entered"
+		
+fi
+
+
+# Accept command line arguments
+while [ $# -gt 0 ]
+do
+    case "$1" in
+    -a)  myActionmd5=$2 ; shift;;      
+    -n)  thepath=$2 ; shift;;      
+	--)	shift; break;;
+	-*)
+	    echo >&2 \
+	    "usage: $0 [-v] [-f file] [file ...]"
+	    exit 1;;
+	*)  break;;	# terminate while loop
+    esac
+    shift
+done
+#remove spaces 
+thepath="${thepath}"
+
+# md5sum
+if [[ "$myActionmd5" == *md5sucmcheck* ]]
+then     
+	thepath=$(md5sum "$thepath");
+	echo "$thepath" > ~/Desktop/md5sum.txt;
+	gedit ~/Desktop/md5sum.txt;	 
+	notify-send -i $notifyIcon "Result saved in your Desktop $thepath";
+    exit 1;
+fi
+#sha256sum
+if [[ "$myActionmd5" == *sha2sucmcheck* ]]
+then     
+	thepath=$(sha256sum "$thepath");
+	echo "$thepath" > ~/Desktop/sha256sum.txt;
+	gedit ~/Desktop/sha256sum.txt;
+	notify-send -i $notifyIcon "Result saved in your Desktop $thepath";
+    exit 1;
+fi
+#sha512sum
+if [[ "$myActionmd5" == *sha5sucmcheck* ]]
+then     
+	thepath=$(sha512sum "$thepath");
+	echo "$thepath" > ~/Desktop/sha512sum.txt;
+	gedit ~/Desktop/sha512sum.txt;	 
+	notify-send -i $notifyIcon "Result saved in your Desktop $thepath";	
+    exit 1;
+
+fi
+
+# ncdu Folder size sum
+if [[ "$myActionmd5" == *spacecheck* ]]
+then     
+	#xfce4-terminal -e 'bash -c "ncdu $thepath; bash"' 
+	xfce4-terminal -e "ncdu $thepath";
+    exit 1;
+  
+fi
+
+
+
+exit 1;
+ 
