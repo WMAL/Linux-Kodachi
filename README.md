@@ -59,9 +59,27 @@ Kodachi has been critically acclaimed by global publications and consistently re
 You don't need to be a cybersecurity expert to use Kodachi. Simply follow these steps:
 
 1. **[Download Kodachi](https://sourceforge.net/projects/linuxkodachi/files/latest/download)** from the official site.
-2. **Create Bootable Media:** Use a USB stick or DVD to create bootable media. Tools like **Rufus** (for Windows) or **Etcher** (for Linux/Mac) can help.
-3. **Boot Your System:** Restart your computer and boot from the USB/DVD. You may need to adjust your BIOS settings.
-4. **Start Using Kodachi:** The operating system will load in live mode, allowing you to immediately start browsing and working securely.
+
+### Option 1: Use with Virtual Machine
+
+2. **VMware Workstation:**
+   1. Open VMware Workstation and create a new virtual machine.
+   2. Select "Installer disc image file (iso)" and browse to the Kodachi ISO file you downloaded.
+   3. Follow the prompts to configure the virtual machine settings (e.g., memory, disk size).
+   4. Finish the setup and start the virtual machine.
+   5. Kodachi will boot in live mode, allowing you to start using it immediately.
+3. **VirtualBox:**
+   1. Open VirtualBox and create a new virtual machine.
+   2. Select "Linux" as the type and "Debian (64-bit)" as the version.
+   3. Follow the prompts to configure the virtual machine settings (e.g., memory, disk size).
+   4. In the "Storage" settings, add the Kodachi ISO file as a virtual optical disk.
+   5. Start the virtual machine and Kodachi will boot in live mode.
+
+### Option 2: Create Bootable Media
+
+4. **Create Bootable Media:** Use a USB stick or DVD to create bootable media. Tools like **Rufus** (for Windows) or **Etcher** (for Linux/Mac) can help.
+5. **Boot Your System:** Restart your computer and boot from the USB/DVD. You may need to adjust your BIOS settings.
+6. **Start Using Kodachi:** The operating system will load in live mode, allowing you to immediately start browsing and working securely.
 
 ---
 
