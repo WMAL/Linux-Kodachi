@@ -1,0 +1,35 @@
+[xfdesktop-version-4.10.3+-rcfile_format]
+4.10.3+=true
+
+[/home/kodachi/Desktop/kodachi]
+row=2
+col=1
+
+[/home/kodachi/Desktop/test.desktop]
+row=3
+col=0
+
+[/home/kodachi/Desktop/Link to .kbase]
+row=4
+col=0
+
+[/home/kodachi/Desktop/Link to dns]
+row=0
+col=1
+
+[/home/kodachi/Desktop/Link to tmp]
+row=1
+col=1
+
+[Trash]
+row=2
+col=0
+
+[/]
+row=0
+col=0
+
+[/home/kodachi]
+row=1
+col=0
+

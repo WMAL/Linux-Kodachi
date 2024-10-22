@@ -1,0 +1,37 @@
+{
+  "history_required_fields": ["title", "description", "url", "frecency"],
+  "history_limit_secs": 2592000,
+  "history_item_builder": [
+    {"function": "nb_tag", "fields": ["title", "description"]},
+    {"function": "copy_value", "src": "nb_tags", "dest": "tags"},
+    {"function": "make_boolean", "field": "tags", "threshold": -1.0},
+    {"function": "allow_fields", "fields": ["tags"]}
+  ],
+  "interest_combiner": [
+    {"function": "combiner_add", "field": "tags"}
+  ],
+  "interest_finalizer": [
+    {"function": "set_default", "field": "tags", "value": {}},
+    {"function": "l2_normalize", "field": "tags"}
+  ],
+  "item_to_rank_builder": [
+    {"function": "nb_tag", "fields": ["title", "excerpt"]},
+    {"function": "copy_value", "src": "nb_tags", "dest": "item_tags"},
+    {"function": "make_boolean", "field": "item_tags", "threshold": -1.0},
+    {"function": "set_default", "field": "item_score", "value": 0.0},
+    {"function": "set_default", "field": "sort_id", "value": 0},
+    {"function": "copy_value", "dest": "item_sort_id", "src": "sort_id"},
+    {"function": "scalar_add", "field": "item_sort_id", "k": 1},
+    {"function": "set_default", "field": "item_tags", "value": {}},
+    {"function": "l2_normalize", "field": "item_tags"},
+    {"function": "allow_fields", "fields": ["id", "item_tags", "item_score", "item_sort_id"]}
+  ],
+  "item_ranker": [
+    {"function": "vector_multiply", "left": "tags", "right": "item_tags", "dest": "tag_sim"},
+    {"function": "copy_to_map", "src": "tag_sim", "dest_key": "tag_sim", "dest_map": "final_features"},
+    {"function": "copy_to_map", "src": "item_sort_id", "dest_key": "item_sort_id", "dest_map": "final_features"},
+    {"function": "set_default", "field": "coeffs", "value": {"tag_sim": 1, "item_sort_id": -0.00001 }},
+    {"function": "allow_fields", "fields": ["final_features", "coeffs"]},
+    {"function": "vector_multiply", "left": "final_features", "right": "coeffs", "dest": "score"}
+  ]
+}

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Tor, Vpn Browser
+Comment=Launch Tor Browser
+Exec=sh -c '"/usr/lib/tor-browser/tor-browser_en-US/Browser/start-tor-browser" --detach || ([ !  -x "/usr/lib/tor-browser/tor-browser_en-US/Browser/start-tor-browser" ] && "$(dirname "$*")"/Browser/start-tor-browser --detach)' dummy %k
+Icon=/home/kodachi/.config/cairo-dock/current_theme/icons/tor_browser.png
+Path=
+Terminal=false
+StartupNotify=false

@@ -1,0 +1,22 @@
+#!/bin/bash
+#
+
+# Self-cannibalizing startup script for bodhibuilder
+# Runs in the ISO only
+#   Non X essential commands
+#   (For X essential commands, put them into iso_boot_script.sh,
+#    which is also self-cannibalizing)
+#
+
+sudo -i -u __LIVEUSER__ dbus-run-session -- gio set /home/__LIVEUSER__/Desktop/ubiquity.desktop metadata::trusted yes &
+
+ARCH=`archdetect | cut -d/ -f1`
+if [ "${ARCH}" = "amd64" ] ; then
+  apt-get update
+fi
+
+sleep 7
+
+yes | rm -f /etc/rc.local
+
+exit 0

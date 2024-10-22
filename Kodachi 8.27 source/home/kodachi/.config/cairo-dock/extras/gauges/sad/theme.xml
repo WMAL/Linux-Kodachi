@@ -1,0 +1,24 @@
+<gauge>
+	<name>Fluid Reggae</name>
+	<author>SQP</author>
+	<file key="foreground">foreground.svg</file>
+	<file key="background">background.svg</file>
+	<multi_display>1</multi_display>
+	<indicator>
+		<effect>1</effect>
+		<file key="image">bar.svg</file>
+		<file key="image">bar.svg</file>
+		<file key="image">bar.svg</file>
+		<file key="image">bar_yellow.svg</file>
+		<file key="image">bar_red.svg</file>
+		<text_zone>
+			<x_center>-0</x_center>
+			<y_center>-0,1</y_center>
+			<width>0,8</width>
+			<height>0,8</height>
+			<red>0</red>
+			<green>0</green>
+			<blue>0</blue>
+		</text_zone>
+	</indicator>
+</gauge>

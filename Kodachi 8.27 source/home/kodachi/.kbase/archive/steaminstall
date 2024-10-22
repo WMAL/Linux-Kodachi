@@ -1,0 +1,29 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2022 Founder of Eagle Eye Digital Solutions
+# Discord channel https://discord.gg/KEFErEx
+# Twitter http://twitter.com/warith2020
+# Linkedin http://www.linkedin.com/in/warith1977
+# http://www.digi77.com
+# http://www.om77.net
+# Kodachi  OS/Software/Code are strictly protected by LICENSE terms at /home/kodachi/LICENSE
+#
+#
+# script starts here:
+
+cd $(dirname $0) 
+source Globalconfig;
+
+
+sudo dpkg --add-architecture i386
+sudo apt-get install libbz2-1.0:i386
+wget -O ~/steam.deb http://media.steampowered.com/client/installer/steam.deb
+yes|sudo gdebi ../steam.deb
+rm -f ../steam.deb
+notify-send -i $notifyIcon "Steam installation completed";
+echo "";
+print_good "Steam installation completed";
+
+# Do not delete this!
+exit 1;
+

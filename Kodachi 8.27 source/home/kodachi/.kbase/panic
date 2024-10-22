@@ -1,0 +1,160 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2022 Founder of Eagle Eye Digital Solutions
+# Discord channel https://discord.gg/KEFErEx
+# Twitter http://twitter.com/warith2020
+# Linkedin http://www.linkedin.com/in/warith1977
+# http://www.digi77.com
+# http://www.om77.net
+# Kodachi  OS/Software/Code are strictly protected by LICENSE terms at /home/kodachi/LICENSE
+#
+#
+# script starts here:
+
+cd $(dirname $0) 
+source Globalconfig;
+
+
+
+goAhead=0;
+
+dialog --backtitle "Troubleshoot area #1" \
+--title "Attempt to fix the Dashboard?" \
+--yes-label "YES!" --no-label "Skip this" --yesno "Are you sure?" 6 40
+response=$?
+case $response in
+	0) goAhead=1 ;;
+	1) goAhead=0 ;;
+	255) ctrl_c ;;
+esac
+ 
+if [[ $goAhead == 1 ]]
+then
+sudo chmod 755 $Mykodachi_path/Kodachi-Dashboard.gambas;
+clear;
+print_good "Dashboard permission reset completed";
+sleep 2;
+fi
+
+
+goAhead=0;
+dialog --backtitle "Troubleshoot area #2" \
+--title "Attempt to fix the DNS?" \
+--yes-label "YES!" --no-label "Skip this" --yesno "Are you sure?" 6 40
+response=$?
+case $response in
+	0) goAhead=1 ;;
+	1) goAhead=0 ;;
+	255) ctrl_c ;;
+esac
+ 
+if [[ $goAhead == 1 ]]
+then
+sudo bash $Mykodachi_path/networkrestart & 
+clear;
+dnsname="Fail-safe";
+writeToJason "$dnsname" "DNSprovider"
+clear;
+print_good "DNS fixed";
+sleep 5;
+fi
+
+
+
+goAhead=0;
+dialog --backtitle "Troubleshoot area #3" \
+--title "Attempt to fix the network?" \
+--yes-label "YES!" --no-label "Skip this" --yesno "Are you sure?" 6 40
+response=$?
+case $response in
+	0) goAhead=1 ;;
+	1) goAhead=0 ;;
+	255) ctrl_c ;;
+esac
+ 
+if [[ $goAhead == 1 ]]
+then
+sudo bash $Mykodachi_path/networkrestart & 
+clear;
+print_good "Network reset started";
+sleep 5;
+fi
+
+
+
+
+goAhead=0;
+dialog --backtitle "Troubleshoot area #4" \
+--title "Attempt to fix the screen?" \
+--yes-label "YES!" --no-label "Skip this" --yesno "Are you sure?" 6 40
+response=$?
+case $response in
+	0) goAhead=1 ;;
+	1) goAhead=0 ;;
+	255) ctrl_c ;;
+esac
+ 
+if [[ $goAhead == 1 ]]
+then
+sudo bash $Mykodachi_path/repairgui & 
+clear;
+print_good "Screen reset started";
+sleep 5;
+fi
+
+
+
+
+goAhead=0;
+dialog --backtitle "Troubleshoot area #5" \
+--title "Attempt to restore json files?" \
+--yes-label "YES!" --no-label "Skip this" --yesno "Are you sure?" 6 40
+response=$?
+case $response in
+	0) goAhead=1 ;;
+	1) goAhead=0 ;;
+	255) ctrl_c ;;
+esac
+ 
+if [[ $goAhead == 1 ]]
+then
+cp -f "$Mykodachi_path/jsonbackups/kodachi.json" $Jason_file_name
+cp -f "$Mykodachi_path/jsonbackups/kodachiweb.json" $Jason_web_file_name
+clear;
+print_good "Restore of json files completed";
+sleep 5;
+fi
+
+
+
+goAhead=0;
+dialog --backtitle "Troubleshoot area #6" \
+--title "Attempt to restore base files?" \
+--yes-label "YES!" --no-label "Skip this" --yesno "Are you sure?" 6 40
+response=$?
+case $response in
+	0) goAhead=1 ;;
+	1) goAhead=0 ;;
+	255) ctrl_c ;;
+esac
+ 
+if [[ $goAhead == 1 ]]
+then
+sudo bash $Mykodachi_path/remoterestore & 
+clear;
+print_good "Restore process started";
+sleep 5;
+fi
+
+
+
+
+
+sleep 1;
+clear;
+print_good "All fix attempts were completed";
+print_good "Note that some processes may be still running on background based on your previous selection";  
+
+
+# Do not delete this!
+exit 1;

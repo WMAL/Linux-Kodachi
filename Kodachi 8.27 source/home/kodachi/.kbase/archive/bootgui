@@ -1,0 +1,66 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2021 Founder of Eagle Eye Digital Solutions
+# Discord channel https://discord.gg/KEFErEx
+# Twitter http://twitter.com/warith2020
+# Linkedin http://www.linkedin.com/in/warith1977
+# http://www.digi77.com
+# http://www.om77.net
+# Kodachi  OS/Software/Code are strictly protected by LICENSE terms at /home/kodachi/LICENSE
+#
+#
+# script starts here:
+
+
+cd $(dirname $0) 
+source Globalconfig;
+
+
+if [ ! -d $Mykodachi_path/tmp ]; then
+	mkdir -p $Mykodachi_path/tmp;
+	chown $LOGED_USER.$LOGED_USER $Mykodachi_path/tmp;
+fi;
+
+#NEW_UUID=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)
+NEW_UUID="4uF58TdwtCI2ZXvRZIG9IgkqwmYAsVnm@";
+me=$(basename "$(test -L "$0" && readlink "$0" || echo "$0")")
+
+lockdir="$Mykodachi_path/tmp/$NEW_UUID$me";
+mkdir $lockdir || {
+    echo "lock directory exists. exiting"
+    exit 1
+}
+# take pains to remove lock directory when script terminates
+trap "rmdir $lockdir" EXIT INT KILL TERM 
+
+
+# rest of script here
+sudo chown $LOGED_USER.$LOGED_USER $Mykodachi_path/tmp/$NEW_UUID$me;
+	
+# end script locker
+
+
+
+
+
+# check if user has logged in
+if [[ $LOGED_USER = $EXEC_USER ]]; then
+
+ while true; do
+	
+	SERVICE='cairo-dock';
+	if !(ps ax | grep -v grep | grep $SERVICE > /dev/null)
+	then
+		sudo killall cairo-dock;
+		#notify-send -i $notifyIcon "Dock will start in few seconds";
+		echo "Dock will start in few seconds";
+		sleep 5;
+		cairo-dock -c
+	fi
+	sleep 1; 
+ done
+	 
+fi
+ 
+
+ 

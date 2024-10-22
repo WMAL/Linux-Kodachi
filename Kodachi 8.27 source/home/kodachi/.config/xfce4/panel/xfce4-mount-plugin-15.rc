@@ -1,0 +1,13 @@
+on_mount_cmd=
+mount_command=mount %m
+umount_command=umount %m
+excluded_filesystems=
+icon=/usr/share/icons/hicolor/scalable/apps/xfce-mount.svg
+show_message_dialog=false
+include_networked_filesystems=false
+trim_devicenames=true
+td_count=14
+exclude_selected_filesystems=false
+exclude_devicenames_in_menu=false
+eject_cddrives=false
+

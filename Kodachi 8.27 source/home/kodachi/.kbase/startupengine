@@ -1,0 +1,84 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2022 Founder of Eagle Eye Digital Solutions
+# Discord channel https://discord.gg/KEFErEx
+# Twitter http://twitter.com/warith2020
+# Linkedin http://www.linkedin.com/in/warith1977
+# http://www.digi77.com
+# http://www.om77.net
+# Kodachi  OS/Software/Code are strictly protected by LICENSE terms at /home/kodachi/LICENSE
+#
+#
+# script starts here:
+
+cd $(dirname $0) 
+source Globalconfig;
+
+
+writeToJason "No" "systemupdating";
+
+# Do not run again just once 
+if [[ ! -d $Mykodachi_path/tmp/YumMEW1zqrzCXWoYjxBsvTicApp8SPaw@setsudo ]]
+then
+	echo "networkboot";
+	sudo bash networkboot &
+fi 
+
+while true; do
+
+    # Jason health 
+	echo "insurance-check";
+	bash $Mykodachi_path/insurance-check &
+	sleep 5;		
+	sudo kill -9 `ps -ef | grep insurance-check | grep -v grep | awk '{print $2}'` > /dev/null 2>&1
+	
+	# Create backup folder
+	if [ ! -d $Myhome_path/backups ]; then
+		mkdir -p $Myhome_path/backups ;
+		chown $LOGED_USER.$LOGED_USER $Myhome_path/backups ;
+	fi;
+	
+	
+	updatestatus=$(cat $Jason_file_name | jq -r .systemupdating);
+	if [[ $updatestatus == *No* ]]
+	then
+		echo "reschangecheck";
+		bash $Mykodachi_path/reschangecheck &
+		
+		echo "setsudo";
+		sudo bash $Mykodachi_path/setsudo & 
+		
+		echo "sdns_control";
+		sudo bash $Mykodachi_path/dns_control &
+		sleep 2;
+		
+		echo "systemhealth";
+		sudo bash $Mykodachi_path/systemhealth normalspeed &
+		sleep 1;
+		
+		echo "bootguicairo";
+		bash $Mykodachi_path/bootguicairo &
+		
+		echo "bootguiconky";
+		bash $Mykodachi_path/bootguiconky &
+		sleep 5;
+		
+			 
+	else
+	
+	    echo "Killing processes for updates";
+		sudo kill -9 `ps -ef | grep normalspeed | grep -v grep | awk '{print $2}'` > /dev/null 2>&1
+		sudo kill -9 `ps -ef | grep dns_control | grep -v grep | awk '{print $2}'` > /dev/null 2>&1
+		sudo kill -9 `ps -ef | grep reschangecheck | grep -v grep | awk '{print $2}'` > /dev/null 2>&1
+		sudo kill -9 `ps -ef | grep bootguicairo | grep -v grep | awk '{print $2}'` > /dev/null 2>&1
+		sudo kill -9 `ps -ef | grep bootguiconky | grep -v grep | awk '{print $2}'` > /dev/null 2>&1
+		sudo kill -9 `ps -ef | grep networkboot | grep -v grep | awk '{print $2}'` > /dev/null 2>&1
+		sudo kill -9 `ps -ef | grep setsudo | grep -v grep | awk '{print $2}'` > /dev/null 2>&1	
+	    sudo rm -f -r $Mykodachi_tmp_path/*
+	    sleep 5;
+	fi	
+done	
+
+ 
+ 
+exit 1;

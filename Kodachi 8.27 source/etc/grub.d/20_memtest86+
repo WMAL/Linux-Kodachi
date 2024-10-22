@@ -1,0 +1,73 @@
+#!/bin/sh
+set -e
+
+if [ -f /usr/lib/grub/grub-mkconfig_lib ]; then
+  . /usr/lib/grub/grub-mkconfig_lib
+  LX=linux16
+elif [ -f /usr/lib/grub/update-grub_lib ]; then
+  . /usr/lib/grub/update-grub_lib
+  LX=linux
+else
+  # no grub file, so we notify and exit gracefully
+  echo "Cannot find grub config file, exiting." >&2
+  exit 0
+fi
+
+# We need 16-bit boot, which isn't available on EFI.
+if [ -d /sys/firmware/efi ]; then
+  exit 0
+fi
+
+# We can't cope with loop-mounted devices here.
+case ${GRUB_DEVICE_BOOT} in
+  /dev/loop/*|/dev/loop[0-9]) exit 0 ;;
+esac
+
+export TEXTDOMAIN=memtest86+
+
+prepare_boot_cache="$(prepare_grub_to_access_device ${GRUB_DEVICE_BOOT} | sed -e "s/^/\t/")"
+
+if test -e /boot/memtest86+.elf ; then
+  MEMTESTPATH=$( make_system_path_relative_to_its_root "/boot/memtest86+.elf" )
+  echo "Found memtest86+ image: $MEMTESTPATH" >&2
+  cat << EOF
+menuentry '$(gettext_printf "Memory test (memtest86+)")' {
+EOF
+  printf '%s\n' "${prepare_boot_cache}"
+  cat << EOF
+	knetbsd	$MEMTESTPATH
+}
+EOF
+fi
+
+if test -e /boot/memtest86+.bin ; then
+  MEMTESTPATH=$( make_system_path_relative_to_its_root "/boot/memtest86+.bin" )
+  echo "Found memtest86+ image: $MEMTESTPATH" >&2
+  cat << EOF
+menuentry '$(gettext_printf "Memory test (memtest86+, serial console 115200)")' {
+EOF
+  printf '%s\n' "${prepare_boot_cache}"
+  cat << EOF
+	$LX	$MEMTESTPATH console=ttyS0,115200n8
+}
+EOF
+fi
+
+#if test -e /boot/memtest86+_multiboot.bin ; then
+#  MEMTESTPATH=$( make_system_path_relative_to_its_root "/boot/memtest86+_multiboot.bin" )
+#  echo "Found memtest86+ multiboot image: $MEMTESTPATH" >&2
+#  cat << EOF
+#menuentry '$(gettext_printf "Memory test (memtest86+, experimental multiboot)")' {
+#EOF
+#  printf '%s\n' "${prepare_boot_cache}"
+#  cat << EOF
+#	multiboot	$MEMTESTPATH
+#}
+#menuentry '$(gettext_printf "Memory test (memtest86+, serial console 115200, experimental multiboot)")' {
+#EOF
+#  printf '%s\n' "${prepare_boot_cache}"
+#  cat << EOF
+#	multiboot	$MEMTESTPATH console=ttyS0,115200n8
+#}
+#EOF
+#fi

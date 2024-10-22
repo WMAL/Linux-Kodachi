@@ -1,0 +1,35 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2021 Founder of Eagle Eye Digital Solutions
+# Discord channel https://discord.gg/KEFErEx
+# Twitter http://twitter.com/warith2020
+# Linkedin http://www.linkedin.com/in/warith1977
+# http://www.digi77.com
+# http://www.om77.net
+# Kodachi  OS/Software/Code are strictly protected by LICENSE terms at /home/kodachi/LICENSE
+#
+#
+# script starts here:
+
+
+cd $(dirname $0) 
+source Globalconfig;
+
+
+
+SERVICE='tor-service';
+if systemctl is-active tor.service > /dev/null 2>&1;  
+then
+	cd /usr/lib/onionshare
+	. venv/bin/activate
+	./dev_scripts/onionshare-gui
+	notify-send -i $notifyIcon "Onionshare started";  
+	exit 1;
+else
+     
+	notify-send -i $notifyIcon "Tor service is not running please run it first";
+	exit 1;
+fi
+
+exit 1; 
+	

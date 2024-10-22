@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Panic Repair
+Comment=
+Exec=xfce4-terminal -e 'bash -c "sudo bash /home/$USER/.kbase/panic; bash"' -T "Panic Tools"
+Icon=terminator-preferences
+Path=
+Terminal=false
+StartupNotify=false

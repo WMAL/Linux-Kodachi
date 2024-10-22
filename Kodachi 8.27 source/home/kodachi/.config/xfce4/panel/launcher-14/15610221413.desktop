@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Kodachi Ghacks Browser:TOR
+Comment=
+Exec=firefox -p KodachiBrowserGhacks
+Icon=/home/kodachi/.config/cairo-dock/current_theme/icons/ghacksb.png
+Path=
+Terminal=false
+StartupNotify=false

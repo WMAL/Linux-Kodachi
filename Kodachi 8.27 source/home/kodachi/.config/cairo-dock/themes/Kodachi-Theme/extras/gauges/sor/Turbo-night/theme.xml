@@ -1,0 +1,39 @@
+<gauge>
+	<name>Turbo Night</name>
+	<version>3</version>
+	<file type="background">background.svg</file>
+	<file type="foreground">foreground.svg</file>
+	<indicator type="needle">
+		<posX>0</posX>
+		<posY>0</posY>
+		<posStart>-180</posStart>
+		<posStop>61</posStop>
+		<file>needle.svg</file>
+		<text_zone>
+			<x_center>0.</x_center>
+			<y_center>-0.02</y_center>
+			<width>0.45</width>
+			<height>0.18</height>
+			<red>1.0</red>
+			<green>1.0</green>
+			<blue>1.0</blue>
+		</text_zone>
+		<label_zone>
+			<x_center>0.18</x_center>
+			<y_center>-0.20</y_center>
+			<width>0.40</width>
+			<height>0.20</height>
+			<red>1.0</red>
+			<green>0.0</green>
+			<blue>0.0</blue>
+			<alpha>0.9</alpha>
+		</label_zone>
+		<logo_zone>
+			<x_center>-0.40</x_center>
+			<y_center>-0.40</y_center>
+			<width>0.20</width>
+			<height>0.20</height>
+			<alpha>1.0</alpha>
+		</logo_zone>
+	</indicator>
+</gauge>

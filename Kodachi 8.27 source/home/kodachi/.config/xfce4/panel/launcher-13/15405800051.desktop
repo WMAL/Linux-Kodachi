@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Torified shell
+Comment=
+Exec=/home/kodachi/.kbase/torifiedshell
+Icon=/home/kodachi/.config/cairo-dock/current_theme/icons/shield(2).png
+Path=
+Terminal=false
+StartupNotify=false

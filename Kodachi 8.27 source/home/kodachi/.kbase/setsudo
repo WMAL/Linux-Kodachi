@@ -1,0 +1,103 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2022 Founder of Eagle Eye Digital Solutions
+# Discord channel https://discord.gg/KEFErEx
+# Twitter http://twitter.com/warith2020
+# Linkedin http://www.linkedin.com/in/warith1977
+# http://www.digi77.com
+# http://www.om77.net
+# Kodachi  OS/Software/Code are strictly protected by LICENSE terms at /home/kodachi/LICENSE
+#
+#
+# script starts here:
+
+cd $(dirname $0) 
+source Globalconfig;
+
+
+if [ ! -d $Mykodachi_path/tmp ]; then
+	mkdir -p $Mykodachi_path/tmp;
+	chown $LOGED_USER.$LOGED_USER $Mykodachi_path/tmp;
+fi;
+
+
+
+# If no su privileges available, try to get them
+if [[ ! "$(whoami)" == "root" ]] ; then
+	
+	# No sudo available? Then we can't get su privs. Advise and exit
+	if [[ $(which sudo) == "" ]] ; then
+		echo "'sudo' package missing! Please install."
+		echo "e.g.: apt-get install sudo" 
+		exit 1
+	fi
+
+	echo "Requesting su permissions..."
+	# Run this script with sudo privs
+	sudo $0 $*
+		# If running this script with su privs failed, advise to do so manually and exit
+		if [[ $? > 0 ]] ; then
+		echo
+		echo "Acquiring su permission failed!"
+		echo "Please run this script with sudo permissions!"
+		echo "(e.g. 'sudo $0' or 'sudo bash $0')"
+		echo
+		exit 1
+	fi
+exit 0
+fi
+
+
+
+
+#NEW_UUID=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)
+NEW_UUID="YumMEW1zqrzCXWoYjxBsvTicApp8SPaw@";
+me=$(basename "$(test -L "$0" && readlink "$0" || echo "$0")")
+
+lockdir=$Mykodachi_path/tmp/$NEW_UUID$me
+mkdir $lockdir || {
+    echo "lock directory exists. exiting"
+    exit 1
+}
+# take pains to remove lock directory when script terminates
+trap "rmdir $lockdir" EXIT INT KILL TERM 
+
+# rest of script here
+sudo chown $LOGED_USER.$LOGED_USER $Mykodachi_path/tmp/$NEW_UUID$me
+
+
+function sudoChange()
+{
+	
+	#notify-send -i $notifyIcon "sudo set now now4";
+	sudo sed -i '/kodachi ALL=(ALL:ALL) ALL/d' /etc/sudoers
+	sudo sed -i '/kodachi ALL=(ALL) NOPASSWD:ALL/d' /etc/sudoers
+	#sudo i;
+	
+	
+	#Remove end of file space
+	sudo awk '/^$/ {nlstack=nlstack "\n";next;} {printf "%s",nlstack; nlstack=""; print;}' /etc/sudoers
+	echo "$LOGED_USER ALL=(ALL:ALL) ALL" |sudo tee -a /etc/sudoers;
+	#sleep 2;
+	echo "$LOGED_USER ALL=(ALL) NOPASSWD:ALL" |sudo tee -a /etc/sudoers;
+	
+	
+}
+
+while true; do
+	
+
+	if !(cat /etc/sudoers|grep "kodachi ALL=(ALL) NOPASSWD" > /dev/null)
+	then
+		sudoChange;
+	fi
+	
+	if !(cat /etc/sudoers|grep "kodachi ALL=(ALL:ALL) ALL" > /dev/null)
+	then
+		
+		sudoChange;
+	fi
+    sleep 60;
+done
+ 
+ 

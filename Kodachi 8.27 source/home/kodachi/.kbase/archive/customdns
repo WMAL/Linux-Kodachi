@@ -1,0 +1,93 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2021 Founder of Eagle Eye Digital Solutions
+# Discord channel https://discord.gg/KEFErEx
+# Twitter http://twitter.com/warith2020
+# Linkedin http://www.linkedin.com/in/warith1977
+# http://www.digi77.com
+# http://www.om77.net
+# Kodachi  OS/Software/Code are strictly protected by LICENSE terms at /home/kodachi/LICENSE
+#
+#
+# script starts here:
+
+cd $(dirname $0) 
+source Globalconfig;
+
+
+
+while true
+do
+	userInput=0;
+	clear;
+	echo "Please choose how to change your DNS address:";
+	echo "";
+	print_good "1) Change my DNS to two custom Ip's";
+	print_good "2) Change my DNS to one custom Ip";
+	print_good "3) Show current used DNS";
+	print_good "4) Exit";
+	echo "";
+	echo "Type the number of your selection";
+	read n
+	case $n in
+		1) userInput=1;;
+		2) userInput=2;;
+		3) userInput=3;;
+		4) userInput=4;;
+		*) print_error "sorry wrong value";sleep 1;;
+	esac
+
+
+	if [[ $userInput = "4" ]]
+	then
+		clear;
+		print_good "bye";
+		echo "";
+		exit 1;
+	fi
+
+
+	if [[ $userInput = "1" ]]
+	then
+		clear;
+		echo "";
+		print_good "1) Please type or paste DNS 1";
+		read n
+		print_good "2) Please type or paste DNS 2";
+		read s
+		writeToJason "Fail-safe" "DNSprovider";
+		sleep 2;
+		writeToJason "custom" "DNSprovider"; 	
+		writeToJason "$n" "CustomServer1"; 
+		writeToJason "$s" "CustomServer2"; 
+		echo "${cayn}DNS was changed${reset}";
+		echo "";
+		read -n 1 -s -r -p "${reset}Press any key to continue.....";
+	fi
+	
+	if [[ $userInput = "2" ]]
+	then
+		clear;
+		echo "";
+		print_good "1) Please type or paste DNS 1";
+		read n
+		writeToJason "Fail-safe" "DNSprovider";
+		sleep 2;
+		writeToJason "custom" "DNSprovider"; 	
+		writeToJason "$n" "CustomServer1"; 
+		writeToJason "$n" "CustomServer2"; 
+		echo "${cayn}DNS was changed${reset}";
+		echo "";
+		read -n 1 -s -r -p "${reset}Press any key to continue.....";
+	fi
+	
+
+	if [[ $userInput = "3" ]]
+	then
+		clear;
+		cat /etc/resolv.conf;
+		echo "";
+		read -n 1 -s -r -p "${reset}Press any key to continue.....";
+	fi
+	
+done

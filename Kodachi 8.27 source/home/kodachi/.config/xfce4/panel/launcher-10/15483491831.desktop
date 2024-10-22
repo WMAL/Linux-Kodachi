@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Arrange Desktop Icons
+Comment=Arrange Desktop Icons
+Exec=xfdesktop -A
+Icon=zoom-fit-best
+Path=
+Terminal=false
+StartupNotify=false

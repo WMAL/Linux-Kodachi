@@ -1,0 +1,6 @@
+https:sb-ssl.google.com:443:.:^firstPartyDomain=safebrowsing.86868755-6b82-4842-b301-72671a0db32e.mozilla:3	0	19410	https:sb-ssl.google.com:443:sb-ssl.google.com:443::n:1679644225:h3:y:1677051945:n:^firstPartyDomain=safebrowsing.86868755-6b82-4842-b301-72671a0db32e.mozilla:|n:y:
+https:safebrowsing.googleapis.com:443:.:^firstPartyDomain=safebrowsing.86868755-6b82-4842-b301-72671a0db32e.mozilla:3	4	19410	https:safebrowsing.googleapis.com:443:safebrowsing.googleapis.com:443::n:1679643951:h3:y:1676268154:n:^firstPartyDomain=safebrowsing.86868755-6b82-4842-b301-72671a0db32e.mozilla:|n:y:
+https:versioncheck-bg.addons.mozilla.org:443:.::3	0	19408	https:versioncheck-bg.addons.mozilla.org:443:versioncheck-bg.addons.mozilla.org:443::n:1679482977:h3:y:1676890949:n::|n:y:
+https:s.ytimg.com:443:.::3	0	19404	https:s.ytimg.com:443:s.ytimg.com:443::n:1679129515:h3:y:1676537501:n::|n:y:
+https:cryptobubbles.net:443:.::3	0	19404	https:cryptobubbles.net:443:cryptobubbles.net:443::n:1676623915:h3:y:1676537501:n::|n:y:
+https:versioncheck.addons.mozilla.org:443:.::3	3	19409	https:versioncheck.addons.mozilla.org:443:versioncheck.addons.mozilla.org:443::n:1679554648:h3:y:1676266598:n::|n:y:

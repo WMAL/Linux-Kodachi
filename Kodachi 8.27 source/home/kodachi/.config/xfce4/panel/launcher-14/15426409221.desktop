@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Firefox - unsafe
+Comment=Browse the World Wide Web
+Exec=firefox -p default
+Icon=/home/kodachi/.config/cairo-dock/current_theme/icons/unsafeb.png
+Path=
+Terminal=false
+StartupNotify=true

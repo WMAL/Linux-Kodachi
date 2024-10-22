@@ -1,0 +1,158 @@
+#!/bin/bash
+# Script written by Warith Al Maawali  
+# (c) 2022 Founder of Eagle Eye Digital Solutions
+# Discord channel https://discord.gg/KEFErEx
+# Twitter http://twitter.com/warith2020
+# Linkedin http://www.linkedin.com/in/warith1977
+# http://www.digi77.com
+# http://www.om77.net
+# Kodachi  OS/Software/Code are strictly protected by LICENSE terms at /home/kodachi/LICENSE
+#
+#
+# script starts here:
+
+
+cd $(dirname $0) 
+source Globalconfig;
+
+
+
+# Disable ipv6
+theIP6s=$(cat /proc/sys/net/ipv6/conf/all/disable_ipv6);	
+if [[ $theIP6s == 1 ]]
+then
+	sudo sysctl -p;
+	
+fi
+
+
+
+# Vars
+x=$(find /sys/class/net ! -type d | xargs --max-args=1 realpath  | awk -F\/ '/pci/{print $NF}'|head -n1 | sed -e 's/\s.*$//');
+xNet=$(ip route get 8.8.8.8 | sed -nr 's/.*dev ([^\ ]+).*/\1/p');
+IP=$(cat $Jason_web_file_name| jq -r '.ServerFeed6[].Netcheckdomain1'|xargs);	
+# Validate jsons here			
+if [[ ! -n "$IP" ]]
+then
+	netIP="mail.com";
+	print_error "Failed to get json variable IP setting it to: $IP";
+fi	
+
+
+if [ ! -d $Mykodachi_path/tmp ]; then
+	mkdir -p $Mykodachi_path/tmp;
+	chown $LOGED_USER.$LOGED_USER $Mykodachi_path/tmp;
+fi;
+
+#NEW_UUID=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)
+NEW_UUID="Usilrx2HfsusaRFGqGnd0cTuZ0s1a87e@";
+me=$(basename "$(test -L "$0" && readlink "$0" || echo "$0")")
+
+lockdir=$Mykodachi_path/tmp/$NEW_UUID$me
+mkdir $lockdir || {
+    echo "lock directory exists. exiting"
+    exit 1
+}
+# take pains to remove lock directory when script terminates
+trap "rmdir $lockdir" EXIT INT KILL TERM 
+
+# rest of script here
+sudo chown $LOGED_USER.$LOGED_USER $Mykodachi_path/tmp/$NEW_UUID$me;
+	
+# end script locker
+
+
+ # Dell xps14 won;t stat with usbguard
+#usbguard=$(cat $Jason_file_name | jq -r .usbguardstatus);
+#if [[ "$usbguard" == *Yes* ]]
+#then
+	
+	#sudo systemctl start usbguard;
+	#sudo systemctl start usbguard-dbus;
+	
+#else
+	#sudo systemctl stop usbguard;
+	#sudo systemctl disable usbguard;
+	#sudo systemctl stop usbguard-dbus;
+	#sudo systemctl disable usbguard-dbus 	
+	#sudo killall usbguard-applet-qt;
+#fi
+
+#Delete never used Network ids
+nmcli --fields UUID,TIMESTAMP-REAL con show | grep never |  awk '{print $1}' | while read line; do nmcli con delete uuid  $line;    done;
+ 
+
+# First boot message
+#xP=$(id -u $LOGED_USER)
+if [[ $xP == 1000 ]]  # Installed system
+then
+	firstboot=$(cat $Jason_file_name | jq -r .firstboot);
+	if [[ "$firstboot" == *Yes* ]]
+	then
+		sleep 30;
+		sudo bash $Mykodachi_path/sshrkeys;
+		sudo rm -f -r /home/kodachi/.config/syncthing/
+		#Arrange Desktop icons
+		xfdesktop -A;	
+		writeToJason "No" "firstboot"; 
+		xfce4-terminal -e 'bash -c "bash ~/.kbase/kodachifirstboot; bash"' -T "Completing Installation.." ;	
+		#exit 1; 
+	fi
+else
+	sudo bash $Mykodachi_path/sshrkeys;
+	sudo service unattended-upgrades stop;
+	sudo rm -f -r /home/kodachi/.config/syncthing/
+	sleep 30;
+	# Moved to bootgui2
+	#xfdesktop -A;
+
+fi
+
+# remove protected tor first node
+sudo rm -f /usr/lib/tor-browser/tor-browser_en-US/Browser/TorBrowser/Data/Tor/state
+
+# Fix audicity bug
+sudo rm -f -r /var/tmp/audacity-kodachi/
+
+# Stop open snith service to save cpu resources
+sudo systemctl stop opensnitch;
+
+# Start up check connection
+wget --timeout=5 --waitretry=0 --tries=3 --retry-connrefused -q --spider "$IP" &> /dev/null
+if [ $? -eq 0 ]; 
+then
+	#notify-send -i $notifyIcon "Internet found no issues do nothing bye";
+	echo "Net found exit";
+	exit 1;
+else
+	#initilize the network
+	echo "Dhclient the smart way";	
+	for i in $( nmcli device status | awk '{print $1}' );
+	do
+		if [[ $i != "DEVICE" ]]
+		then
+			echo "Dhcp for:$i";
+			sudo timeout 60 sudo dhclient $i;
+		fi
+	done
+
+	echo "initilize the network done";
+fi
+
+
+
+
+
+sleep 60;
+ 
+
+# If kodachi username has been changed warn the user
+if [[ "$LOGED_USER" != *kodachi* ]]; then 
+	notify-send -t 50000 -i $notifyIcon "Warning! $OS_name will not function properly!
+You have changed the logged-in user name from kodachi to $LOGED_USER 
+If you would like for $OS_name to function properly please login with the user name kodachi";	
+	sleep 3;
+fi
+
+
+exit 1;
