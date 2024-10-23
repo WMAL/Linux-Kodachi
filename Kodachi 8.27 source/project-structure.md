@@ -1,35 +1,42 @@
+# 📊 Code Analysis for `/home/kodachi/k900/z-resources/version 8.27/`
 
-cloc /home/kodachi/k900/z-resources/version\ 8.27/
-    6837 text files.
-     262 unique files.
-    8438 files ignored.
+## 📝 Summary
+- 📄 **6,837** text files
+- 📁 **262** unique files
+- 🚫 **8,438** files ignored
 
-github.com/AlDanial/cloc v 1.96  T=1.70 s (154.0 files/s, 24892.3 lines/s)
---------------------------------------------------------------------------------
-Language                      files          blank        comment           code
---------------------------------------------------------------------------------
-Text                             34            400              0          11562
-Bourne Again Shell               93           3461           2301          10137
-Bourne Shell                     25            814            662           3762
-JavaScript                       10            111           1101           1667
-Markdown                          1            884              0           1401
-JSON                             74              0              0            594
-Python                            4            204            404            560
-DOS Batch                         2             14             33            378
-Lua                               1             28             62            339
-PHP                               6            115             73            241
-TOML                              1            298            466             62
-DenizenScript                     1              3              0             47
-XML                               2              0              0             42
-INI                               4              8              0             40
-AMPLE                             2              4              0             31
-PO File                           1              4              4             19
-HTML                              1              0              0              4
---------------------------------------------------------------------------------
-SUM:                            262           6348           5106          30886
---------------------------------------------------------------------------------
+Analysis performed using [cloc](https://github.com/AlDanial/cloc) v1.96
+- ⏱️ **Time**: 1.70 s
+- ⚡ **Rate**: 154.0 files/s, 24,892.3 lines/s
 
+## 📂 Language Breakdown
 
+| 🌐 Language | 📄 Files | 📄 Blank Lines | 💬 Comment Lines | 🧩 Code Lines |
+|:-----------|---------:|---------------:|-----------------:|-------------:|
+| 📝 Text | 34 | 400 | 0 | 11,562 |
+| 🐚 Bourne Again Shell | 93 | 3,461 | 2,301 | 10,137 |
+| 🐚 Bourne Shell | 25 | 814 | 662 | 3,762 |
+| 📜 JavaScript | 10 | 111 | 1,101 | 1,667 |
+| 📝 Markdown | 1 | 884 | 0 | 1,401 |
+| 📦 JSON | 74 | 0 | 0 | 594 |
+| 🐍 Python | 4 | 204 | 404 | 560 |
+| 🖥️ DOS Batch | 2 | 14 | 33 | 378 |
+| 🌀 Lua | 1 | 28 | 62 | 339 |
+| 🐘 PHP | 6 | 115 | 73 | 241 |
+| 📝 TOML | 1 | 298 | 466 | 62 |
+| 📝 DenizenScript | 1 | 3 | 0 | 47 |
+| 🗂️ XML | 2 | 0 | 0 | 42 |
+| ⚙️ INI | 4 | 8 | 0 | 40 |
+| 📝 AMPLE | 2 | 4 | 0 | 31 |
+| 📝 PO File | 1 | 4 | 4 | 19 |
+| 🌐 HTML | 1 | 0 | 0 | 4 |
+
+## 📊 Total
+
+- **📄 Files**: 262
+- **📄 Blank Lines**: 6,348
+- **💬 Comment Lines**: 5,106
+- **🧩 Code Lines**: 30,886
 ```
 .kbase
  ┣ apt-live
