@@ -1,302 +1,34 @@
 
+cloc /home/kodachi/k900/z-resources/version\ 8.27/
+    6837 text files.
+     262 unique files.
+    8438 files ignored.
 
-# Summary
+github.com/AlDanial/cloc v 1.96  T=1.70 s (154.0 files/s, 24892.3 lines/s)
+--------------------------------------------------------------------------------
+Language                      files          blank        comment           code
+--------------------------------------------------------------------------------
+Text                             34            400              0          11562
+Bourne Again Shell               93           3461           2301          10137
+Bourne Shell                     25            814            662           3762
+JavaScript                       10            111           1101           1667
+Markdown                          1            884              0           1401
+JSON                             74              0              0            594
+Python                            4            204            404            560
+DOS Batch                         2             14             33            378
+Lua                               1             28             62            339
+PHP                               6            115             73            241
+TOML                              1            298            466             62
+DenizenScript                     1              3              0             47
+XML                               2              0              0             42
+INI                               4              8              0             40
+AMPLE                             2              4              0             31
+PO File                           1              4              4             19
+HTML                              1              0              0              4
+--------------------------------------------------------------------------------
+SUM:                            262           6348           5106          30886
+--------------------------------------------------------------------------------
 
-Date : 2024-10-23 15:08:39
-
-Directory /Kodachi 8.27 source
-
-Total : 7035 files,  574846 codes, 32336 comments, 27832 blanks, all 635014 lines
-
-Summary / [Details](details.md) / [Diff Summary](diff.md) / [Diff Details](diff-details.md)
-
-## Languages
-| language | files | code | comment | blank | total |
-| :--- | ---: | ---: | ---: | ---: | ---: |
-| OpenVPN Configuration | 6,346 | 484,416 | 30,093 | 26,455 | 540,964 |
-| XML | 531 | 84,560 | 221 | 482 | 85,263 |
-| JavaScript | 23 | 2,590 | 1,304 | 205 | 4,099 |
-| Python | 1 | 793 | 69 | 169 | 1,031 |
-| JSON | 113 | 673 | 0 | 59 | 732 |
-| Log | 1 | 473 | 0 | 1 | 474 |
-| Batch | 2 | 378 | 33 | 16 | 427 |
-| Shell Script | 3 | 376 | 85 | 73 | 534 |
-| Lua | 1 | 339 | 62 | 29 | 430 |
-| Properties | 3 | 132 | 3 | 30 | 165 |
-| TOML | 1 | 62 | 466 | 299 | 827 |
-| Ini | 6 | 50 | 0 | 14 | 64 |
-| JSON with Comments | 4 | 4 | 0 | 0 | 4 |
-
-## Directories
-| path | files | code | comment | blank | total |
-| :--- | ---: | ---: | ---: | ---: | ---: |
-| . | 7,035 | 574,846 | 32,336 | 27,832 | 635,014 |
-| etc | 243 | 6,764 | 526 | 407 | 7,697 |
-| etc/bodhibuilder | 240 | 6,696 | 21 | 98 | 6,815 |
-| etc/bodhibuilder/isofiles | 1 | 16 | 18 | 9 | 43 |
-| etc/bodhibuilder/uefi | 239 | 6,680 | 3 | 89 | 6,772 |
-| etc/bodhibuilder/uefi/boot | 239 | 6,680 | 3 | 89 | 6,772 |
-| etc/bodhibuilder/uefi/boot/grub | 239 | 6,680 | 3 | 89 | 6,772 |
-| etc/bodhibuilder/uefi/boot/grub (Files) | 2 | 120 | 3 | 29 | 152 |
-| etc/bodhibuilder/uefi/boot/grub/x86_64-efi | 237 | 6,560 | 0 | 60 | 6,620 |
-| etc/dnscrypt-proxy | 2 | 65 | 470 | 302 | 837 |
-| etc/tor | 1 | 3 | 35 | 7 | 45 |
-| home | 6,792 | 568,082 | 31,810 | 27,425 | 627,317 |
-| home/kodachi | 6,792 | 568,082 | 31,810 | 27,425 | 627,317 |
-| home/kodachi/.config | 415 | 83,986 | 7,763 | 5,389 | 97,138 |
-| home/kodachi/.config/cairo-dock | 398 | 83,090 | 7,763 | 5,357 | 96,210 |
-| home/kodachi/.config/cairo-dock/current_theme | 149 | 27,705 | 3,821 | 2,593 | 34,119 |
-| home/kodachi/.config/cairo-dock/current_theme (Files) | 2 | 256 | 332 | 277 | 865 |
-| home/kodachi/.config/cairo-dock/current_theme/extras | 85 | 23,793 | 107 | 156 | 24,056 |
-| home/kodachi/.config/cairo-dock/current_theme/extras/Toons | 15 | 1,701 | 51 | 51 | 1,803 |
-| home/kodachi/.config/cairo-dock/current_theme/extras/Toons/Kodachi_Theme_8.0 | 5 | 567 | 17 | 17 | 601 |
-| home/kodachi/.config/cairo-dock/current_theme/extras/Toons/sad | 5 | 567 | 17 | 17 | 601 |
-| home/kodachi/.config/cairo-dock/current_theme/extras/Toons/sor | 5 | 567 | 17 | 17 | 601 |
-| home/kodachi/.config/cairo-dock/current_theme/extras/gauges | 70 | 22,092 | 56 | 105 | 22,253 |
-| home/kodachi/.config/cairo-dock/current_theme/extras/gauges/Kodachi_Theme_8.0 | 40 | 12,624 | 32 | 60 | 12,716 |
-| home/kodachi/.config/cairo-dock/current_theme/extras/gauges/Kodachi_Theme_8.0 (Files) | 6 | 718 | 5 | 11 | 734 |
-| home/kodachi/.config/cairo-dock/current_theme/extras/gauges/Kodachi_Theme_8.0/Turbo-night | 4 | 2,438 | 3 | 4 | 2,445 |
-| home/kodachi/.config/cairo-dock/current_theme/extras/gauges/Kodachi_Theme_8.0/sad | 10 | 3,156 | 8 | 15 | 3,179 |
-| home/kodachi/.config/cairo-dock/current_theme/extras/gauges/Kodachi_Theme_8.0/sad (Files) | 6 | 718 | 5 | 11 | 734 |
-| home/kodachi/.config/cairo-dock/current_theme/extras/gauges/Kodachi_Theme_8.0/sad/Turbo-night | 4 | 2,438 | 3 | 4 | 2,445 |
-| home/kodachi/.config/cairo-dock/current_theme/extras/gauges/Kodachi_Theme_8.0/sor | 20 | 6,312 | 16 | 30 | 6,358 |
-| home/kodachi/.config/cairo-dock/current_theme/extras/gauges/Kodachi_Theme_8.0/sor (Files) | 6 | 718 | 5 | 11 | 734 |
-| home/kodachi/.config/cairo-dock/current_theme/extras/gauges/Kodachi_Theme_8.0/sor/Turbo-night | 4 | 2,438 | 3 | 4 | 2,445 |
-| home/kodachi/.config/cairo-dock/current_theme/extras/gauges/Kodachi_Theme_8.0/sor/sad | 10 | 3,156 | 8 | 15 | 3,179 |
-| home/kodachi/.config/cairo-dock/current_theme/extras/gauges/Kodachi_Theme_8.0/sor/sad (Files) | 6 | 718 | 5 | 11 | 734 |
-| home/kodachi/.config/cairo-dock/current_theme/extras/gauges/Kodachi_Theme_8.0/sor/sad/Turbo-night | 4 | 2,438 | 3 | 4 | 2,445 |
-| home/kodachi/.config/cairo-dock/current_theme/extras/gauges/sad | 10 | 3,156 | 8 | 15 | 3,179 |
-| home/kodachi/.config/cairo-dock/current_theme/extras/gauges/sad (Files) | 6 | 718 | 5 | 11 | 734 |
-| home/kodachi/.config/cairo-dock/current_theme/extras/gauges/sad/Turbo-night | 4 | 2,438 | 3 | 4 | 2,445 |
-| home/kodachi/.config/cairo-dock/current_theme/extras/gauges/sor | 20 | 6,312 | 16 | 30 | 6,358 |
-| home/kodachi/.config/cairo-dock/current_theme/extras/gauges/sor (Files) | 6 | 718 | 5 | 11 | 734 |
-| home/kodachi/.config/cairo-dock/current_theme/extras/gauges/sor/Turbo-night | 4 | 2,438 | 3 | 4 | 2,445 |
-| home/kodachi/.config/cairo-dock/current_theme/extras/gauges/sor/sad | 10 | 3,156 | 8 | 15 | 3,179 |
-| home/kodachi/.config/cairo-dock/current_theme/extras/gauges/sor/sad (Files) | 6 | 718 | 5 | 11 | 734 |
-| home/kodachi/.config/cairo-dock/current_theme/extras/gauges/sor/sad/Turbo-night | 4 | 2,438 | 3 | 4 | 2,445 |
-| home/kodachi/.config/cairo-dock/current_theme/icons | 8 | 976 | 6 | 11 | 993 |
-| home/kodachi/.config/cairo-dock/current_theme/images | 1 | 81 | 1 | 2 | 84 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins | 53 | 2,599 | 3,375 | 2,147 | 8,121 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/AlsaMixer | 1 | 60 | 64 | 55 | 179 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/Animated-icons | 1 | 63 | 72 | 80 | 215 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/Cairo-Penguin | 1 | 16 | 17 | 17 | 50 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/Calendar | 1 | 38 | 52 | 30 | 120 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/Clipper | 1 | 54 | 66 | 46 | 166 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/Dbus | 1 | 13 | 15 | 15 | 43 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/Deluge | 1 | 38 | 48 | 28 | 114 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/Folders | 1 | 43 | 52 | 35 | 130 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/GMenu | 1 | 45 | 54 | 39 | 138 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/Help | 1 | 168 | 299 | 96 | 563 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/Indicator-Generic | 2 | 68 | 90 | 58 | 216 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/Lancelot | 1 | 31 | 44 | 20 | 95 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/MeMenu | 1 | 33 | 45 | 26 | 104 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/Messaging-Menu | 1 | 40 | 47 | 35 | 122 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/RSSreader | 1 | 69 | 95 | 64 | 228 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/Recent-Events | 1 | 37 | 46 | 32 | 115 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/Remote-Control | 1 | 5 | 7 | 8 | 20 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/Scooby-Do | 1 | 54 | 61 | 57 | 172 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/Screenshot | 1 | 34 | 46 | 30 | 110 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/Sound-Effects | 1 | 9 | 13 | 10 | 32 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/Status-Notifier | 1 | 47 | 53 | 39 | 139 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/System-Monitor | 1 | 79 | 98 | 79 | 256 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/Toons | 1 | 45 | 52 | 38 | 135 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/Xgamma | 1 | 40 | 49 | 33 | 122 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/clock | 1 | 64 | 78 | 57 | 199 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/dialog-rendering | 1 | 19 | 20 | 19 | 58 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/dnd2share | 1 | 60 | 76 | 53 | 189 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/drop_indicator | 1 | 7 | 11 | 9 | 27 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/dustbin | 1 | 51 | 49 | 33 | 133 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/help | 1 | 178 | 297 | 26 | 501 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/icon-effect | 1 | 77 | 92 | 79 | 248 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/illusion | 1 | 31 | 52 | 36 | 119 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/keyboard-indicator | 1 | 51 | 62 | 46 | 159 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/logout | 1 | 53 | 61 | 45 | 159 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/mail | 1 | 55 | 77 | 51 | 183 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/musicPlayer | 1 | 59 | 77 | 51 | 187 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/netspeed | 1 | 55 | 66 | 48 | 169 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/powermanager | 1 | 70 | 85 | 67 | 222 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/quick-browser | 1 | 45 | 56 | 40 | 141 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/rendering | 2 | 71 | 89 | 78 | 238 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/shortcuts | 1 | 46 | 57 | 39 | 142 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/showDesktop | 1 | 42 | 50 | 34 | 126 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/show_mouse | 1 | 12 | 17 | 12 | 41 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/slider | 1 | 57 | 72 | 51 | 180 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/stack | 1 | 51 | 63 | 36 | 150 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/switcher | 1 | 66 | 80 | 59 | 205 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/systray | 1 | 38 | 41 | 29 | 108 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/terminal | 1 | 51 | 62 | 42 | 155 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/tomboy | 1 | 53 | 68 | 42 | 163 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/weather | 1 | 54 | 65 | 44 | 163 |
-| home/kodachi/.config/cairo-dock/current_theme/plug-ins/wifi | 1 | 54 | 67 | 51 | 172 |
-| home/kodachi/.config/cairo-dock/extras | 100 | 27,680 | 121 | 171 | 27,972 |
-| home/kodachi/.config/cairo-dock/extras/Toons | 15 | 1,701 | 51 | 51 | 1,803 |
-| home/kodachi/.config/cairo-dock/extras/Toons/Kodachi_Theme_8.0 | 5 | 567 | 17 | 17 | 601 |
-| home/kodachi/.config/cairo-dock/extras/Toons/sad | 5 | 567 | 17 | 17 | 601 |
-| home/kodachi/.config/cairo-dock/extras/Toons/sor | 5 | 567 | 17 | 17 | 601 |
-| home/kodachi/.config/cairo-dock/extras/clock | 13 | 3,600 | 14 | 13 | 3,627 |
-| home/kodachi/.config/cairo-dock/extras/clock/Tango | 13 | 3,600 | 14 | 13 | 3,627 |
-| home/kodachi/.config/cairo-dock/extras/dustbin | 2 | 287 | 0 | 2 | 289 |
-| home/kodachi/.config/cairo-dock/extras/dustbin/Human | 2 | 287 | 0 | 2 | 289 |
-| home/kodachi/.config/cairo-dock/extras/gauges | 70 | 22,092 | 56 | 105 | 22,253 |
-| home/kodachi/.config/cairo-dock/extras/gauges/Kodachi_Theme_8.0 | 40 | 12,624 | 32 | 60 | 12,716 |
-| home/kodachi/.config/cairo-dock/extras/gauges/Kodachi_Theme_8.0 (Files) | 6 | 718 | 5 | 11 | 734 |
-| home/kodachi/.config/cairo-dock/extras/gauges/Kodachi_Theme_8.0/Turbo-night | 4 | 2,438 | 3 | 4 | 2,445 |
-| home/kodachi/.config/cairo-dock/extras/gauges/Kodachi_Theme_8.0/sad | 10 | 3,156 | 8 | 15 | 3,179 |
-| home/kodachi/.config/cairo-dock/extras/gauges/Kodachi_Theme_8.0/sad (Files) | 6 | 718 | 5 | 11 | 734 |
-| home/kodachi/.config/cairo-dock/extras/gauges/Kodachi_Theme_8.0/sad/Turbo-night | 4 | 2,438 | 3 | 4 | 2,445 |
-| home/kodachi/.config/cairo-dock/extras/gauges/Kodachi_Theme_8.0/sor | 20 | 6,312 | 16 | 30 | 6,358 |
-| home/kodachi/.config/cairo-dock/extras/gauges/Kodachi_Theme_8.0/sor (Files) | 6 | 718 | 5 | 11 | 734 |
-| home/kodachi/.config/cairo-dock/extras/gauges/Kodachi_Theme_8.0/sor/Turbo-night | 4 | 2,438 | 3 | 4 | 2,445 |
-| home/kodachi/.config/cairo-dock/extras/gauges/Kodachi_Theme_8.0/sor/sad | 10 | 3,156 | 8 | 15 | 3,179 |
-| home/kodachi/.config/cairo-dock/extras/gauges/Kodachi_Theme_8.0/sor/sad (Files) | 6 | 718 | 5 | 11 | 734 |
-| home/kodachi/.config/cairo-dock/extras/gauges/Kodachi_Theme_8.0/sor/sad/Turbo-night | 4 | 2,438 | 3 | 4 | 2,445 |
-| home/kodachi/.config/cairo-dock/extras/gauges/sad | 10 | 3,156 | 8 | 15 | 3,179 |
-| home/kodachi/.config/cairo-dock/extras/gauges/sad (Files) | 6 | 718 | 5 | 11 | 734 |
-| home/kodachi/.config/cairo-dock/extras/gauges/sad/Turbo-night | 4 | 2,438 | 3 | 4 | 2,445 |
-| home/kodachi/.config/cairo-dock/extras/gauges/sor | 20 | 6,312 | 16 | 30 | 6,358 |
-| home/kodachi/.config/cairo-dock/extras/gauges/sor (Files) | 6 | 718 | 5 | 11 | 734 |
-| home/kodachi/.config/cairo-dock/extras/gauges/sor/Turbo-night | 4 | 2,438 | 3 | 4 | 2,445 |
-| home/kodachi/.config/cairo-dock/extras/gauges/sor/sad | 10 | 3,156 | 8 | 15 | 3,179 |
-| home/kodachi/.config/cairo-dock/extras/gauges/sor/sad (Files) | 6 | 718 | 5 | 11 | 734 |
-| home/kodachi/.config/cairo-dock/extras/gauges/sor/sad/Turbo-night | 4 | 2,438 | 3 | 4 | 2,445 |
-| home/kodachi/.config/cairo-dock/themes | 149 | 27,705 | 3,821 | 2,593 | 34,119 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme | 149 | 27,705 | 3,821 | 2,593 | 34,119 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme (Files) | 2 | 256 | 332 | 277 | 865 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/extras | 85 | 23,793 | 107 | 156 | 24,056 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/extras/Toons | 15 | 1,701 | 51 | 51 | 1,803 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/extras/Toons/Kodachi_Theme_8.0 | 5 | 567 | 17 | 17 | 601 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/extras/Toons/sad | 5 | 567 | 17 | 17 | 601 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/extras/Toons/sor | 5 | 567 | 17 | 17 | 601 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/extras/gauges | 70 | 22,092 | 56 | 105 | 22,253 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/extras/gauges/Kodachi_Theme_8.0 | 40 | 12,624 | 32 | 60 | 12,716 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/extras/gauges/Kodachi_Theme_8.0 (Files) | 6 | 718 | 5 | 11 | 734 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/extras/gauges/Kodachi_Theme_8.0/Turbo-night | 4 | 2,438 | 3 | 4 | 2,445 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/extras/gauges/Kodachi_Theme_8.0/sad | 10 | 3,156 | 8 | 15 | 3,179 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/extras/gauges/Kodachi_Theme_8.0/sad (Files) | 6 | 718 | 5 | 11 | 734 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/extras/gauges/Kodachi_Theme_8.0/sad/Turbo-night | 4 | 2,438 | 3 | 4 | 2,445 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/extras/gauges/Kodachi_Theme_8.0/sor | 20 | 6,312 | 16 | 30 | 6,358 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/extras/gauges/Kodachi_Theme_8.0/sor (Files) | 6 | 718 | 5 | 11 | 734 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/extras/gauges/Kodachi_Theme_8.0/sor/Turbo-night | 4 | 2,438 | 3 | 4 | 2,445 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/extras/gauges/Kodachi_Theme_8.0/sor/sad | 10 | 3,156 | 8 | 15 | 3,179 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/extras/gauges/Kodachi_Theme_8.0/sor/sad (Files) | 6 | 718 | 5 | 11 | 734 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/extras/gauges/Kodachi_Theme_8.0/sor/sad/Turbo-night | 4 | 2,438 | 3 | 4 | 2,445 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/extras/gauges/sad | 10 | 3,156 | 8 | 15 | 3,179 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/extras/gauges/sad (Files) | 6 | 718 | 5 | 11 | 734 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/extras/gauges/sad/Turbo-night | 4 | 2,438 | 3 | 4 | 2,445 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/extras/gauges/sor | 20 | 6,312 | 16 | 30 | 6,358 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/extras/gauges/sor (Files) | 6 | 718 | 5 | 11 | 734 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/extras/gauges/sor/Turbo-night | 4 | 2,438 | 3 | 4 | 2,445 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/extras/gauges/sor/sad | 10 | 3,156 | 8 | 15 | 3,179 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/extras/gauges/sor/sad (Files) | 6 | 718 | 5 | 11 | 734 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/extras/gauges/sor/sad/Turbo-night | 4 | 2,438 | 3 | 4 | 2,445 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/icons | 8 | 976 | 6 | 11 | 993 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/images | 1 | 81 | 1 | 2 | 84 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins | 53 | 2,599 | 3,375 | 2,147 | 8,121 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/AlsaMixer | 1 | 60 | 64 | 55 | 179 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/Animated-icons | 1 | 63 | 72 | 80 | 215 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/Cairo-Penguin | 1 | 16 | 17 | 17 | 50 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/Calendar | 1 | 38 | 52 | 30 | 120 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/Clipper | 1 | 54 | 66 | 46 | 166 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/Dbus | 1 | 13 | 15 | 15 | 43 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/Deluge | 1 | 38 | 48 | 28 | 114 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/Folders | 1 | 43 | 52 | 35 | 130 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/GMenu | 1 | 45 | 54 | 39 | 138 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/Help | 1 | 168 | 299 | 96 | 563 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/Indicator-Generic | 2 | 68 | 90 | 58 | 216 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/Lancelot | 1 | 31 | 44 | 20 | 95 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/MeMenu | 1 | 33 | 45 | 26 | 104 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/Messaging-Menu | 1 | 40 | 47 | 35 | 122 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/RSSreader | 1 | 69 | 95 | 64 | 228 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/Recent-Events | 1 | 37 | 46 | 32 | 115 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/Remote-Control | 1 | 5 | 7 | 8 | 20 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/Scooby-Do | 1 | 54 | 61 | 57 | 172 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/Screenshot | 1 | 34 | 46 | 30 | 110 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/Sound-Effects | 1 | 9 | 13 | 10 | 32 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/Status-Notifier | 1 | 47 | 53 | 39 | 139 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/System-Monitor | 1 | 79 | 98 | 79 | 256 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/Toons | 1 | 45 | 52 | 38 | 135 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/Xgamma | 1 | 40 | 49 | 33 | 122 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/clock | 1 | 64 | 78 | 57 | 199 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/dialog-rendering | 1 | 19 | 20 | 19 | 58 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/dnd2share | 1 | 60 | 76 | 53 | 189 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/drop_indicator | 1 | 7 | 11 | 9 | 27 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/dustbin | 1 | 51 | 49 | 33 | 133 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/help | 1 | 178 | 297 | 26 | 501 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/icon-effect | 1 | 77 | 92 | 79 | 248 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/illusion | 1 | 31 | 52 | 36 | 119 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/keyboard-indicator | 1 | 51 | 62 | 46 | 159 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/logout | 1 | 53 | 61 | 45 | 159 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/mail | 1 | 55 | 77 | 51 | 183 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/musicPlayer | 1 | 59 | 77 | 51 | 187 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/netspeed | 1 | 55 | 66 | 48 | 169 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/powermanager | 1 | 70 | 85 | 67 | 222 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/quick-browser | 1 | 45 | 56 | 40 | 141 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/rendering | 2 | 71 | 89 | 78 | 238 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/shortcuts | 1 | 46 | 57 | 39 | 142 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/showDesktop | 1 | 42 | 50 | 34 | 126 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/show_mouse | 1 | 12 | 17 | 12 | 41 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/slider | 1 | 57 | 72 | 51 | 180 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/stack | 1 | 51 | 63 | 36 | 150 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/switcher | 1 | 66 | 80 | 59 | 205 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/systray | 1 | 38 | 41 | 29 | 108 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/terminal | 1 | 51 | 62 | 42 | 155 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/tomboy | 1 | 53 | 68 | 42 | 163 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/weather | 1 | 54 | 65 | 44 | 163 |
-| home/kodachi/.config/cairo-dock/themes/Kodachi-Theme/plug-ins/wifi | 1 | 54 | 67 | 51 | 172 |
-| home/kodachi/.config/xfce4 | 17 | 896 | 0 | 32 | 928 |
-| home/kodachi/.config/xfce4/panel | 1 | 44 | 0 | 0 | 44 |
-| home/kodachi/.config/xfce4/xfconf | 16 | 852 | 0 | 32 | 884 |
-| home/kodachi/.config/xfce4/xfconf/xfce-perchannel-xml | 16 | 852 | 0 | 32 | 884 |
-| home/kodachi/.kbase | 7 | 2,091 | 131 | 203 | 2,425 |
-| home/kodachi/.kbase (Files) | 5 | 1,848 | 131 | 201 | 2,180 |
-| home/kodachi/.kbase/jsonbackups | 2 | 243 | 0 | 2 | 245 |
-| home/kodachi/.mozilla | 146 | 3,569 | 1,404 | 354 | 5,327 |
-| home/kodachi/.mozilla/firefox | 146 | 3,569 | 1,404 | 354 | 5,327 |
-| home/kodachi/.mozilla/firefox (Files) | 2 | 30 | 0 | 10 | 40 |
-| home/kodachi/.mozilla/firefox/2083wll8.KodachiBrowserGhacks | 29 | 1,842 | 1,189 | 178 | 3,209 |
-| home/kodachi/.mozilla/firefox/2083wll8.KodachiBrowserGhacks (Files) | 19 | 1,377 | 1,095 | 128 | 2,600 |
-| home/kodachi/.mozilla/firefox/2083wll8.KodachiBrowserGhacks/browser-extension-data | 2 | 2 | 0 | 0 | 2 |
-| home/kodachi/.mozilla/firefox/2083wll8.KodachiBrowserGhacks/browser-extension-data/browsec@browsec.com | 1 | 1 | 0 | 0 | 1 |
-| home/kodachi/.mozilla/firefox/2083wll8.KodachiBrowserGhacks/browser-extension-data/{8a1195dc-c645-4004-aa59-fed0498cfe5a} | 1 | 1 | 0 | 0 | 1 |
-| home/kodachi/.mozilla/firefox/2083wll8.KodachiBrowserGhacks/datareporting | 2 | 2 | 0 | 0 | 2 |
-| home/kodachi/.mozilla/firefox/2083wll8.KodachiBrowserGhacks/scratchpad-scripts | 4 | 459 | 94 | 50 | 603 |
-| home/kodachi/.mozilla/firefox/2083wll8.KodachiBrowserGhacks/weave | 2 | 2 | 0 | 0 | 2 |
-| home/kodachi/.mozilla/firefox/2083wll8.KodachiBrowserGhacks/weave/failed | 1 | 1 | 0 | 0 | 1 |
-| home/kodachi/.mozilla/firefox/2083wll8.KodachiBrowserGhacks/weave/toFetch | 1 | 1 | 0 | 0 | 1 |
-| home/kodachi/.mozilla/firefox/5vr1hbth.KodachiBrowser | 51 | 798 | 103 | 81 | 982 |
-| home/kodachi/.mozilla/firefox/5vr1hbth.KodachiBrowser (Files) | 15 | 271 | 9 | 5 | 285 |
-| home/kodachi/.mozilla/firefox/5vr1hbth.KodachiBrowser/browser-extension-data | 2 | 2 | 0 | 0 | 2 |
-| home/kodachi/.mozilla/firefox/5vr1hbth.KodachiBrowser/browser-extension-data/browsec@browsec.com | 1 | 1 | 0 | 0 | 1 |
-| home/kodachi/.mozilla/firefox/5vr1hbth.KodachiBrowser/browser-extension-data/{8a1195dc-c645-4004-aa59-fed0498cfe5a} | 1 | 1 | 0 | 0 | 1 |
-| home/kodachi/.mozilla/firefox/5vr1hbth.KodachiBrowser/datareporting | 2 | 2 | 0 | 0 | 2 |
-| home/kodachi/.mozilla/firefox/5vr1hbth.KodachiBrowser/personality-provider | 26 | 62 | 0 | 26 | 88 |
-| home/kodachi/.mozilla/firefox/5vr1hbth.KodachiBrowser/scratchpad-scripts | 4 | 459 | 94 | 50 | 603 |
-| home/kodachi/.mozilla/firefox/5vr1hbth.KodachiBrowser/weave | 2 | 2 | 0 | 0 | 2 |
-| home/kodachi/.mozilla/firefox/5vr1hbth.KodachiBrowser/weave/failed | 1 | 1 | 0 | 0 | 1 |
-| home/kodachi/.mozilla/firefox/5vr1hbth.KodachiBrowser/weave/toFetch | 1 | 1 | 0 | 0 | 1 |
-| home/kodachi/.mozilla/firefox/g28lpsos.default-1649096829670 | 13 | 104 | 9 | 4 | 117 |
-| home/kodachi/.mozilla/firefox/g28lpsos.default-1649096829670 (Files) | 11 | 102 | 9 | 4 | 115 |
-| home/kodachi/.mozilla/firefox/g28lpsos.default-1649096829670/datareporting | 2 | 2 | 0 | 0 | 2 |
-| home/kodachi/.mozilla/firefox/y19yqyp3.KodachiBrowserLight | 51 | 795 | 103 | 81 | 979 |
-| home/kodachi/.mozilla/firefox/y19yqyp3.KodachiBrowserLight (Files) | 15 | 268 | 9 | 5 | 282 |
-| home/kodachi/.mozilla/firefox/y19yqyp3.KodachiBrowserLight/browser-extension-data | 2 | 2 | 0 | 0 | 2 |
-| home/kodachi/.mozilla/firefox/y19yqyp3.KodachiBrowserLight/browser-extension-data/browsec@browsec.com | 1 | 1 | 0 | 0 | 1 |
-| home/kodachi/.mozilla/firefox/y19yqyp3.KodachiBrowserLight/browser-extension-data/{8a1195dc-c645-4004-aa59-fed0498cfe5a} | 1 | 1 | 0 | 0 | 1 |
-| home/kodachi/.mozilla/firefox/y19yqyp3.KodachiBrowserLight/datareporting | 2 | 2 | 0 | 0 | 2 |
-| home/kodachi/.mozilla/firefox/y19yqyp3.KodachiBrowserLight/personality-provider | 26 | 62 | 0 | 26 | 88 |
-| home/kodachi/.mozilla/firefox/y19yqyp3.KodachiBrowserLight/scratchpad-scripts | 4 | 459 | 94 | 50 | 603 |
-| home/kodachi/.mozilla/firefox/y19yqyp3.KodachiBrowserLight/weave | 2 | 2 | 0 | 0 | 2 |
-| home/kodachi/.mozilla/firefox/y19yqyp3.KodachiBrowserLight/weave/failed | 1 | 1 | 0 | 0 | 1 |
-| home/kodachi/.mozilla/firefox/y19yqyp3.KodachiBrowserLight/weave/toFetch | 1 | 1 | 0 | 0 | 1 |
-| home/kodachi/Own_VPN_Config | 6,224 | 478,436 | 22,512 | 21,479 | 522,427 |
-| home/kodachi/Own_VPN_Config (Files) | 1 | 0 | 4 | 7 | 11 |
-| home/kodachi/Own_VPN_Config/vpngateovpnfiles | 56 | 5,264 | 4,928 | 1,680 | 11,872 |
-| home/kodachi/Own_VPN_Config/vpnhidemeovpnfiles | 78 | 7,488 | 0 | 468 | 7,956 |
-| home/kodachi/Own_VPN_Config/vpnnordovpnfiles | 5,355 | 412,325 | 16,065 | 16,065 | 444,455 |
-| home/kodachi/Own_VPN_Config/vpnpmullvadovpnfiles | 229 | 13,969 | 0 | 229 | 14,198 |
-| home/kodachi/Own_VPN_Config/vpnprotonovpnfiles | 505 | 39,390 | 1,515 | 3,030 | 43,935 |
-
-Summary / [Details](details.md) / [Diff Summary](diff.md) / [Diff Details](diff-details.md)
 
 ```
 .kbase
