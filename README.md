@@ -101,9 +101,7 @@ Linux Kodachi is free, but maintaining a project of this magnitude takes time an
 
 **Donation Options:**
 
-- <a href="https://nowpayments.io/donation?api_key=TDZF92Q-JBZ4HFN-GDY2FEY-W1N88TC" target="_blank" rel="noreferrer noopener">
-    <img src="https://nowpayments.io/images/embeds/donation-button-white.svg" alt="Cryptocurrency & Bitcoin donation button by NOWPayments">
-  </a>
+- **[Donate with Cryptocurrency](https://nowpayments.io/donation/linuxkodachi)**
 - **[Donate with PayPal direct](https://www.paypal.com/ncp/payment/5AFVXU4MY4MLS)**
 - **[Donate with PayPal via donorbox](https://donorbox.org/kodachi)**
 
