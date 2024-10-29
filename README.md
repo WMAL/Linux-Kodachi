@@ -101,11 +101,11 @@ Linux Kodachi is free, but maintaining a project of this magnitude takes time an
 
 **Donation Options:**
 
-- 💰 **Bitcoin (BTC):**  
-  `19pufEJUkQGPJYXCfA1b7GaKSUNeYEsApU`
-- 💸 **Monero (XMR):**  
-  `44SFJtdWqp85xnRRA8vRs6PimuZXzq36ZHW8fYHFjCk98jpYxNWeJQ7DxwQmWxzeuPQWfp7uqpq9gMQxpdQq3C3dV1taKDE`
-- **[Donate with PayPal](https://donorbox.org/kodachi)**
+- <a href="https://nowpayments.io/donation?api_key=TDZF92Q-JBZ4HFN-GDY2FEY-W1N88TC" target="_blank" rel="noreferrer noopener">
+    <img src="https://nowpayments.io/images/embeds/donation-button-white.svg" alt="Cryptocurrency & Bitcoin donation button by NOWPayments">
+  </a>
+- **[Donate with PayPal direct](https://www.paypal.com/ncp/payment/5AFVXU4MY4MLS)**
+- **[Donate with PayPal via donorbox](https://donorbox.org/kodachi)**
 
 Your donations will be used to fund future development, improve user support, and ensure Kodachi remains the **most secure operating system available**.
 
