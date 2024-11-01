@@ -1,3 +1,4 @@
+
 # Linux Kodachi - Kodachi 9 soon 🚀
 
 ## Overview
@@ -13,6 +14,10 @@
 - 🔑 **Cryptographic Tools:** Built-in tools for **file encryption**, **secure email communication**, and **instant messaging** help you maintain control over your data and communications.
 - 🕵️‍♂️ **Anti-Forensic Features:** Includes measures to thwart forensic analysis, ensuring your activities remain private even if your system is physically compromised.
 - 📊 **System Monitoring:** Real-time monitoring tools provide insights into your **network connections**, **system performance**, and **security status**.
+<p align="center">
+  <img src="https://www.digi77.com/wp-content/uploads/2024/07/kodachi-green-128.png" alt="Kodachi Logo">
+</p>
+
 
 ### 🚀 **Kodachi 9: A New Era is Coming!** 🚀
 
