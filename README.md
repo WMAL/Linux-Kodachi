@@ -125,7 +125,7 @@ Linux Kodachi is more than just a privacy tool—it's a **comprehensive solution
 
 ## ⚠️ Disclaimer
 
-By using Kodachi, you acknowledge and agree that its primary purpose is to **protect your privacy** and ensure **secure online activities**. However, Kodachi should not be used for **illegal activities** or to commit crimes. If your intention is to engage in unlawful actions or violate any laws, please refrain from using Kodachi. We cannot assume any responsibility for violations of local or international laws committed by individuals using Kodachi. It is your responsibility to ensure compliance with the laws of your country or jurisdiction when using Kodachi or any other software.
+By using Kodachi, you acknowledge and agree that its primary purpose is to protect your privacy and ensure secure online activities. Kodachi should **not** be used for any illegal activities or to commit crimes. If your intention is to engage in unlawful actions or violate any applicable laws, you are advised to discontinue usage immediately. **Kodachi and its developers disclaim all liability for any violations of applicable laws committed by individuals using this software**. It is **your responsibility** to ensure compliance with the laws of your country or jurisdiction when using Kodachi or any other software or tool.
 
 ---
 
