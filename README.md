@@ -174,7 +174,7 @@ Special thanks to all the contributors and the open-source community for their i
 For any queries or support, please contact:
 
 - **Discord Support:** [Kodachi support](https://discord.gg/KEFErEx)
-- **Kodachi Website:** [Kodachi page](<(https://www.digi77.com/linux-kodachi/)>)
+- **Kodachi Website:** [Kodachi page]((https://www.digi77.com/linux-kodachi/))
 - **Contact:** [Contact page](https://www.digi77.com/contact/)
 
 ---
