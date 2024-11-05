@@ -1,7 +1,7 @@
 
-# Linux Kodachi - Kodachi 9 soon 🚀
-
 ## Overview
+
+# Linux Kodachi - Kodachi 9 soon 🚀
 
 **Linux Kodachi** is a **security-focused operating system** designed for users who value **privacy, anonymity,** and a **secure computing experience**. Developed by **Warith Al Maawali**, Kodachi provides all the tools necessary for anonymous online activities while maintaining ease of use. Built on top of **Xubuntu 18.04.6** and further customized for enhanced privacy and security, Kodachi serves as a **live system** that leaves **no trace** on the host machine.
 
@@ -172,9 +172,8 @@ Special thanks to all the contributors and the open-source community for their i
 ## Contact & Support
 
 For any queries or support, please contact:
-
 - **Discord Support:** [Kodachi support](https://discord.gg/KEFErEx)
-- **Kodachi Website:** [Kodachi page]((https://www.digi77.com/linux-kodachi/))
+- **Kodachi Website:** [Kodachi page](https://www.digi77.com/linux-kodachi/)
 - **Contact:** [Contact page](https://www.digi77.com/contact/)
 
 ---
