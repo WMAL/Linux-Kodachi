@@ -21,7 +21,7 @@
 
 ### 🚀 **Kodachi 9: A New Era is Coming!** 🚀
 
-**Kodachi 9** is currently under development and will be based on **<span style="color:blue;">Debian</span>**. The project is approximately **<span style="color:green;">70% complete</span>**. Every script has been rewritten from scratch to enhance performance and functionality. This effort has taken time, but the result will significantly improve the Kodachi experience.
+**Kodachi 9** is currently under development and will be based on **<span style="color:blue;">Debian</span>**. The project is approximately **<span style="color:green;">82% complete</span>**. Every script has been rewritten from scratch to enhance performance and functionality. This effort has taken time, but the result will significantly improve the Kodachi experience.
 
 Stay tuned for more updates! 🚀
 
