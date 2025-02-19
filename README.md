@@ -27,6 +27,51 @@ Stay tuned for more updates! 🚀
 
 ---
 
+# Kodachi Development Roadmap
+
+This roadmap provides an overview of the current status of key components in the Kodachi project. All code and infrastructure have been written from scratch; however, I have integrated the working code from the old version to avoid reinventing the wheel and accelerate development.
+
+| Component                             | Status              | Completion |
+|---------------------------------------|---------------------|------------|
+| **Kodachi Client-Side Script**        | In Development      | 90%        |
+| **Kodachi GUI**                       | Not Started         | 0%         |
+| **Kodachi Workers VPS**               | Completed           | 100%       |
+| **Kodachi Master VPS**                | Near Completion     | 99%        |
+| **Kodachi Desktop Website Home Page** | Completed           | 100%       |
+
+## Development Approach
+
+- **From Scratch with Legacy Integration:**  
+  Every component has been re-engineered from the ground up to ensure modern, robust architecture. That said, the working code from the previous version was utilized where applicable to maintain proven functionality and save valuable development time.
+
+## Next Steps
+
+- **Kodachi Client-Side Script:**  
+  Finalize remaining features and conduct thorough testing to ensure robustness before full deployment.
+
+- **Kodachi GUI:**  
+  Begin the design phase with initial mockups and prototypes. Establish user interface guidelines to streamline development and integration.
+
+- **Integration & Testing:**  
+  Once the GUI is underway, work on integrating it seamlessly with the existing components, followed by comprehensive system testing.
+
+- **Documentation & Feedback:**  
+  Update project documentation to reflect the current progress and gather user feedback for continuous improvement.
+
+## Timeline
+
+- **Short Term (Next 1-2 Weeks):**  
+  Complete final touches on the client-side script and prepare for integration testing.
+
+- **Mid Term (Next 1 Month):**  
+  Kick off the GUI development, including design iterations and early-stage prototyping, alongside initiating integration with backend systems.
+
+- **Long Term (1-3 Months):**  
+  Finalize the GUI, complete integration, perform end-to-end testing, and prepare for the full release.
+
+Stay tuned for further updates as we continue to advance the Kodachi project!
+---
+
 ## Why Choose Kodachi?
 
 Kodachi was born out of a need to bridge the gap between **user-friendly operating systems** and the increasingly sophisticated world of **digital privacy threats**. With Kodachi, you can:
