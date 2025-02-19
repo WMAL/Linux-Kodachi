@@ -69,7 +69,8 @@ This roadmap provides an overview of the current status of key components in the
 - **Long Term (1-3 Months):**  
   Finalize the GUI, complete integration, perform end-to-end testing, and prepare for the full release.
 
-Stay tuned for further updates as we continue to advance the Kodachi project!
+Stay tuned for further updates.
+
 ---
 
 ## Why Choose Kodachi?
