@@ -37,7 +37,7 @@ This roadmap provides an overview of the current status of key components in the
 | **Kodachi Master VPS**                | ✅ Completed        | ![██████████](/) 100% |
 | **[Kodachi Anonymity Verifier](https://www.kodachi.cloud/)** | ✅ Completed        | ![██████████](/) 100% |
 | **Kodachi Client-Side Scripts**       | ⚙️ In Development  | ![█████████ ](/) 90%  |
-| **Kodachi Dashboard GUI**             | 🚧 Not Started     | ![░░░░░░░░░░](/) 15%   |
+| **Kodachi Dashboard GUI**             | ⚙️ In Development    | ![░░░░░░░░░░](/) 15%   |
 
 
 
