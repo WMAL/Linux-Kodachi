@@ -23,7 +23,7 @@
 
 **Kodachi 9** is currently under development and will be based on **<span style="color:blue;">Debian</span>**. The project is approximately **<span style="color:green;">82% complete</span>**. Every script has been rewritten from scratch to enhance performance and functionality. This effort has taken time, but the result will significantly improve the Kodachi experience.
 
-Stay tuned for more updates! 🚀
+Stay tuned for more updates! 🚀 Check out the [behind-the-scenes progress](https://github.com/WMAL/Linux-Kodachi/tree/main/v9-behind-scenes-progress) for Kodachi 9.
 
 ---
 
@@ -84,7 +84,7 @@ Kodachi was born out of a need to bridge the gap between **user-friendly operati
 - 🔒 **Use cutting-edge cryptographic tools** for secure communication and data storage.
 - 🛡️ **Stay protected against malware** and network attacks with built-in **security features**.
 
-Kodachi is more than just another Linux distribution—it’s a **robust**, **lightweight operating system** that puts your **security and privacy first**.
+Kodachi is more than just another Linux distribution—it's a **robust**, **lightweight operating system** that puts your **security and privacy first**.
 
 ---
 
