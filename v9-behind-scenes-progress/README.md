@@ -29,7 +29,7 @@ We believe security tools should be as open in design as they are strong in defe
 ---
 
 ## 🚧 Upcoming Topics
-
+- TOR switch
 Stay tuned for future updates.
  
 
