@@ -4,6 +4,8 @@
 
 As the lead developer for Kodachi Security OS, I'm excited to share progress on implementing a cutting-edge challenge-response authentication system that perfectly balances security, usability, and user privacy. This milestone reflects my commitment to building a secure, privacy-respecting platform for the upcoming Kodachi v9.
 
+[Watch the Authentication System Demo Video](https://github.com/WMAL/Linux-Kodachi/blob/main/v9-behind-scenes-progress/Kodachi9-auth-demo.mp4)
+
 ---
 
 ## The Architecture: Security Through Separation
