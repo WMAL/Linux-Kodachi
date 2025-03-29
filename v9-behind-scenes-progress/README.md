@@ -3,7 +3,7 @@
 Welcome to the **Behind-the-Scenes** folder for the development of **Kodachi v9**. This space documents the ongoing engineering efforts, security architecture decisions, implementation strategies, and technical milestones shaping the next generation of the Kodachi Security OS.
 
 Here you’ll find a collection of:
-- 🛡️ **Security design documents**
+- 🔒 **Security design documents**
 - 💡 **Architecture insights**
 - 🎥 **Development videos and feature walkthroughs**
 - 🧪 **Experimental notes and early concepts**
