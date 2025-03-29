@@ -24,7 +24,7 @@ We believe security tools should be as open in design as they are strong in defe
 | Type         | Title / Description                                      | Link |
 |--------------|-----------------------------------------------------------|------|
 | 📄 Article    | **Securing Digital Identity** – Challenge-Response Authentication System Design | [Read Article](https://github.com/WMAL/Linux-Kodachi/blob/main/v9-behind-scenes-progress/Securing%20Digital%20Identity.md) |
-| 🎬 Video      | **Authentication Flow Demo** – Kodachi v9 Challenge-Response Walkthrough | [Watch Video]([https://github.com/WMAL/Linux-Kodachi/blob/main/v9-behind-scenes-progress/Kodachi9-auth-demo.mp4](https://github.com/WMAL/Linux-Kodachi/raw/refs/heads/main/v9-behind-scenes-progress/Kodachi9-auth-demo.mp4)) |
+| 🎬 Video      | **Authentication Flow Demo** – Kodachi v9 Challenge-Response Walkthrough | [Watch Video](https://github.com/WMAL/Linux-Kodachi/raw/refs/heads/main/v9-behind-scenes-progress/Kodachi9-auth-demo.mp4) |
 
 ---
 
