@@ -92,12 +92,15 @@ Kodachi is more than just another Linux distribution—it's a **robust**, **ligh
 
 Kodachi has been critically acclaimed by global publications and consistently recognized as one of the most secure Linux distributions available:
 
-- 🏆 **1st Place** at **TechRadar** for Best Linux Distro for Privacy & Security for **four consecutive years** (2020–2023).
+- 🏆 **1st Place** at **TechRadar** for Best Linux Distro for Privacy & Security for **four consecutive years** (2020–2025).
   - **[Original Article: TechRadar - Best Linux Distro for Privacy & Security](https://www.techradar.com/news/best-linux-distro-privacy-security)**
   - [TechRadar 2020](https://www.digi77.com/software/kodachi/TechRadar2020.pdf)
   - [TechRadar 2021](https://www.digi77.com/software/kodachi/TechRadar2021.pdf)
   - [TechRadar 2022](https://www.digi77.com/software/kodachi/TechRadar2022.pdf)
   - [TechRadar 2023](https://www.digi77.com/software/kodachi/TechRadar2023.pdf)
+  - [TechRadar 2024](https://www.digi77.com/software/kodachi/TechRadar2024.pdf)
+  - [TechRadar 2025](https://www.digi77.com/software/kodachi/TechRadar2025.pdf)
+
 - 🥇 **1st Place** in **Linux Format UK Magazine's** Privacy Distribution Roundup (2020).
   - [Linux Format 2020](https://www.digi77.com/software/kodachi/Linux_Format_UK_Issue_267_September_2020.pdf)
 - 🥇 **1st Place** in **DistroWatch** for privacy-focused distributions (2019).
