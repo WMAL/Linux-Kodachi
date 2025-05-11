@@ -21,10 +21,12 @@ We believe security tools should be as open in design as they are strong in defe
 
 ## 📂 Contents
 
-| Type         | Title / Description                                      | Link |
-|--------------|-----------------------------------------------------------|------|
-| 📄 Article    | **Securing Digital Identity** – Challenge-Response Authentication System Design | [Read Article](https://github.com/WMAL/Linux-Kodachi/blob/main/v9-behind-scenes-progress/Securing%20Digital%20Identity.md) |
-| 🎬 Video      | **Authentication Flow Demo** – Kodachi v9 Challenge-Response Walkthrough | [Watch Video](https://github.com/WMAL/Linux-Kodachi/raw/refs/heads/main/v9-behind-scenes-progress/Kodachi9-auth-demo.mp4) |
+| Type         | Title / Description                                                                 | Link                                                                                                           |
+|--------------|--------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------|
+| 📄 Article    | **Securing Digital Identity** – Challenge-Response Authentication System Design     | [Read Article](https://github.com/WMAL/Linux-Kodachi/blob/main/v9-behind-scenes-progress/Securing%20Digital%20Identity.md) |
+| 🎬 Video      | **Authentication Flow Demo** – Kodachi v9 Challenge-Response Walkthrough            | [Watch Video](https://github.com/WMAL/Linux-Kodachi/raw/refs/heads/main/v9-behind-scenes-progress/Kodachi9-auth-demo.mp4) |
+| 📄 Article    | **IP-Fetch Utility Overview** – Enhancing Anonymity with Dynamic Network Controls   | [Read Article](https://github.com/WMAL/Linux-Kodachi/blob/main/v9-behind-scenes-progress/ip-fetch.md)          |
+| 🎬 Video      | **IP-Fetch Demo** – Real-Time Network Identity Monitoring and Control                | [Watch Video](https://github.com/WMAL/Linux-Kodachi/blob/main/v9-behind-scenes-progress/ip-fetch-c.mp4)        |
 
 ---
 
