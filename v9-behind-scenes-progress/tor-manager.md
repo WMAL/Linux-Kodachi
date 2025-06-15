@@ -97,11 +97,11 @@ sudo tor-switch torrify_system_iptables_dns
 
 ## 🧵 A Personal Note from the Developer
 
-This project—**Tor-Manager for Kodachi OS**—has taken nearly **12 weeks of continuous, intense development**, including countless sleepless nights. Every line of code, every edge case, every safeguard was carefully written and tested to serve one purpose: give users full, uncompromised control over their anonymity.
+This phase—**Tor-Manager for Kodachi OS**—has taken nearly **12 weeks of continuous, intense development**, including countless sleepless nights. Every line of code, every edge case, every safeguard was carefully written and tested to serve one purpose: give users full, uncompromised control over their anonymity.
 
 Although **Kodachi 9 is not yet fully complete**, I can confidently say that even at this stage, **what has been built rivals and surpasses many of the tools I’ve seen across other security and privacy-focused distributions**. What you see here is not a clone, not a script bundle—it’s a meticulously engineered system with **features I have yet to find anywhere else** in a privacy OS.
 
-My vision is simple: **to give users real power, real transparency, and real privacy**. Don’t just take my word for it—test the tools, inspect the code, and experience the control firsthand.
+My vision is simple: **to give users real power, real transparency, and real privacy**.  
 
 By the time this project reaches final release, I am hopeful that **Kodachi 9 will empower its users** with tools that provide not just peace of mind—but operational superiority in today’s surveillance-heavy digital landscape.
 
@@ -110,22 +110,40 @@ By the time this project reaches final release, I am hopeful that **Kodachi 9 wi
 ## 📦 Summary of Major Commands
 
 ```bash
-# Start/Stop instances
-sudo tor-switch start_instance browsing
-sudo tor-switch stop_all_instances
+# 🔁 Instance Management
+sudo tor-switch create_multiple_instances 3 region     # Create 3 Tor instances with 'region' prefix
+sudo tor-switch list_instances_with_ip                 # List running instances with their current exit IPs
+sudo tor-switch set_default_instance secure            # Set 'secure' as the default instance
 
-# Exit routing
-sudo tor-switch set_exit_node jp --instance=secure
-sudo tor-switch set_exclude_node 9eyes
+# 🌍 Exit Node & Exclusion Control
+sudo tor-switch set_exit_node ch --instance=streaming  # Route 'streaming' instance through Switzerland
+sudo tor-switch set_exclude_node 14eyes                # Block Fourteen Eyes countries for current instance
+sudo tor-switch set_exit_node random_high_volume       # Use high-volume Tor exits for better performance
 
-# Load balancing
-sudo tor-switch set_load_balancing_mode weighted
-sudo tor-switch torrify_system_nftables_load_balanced
+# 🔀 Load Balancing
+sudo tor-switch set_load_balancing_mode round-robin    # Distribute traffic sequentially across instances
+sudo tor-switch set_instance_weight secure 10          # Prioritize 'secure' instance in weighted distribution
+sudo tor-switch torrify_system_nftables_load_balanced  # Apply balanced routing using nftables
 
-# Monitoring
-sudo tor-switch tor_status --json
-sudo tor-switch check_tor
+# 🔒 DNS & Full-System Torrification
+sudo tor-switch torrify_system_iptables_dns            # Route all traffic + DNS over Tor with iptables
+sudo tor-switch verify_tor_dns                         # Confirm DNS is routed securely through Tor
+
+# ♻️ Tor Circuit & IP Rotation
+sudo tor-switch new_tor_circuit_all                    # Generate new circuits (IP refresh) for all instances
+sudo tor-switch update_ip_all_timer 1h                 # Rotate exit IPs for all instances every 1 hour
+
+# 🧰 HAProxy Integration
+sudo tor-switch generate_haproxy_config leastconn 9050 # HAProxy with least-connection strategy on port 9050
+sudo tor-switch haproxy_status                         # Check status of HAProxy service
+
+# 🛠️ Diagnostics & Cleanup
+sudo tor-switch check_tor                              # Verify Tor is working properly
+sudo tor-switch cleanup --thorough                     # Remove all temporary and residual data safely
 ```
+
+These commands offer a powerful preview of the depth and precision available in Kodachi's Tor-Manager. They represent only a fraction of what's possible, but clearly demonstrate its operational maturity and strategic flexibility.
+
 
 ---
 
