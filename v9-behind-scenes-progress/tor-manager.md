@@ -1,9 +1,6 @@
 # 🚀 Tor-Manager: Major Update for Kodachi OS v9
 
-> **Status:** ✅ Completed & Integrated  
-> **Release Date:** January 2025  
-> **Author:** Warith Al Maawali  
-> **Project:** [Kodachi OS](https://www.kodachi.cloud/) - (https://www.digi77.com/)
+ 
 
 ---
 
