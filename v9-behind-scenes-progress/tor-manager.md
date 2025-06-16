@@ -19,6 +19,15 @@ The **Tor-Manager** has been completely rebuilt from the ground up in **Rust**, 
 
 ---
 
+## 🎬 Tor Manager Demo Videos
+
+Watch the Tor-Manager in action, showcasing real-time control over instances, circuits, and exit nodes:
+
+- 🔗 [Watch on Dubz](https://dubz.co/v/27417e)
+- 🔗 [Watch on Viddler](https://www.viddler.com/tDrQ22)
+  
+---
+
 ## 🔥 What’s New?
 
 ### ✅ Multi-Instance Management
