@@ -27,6 +27,8 @@ We believe security tools should be as open in design as they are strong in defe
 | 🎬 Video      | **Authentication Flow Demo** – Kodachi v9 Challenge-Response Walkthrough            | [Watch Video](https://github.com/WMAL/Linux-Kodachi/raw/refs/heads/main/v9-behind-scenes-progress/Kodachi9-auth-demo.mp4) |
 | 📄 Article    | **IP-Fetch Utility Overview** – Enhancing Anonymity with Dynamic Network Controls   | [Read Article](https://github.com/WMAL/Linux-Kodachi/blob/main/v9-behind-scenes-progress/ip-fetch.md)          |
 | 🎬 Video      | **IP-Fetch Demo** – Real-Time Network Identity Monitoring and Control                | [Watch Video](https://github.com/WMAL/Linux-Kodachi/blob/main/v9-behind-scenes-progress/ip-fetch-c.mp4)        |
+| 📄 Article    | **Tor Manager Module** – Full Control Over Tor Instances, Circuits, and Exit Nodes  | [Read Article](https://github.com/WMAL/Linux-Kodachi/blob/main/v9-behind-scenes-progress/tor-manager.md)       |
+| 🎬 Video      | **Tor Manager Demo** – Instance Control, Circuit Refresh, and Exit Node Selection    | [Watch on Dubz](https://dubz.co/v/27417e) · [Watch on Viddler](https://www.viddler.com/tDrQ22)                 |
 
 ---
 
