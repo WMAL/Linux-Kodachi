@@ -33,7 +33,7 @@ We believe security tools should be as open in design as they are strong in defe
 ---
 
 ## 🚧 Upcoming Topics
-- TOR switch
+- DNS Manager
 Stay tuned for future updates.
  
 
