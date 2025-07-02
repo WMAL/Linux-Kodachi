@@ -37,24 +37,40 @@ This roadmap provides an overview of the current status of key components in the
 | **Kodachi Master VPS**                | ✅ Completed         | ![██████████](/) 100% |
 | **[Kodachi Anonymity Verifier](https://www.kodachi.cloud/)** | ✅ Completed | ![██████████](/) 100% |
 | **Kodachi Client-Side Scripts**       | ⚙️ In Development    | ![█████████ ](/) 90%  |
-| **Kodachi Dashboard GUI**             | ⚙️ In Development    | ![█████░░░░░░](/) 45%  |
+| **Kodachi Dashboard GUI**             | ⚙️ In Development    | ![███████░░░](/) 70%  |
+
 
 ---
 
 ## Component Progress Breakdown
 
 | Feature / Utility               | Backend | Frontend | Notes |
-|---------------------------------|---------|----------|-------|
-| **Login Manager**               | ✅ Done | ✅ Done | Completed both authentication logic and UI integration. |
-| **Internet Fix Utility**        | ✅ Done | ✅ Done | Network diagnostics and recovery utilities implemented. |
-| **Application Launcher**        | ✅ Done | ✅ Done | Modular app launch system for privacy tools. |
-| **Security Tools**              | ✅ Done | ✅ Done | Includes firewall toggles and protection utilities. |
-| **IP Fetch Utility**            | ✅ Done | ✅ Done | Full location + ASN lookup integrated. |
-| **MAC Address Utility**         | ✅ Done | ✅ Done | Automatic and manual MAC spoofing supported. |
-| **Hostname Changer**            | ✅ Done | ✅ Done | Persistent and session-based hostname updates handled. |
-| **Time Zone Utility**           | ✅ Done | ✅ Done | Geo-based adjustment; includes IP-based firewall re-evaluation. |
-| **Command Guide**               | ✅ Done | ✅ Done | CLI helper with context-aware command suggestions. |
-| **Tor Manager**                 | ✅ Done | ✅ Done | Backend development spanned ~6 weeks; frontend finalized in 2 weeks. Complete Tor lifecycle management now functional. |
+|--------------------------------|---------|----------|-------|
+| **Login Manager**              | ✅ Done | ✅ Done | Completed both authentication logic and UI integration. |
+| **Internet Fix Utility**       | ✅ Done | ✅ Done | Network diagnostics and recovery utilities implemented. |
+| **Application Launcher**       | ✅ Done | ✅ Done | Modular app launch system for privacy tools. |
+| **Security Tools**             | ✅ Done | ✅ Done | Includes firewall toggles and protection utilities. |
+| **IP Fetch Utility**           | ✅ Done | ✅ Done | Full location + ASN lookup integrated. |
+| **MAC Address Utility**        | ✅ Done | ✅ Done | Automatic and manual MAC spoofing supported. |
+| **Hostname Changer**           | ✅ Done | ✅ Done | Persistent and session-based hostname updates handled. |
+| **Time Zone Utility**          | ✅ Done | ✅ Done | Geo-based adjustment; includes IP-based firewall re-evaluation. |
+| **Command Guide**              | ✅ Done | ✅ Done | CLI helper with context-aware command suggestions. |
+| **Tor Manager**                | ✅ Done | ✅ Done | Backend development spanned ~6 weeks; frontend finalized in 2 weeks. Complete Tor lifecycle management now functional. |
+| **System Information**         | ✅ Done | ✅ Done | Backend and frontend both completed with dynamic hardware and OS data parsing. |
+| **DNS Manager**                | ✅ Done | ⏳ Pending | Backend fully implemented; frontend integration upcoming. |
+| **Secure Connectivity**        | ⏳ Pending | ⏳ Pending | Includes tunneling, proxy, and VPN chaining support. |
+| **Settings Manager**           | ✅ Done | ⏳ Pending | Core settings logic ready; GUI still under development. |
+
+---
+
+## Finalization & Release Status
+
+| Stage                         | Status     |
+|------------------------------|------------|
+| **Clean-up & Polishing**     | ⏳ Pending |
+| **ISO Build Process**        | ⏳ Pending |
+| **Overall System Testing**   | ⏳ Pending |
+| **Beta Release**             | ⏳ Pending |
 
 ---
 
