@@ -14,10 +14,10 @@
 - 🔑 **Cryptographic Tools:** Built-in tools for **file encryption**, **secure email communication**, and **instant messaging** help you maintain control over your data and communications.
 - 🕵️‍♂️ **Anti-Forensic Features:** Includes measures to thwart forensic analysis, ensuring your activities remain private even if your system is physically compromised.
 - 📊 **System Monitoring:** Real-time monitoring tools provide insights into your **network connections**, **system performance**, and **security status**.
+
 <p align="center">
   <img src="https://www.digi77.com/wp-content/uploads/2024/07/kodachi-green-128.png" alt="Kodachi Logo">
 </p>
-
 
 ### 🚀 **Kodachi 9: A New Era is Coming!** 🚀
 
@@ -38,7 +38,6 @@ This roadmap provides an overview of the current status of key components in the
 | **[Kodachi Anonymity Verifier](https://www.kodachi.cloud/)** | ✅ Completed | ![██████████](/) 100% |
 | **Kodachi Client-Side Scripts**       | ⚙️ In Development    | ![█████████ ](/) 90%  |
 | **Kodachi Dashboard GUI**             | ⚙️ In Development    | ![███████░░░](/) 70%  |
-
 
 ---
 
@@ -76,8 +75,6 @@ This roadmap provides an overview of the current status of key components in the
 
 Each of the above components is now integrated or in final testing stages. Kodachi 9 will support both GUI-based control and CLI command-driven interaction. Further behind-the-scenes breakdowns, including architecture and modular execution flow, will be provided in a dedicated technical insight section.
 
-
-
 ## Development Approach
 
 - **From Scratch with Legacy Integration:**  
@@ -89,10 +86,10 @@ Each of the above components is now integrated or in final testing stages. Kodac
   Finalize remaining features and conduct thorough testing to ensure robustness before full deployment.
 
 - **Kodachi GUI:**  
-  Begin the design phase with initial mockups and prototypes. Establish user interface guidelines to streamline development and integration.
+  Continue refining design and component integration (currently at 70%). Frontend functionalities are actively being implemented across modules.
 
 - **Integration & Testing:**  
-  Once the GUI is underway, work on integrating it seamlessly with the existing components, followed by comprehensive system testing.
+  Once all components are ready, integrate the GUI with backend systems and perform comprehensive system testing.
 
 - **Documentation & Feedback:**  
   Update project documentation to reflect the current progress and gather user feedback for continuous improvement.
@@ -100,15 +97,16 @@ Each of the above components is now integrated or in final testing stages. Kodac
 ## Timeline
 
 - **Short Term (Next 1-2 Weeks):**  
-  Complete final touches on the client-side script and prepare for integration testing.
+  Finalize Kodachi client-side scripts and prepare them for integration testing.
 
 - **Mid Term (Next 1 Month):**  
-  Kick off the GUI development, including design iterations and early-stage prototyping, alongside initiating integration with backend systems.
+  Complete 100% of GUI functionalities, finalize frontend development for pending modules (e.g., DNS, Settings), and begin full integration testing.
 
 - **Long Term (1-3 Months):**  
-  Finalize the GUI, complete integration, perform end-to-end testing, and prepare for the full release.
+  Conduct end-to-end testing, polish the system, complete ISO build, and roll out the public beta release.
 
 Stay tuned for further updates.
+
 
 ---
 
@@ -266,7 +264,7 @@ For any queries or support, please contact:
 
 ---
 
-© 2024 by Warith AL Maawali, Sultanate of Oman, Muscat. All rights reserved.
+© 2025 by Warith AL Maawali, Sultanate of Oman, Muscat. All rights reserved.
 
 
 [⬆ Back to Overview](#overview)
