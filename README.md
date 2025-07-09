@@ -182,7 +182,6 @@ To learn how to use Kodachi, explore the following resources:
   - Search for **Linux Kodachi** on YouTube or visit [this link](https://www.youtube.com/results?search_query=linux+kodachi) for a collection of video tutorials.
 - **Official Documentation:** Visit the [Kodachi Documentation](https://www.digi77.com/linux-kodachi/) for detailed guides.
 - **Community Support:** Join the **[Kodachi support](https://discord.gg/KEFErEx)** to ask questions and share insights.
-- **Detailed Tutorials:** Explore the [Ushby Kodachi Tutorial](https://ushby.org/index.php?r=cfiles%2Fbrowse%2Findex&fid=3&cguid=4559ee2b-b0cf-4952-95ca-a28a216f97aa). This tutorial is created by a user named Ushby and is not an official guide; it was done on a voluntary basis.
 
 ---
 
