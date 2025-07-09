@@ -35,9 +35,12 @@ This roadmap provides an overview of the current status of key components in the
 |---------------------------------------|---------------------|------------|
 | **Kodachi Workers VPS**               | ✅ Completed         | ![██████████](/) 100% |
 | **Kodachi Master VPS**                | ✅ Completed         | ![██████████](/) 100% |
-| **[Kodachi Anonymity Verifier](https://www.kodachi.cloud/)** | ✅ Completed | ![██████████](/) 100% |
+| **[Kodachi Anonymity Verifier:kodachi.cloud](https://www.kodachi.cloud/)** | ✅ Completed | ![██████████](/) 100% |
 | **Kodachi Client-Side Scripts**       | ⚙️ In Development    | ![█████████ ](/) 90%  |
-| **Kodachi Dashboard GUI**             | ⚙️ In Development    | ![███████░░░](/) 70%  |
+| **Kodachi Dashboard GUI**             | ⚙️ In Development    | ![████████░░](/) 80%  |
+
+> 🔄 GUI is 80% complete. Remaining work includes final feature integration, UI adjustments, and polishing.  
+> 🧪 Final research and live ISO build process are the key pending tasks before full release.
 
 ---
 
@@ -64,14 +67,16 @@ This roadmap provides an overview of the current status of key components in the
 
 ## Finalization & Release Status
 
-| Stage                         | Status     |
-|------------------------------|------------|
-| **Clean-up & Polishing**     | ⏳ Pending |
-| **ISO Build Process**        | ⏳ Pending |
-| **Overall System Testing**   | ⏳ Pending |
-| **Beta Release**             | ⏳ Pending |
+| Stage                         | Status     | Notes |
+|------------------------------|------------|-------|
+| **Clean-up & Polishing**     | ⏳ Pending | Includes final UI adjustments and consistency review |
+| **Final Research Phase**     | ⏳ Pending | Testing edge-case behaviors, hardening, and fallback options |
+| **ISO Build Process**        | ⏳ Pending | Final step before beta; creating the live bootable ISO |
+| **Overall System Testing**   | ⏳ Pending | Includes unit tests, integration tests, and field checks |
+| **Beta Release**             | ⏳ Pending | Will follow ISO build and internal validation |
 
 ---
+
 
 Each of the above components is now integrated or in final testing stages. Kodachi 9 will support both GUI-based control and CLI command-driven interaction. Further behind-the-scenes breakdowns, including architecture and modular execution flow, will be provided in a dedicated technical insight section.
 
@@ -241,10 +246,12 @@ For the full version, visit: [Full License](https://github.com/WMAL/Linux-Kodach
 
 ## Warrant Canary
 
-As of April 6, 2022:
+As of July 9, 2025:
 
-- No National Security Letters, gag orders, or warrants received.
-- Kodachi remains uncompromised and secure.
+- No National Security Letters, gag orders, or warrants received.  
+- Kodachi remains uncompromised and secure.  
+- For more details, visit the [official Warrant Canary page](https://www.kodachi.cloud/warrant.html).
+
 
 ---
 
@@ -257,9 +264,12 @@ Special thanks to all the contributors and the open-source community for their i
 ## Contact & Support
 
 For any queries or support, please contact:
-- **Discord Support:** [Kodachi support](https://discord.gg/KEFErEx)
 - **Kodachi Website:** [Kodachi page](https://www.digi77.com/linux-kodachi/)
-- **Contact:** [Contact page](https://www.digi77.com/contact/)
+- **Kodachi Anonymity Verifier:** [https://www.kodachi.cloud](https://www.kodachi.cloud)
+- **Discord Support:** [Kodachi support](https://discord.gg/KEFErEx)  
+- **Contact:** [Contact page](https://www.digi77.com/contact/)  
+
+
 
 ---
 
