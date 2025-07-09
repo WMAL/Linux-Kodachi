@@ -38,10 +38,7 @@ This roadmap provides an overview of the current status of key components in the
 | **[Kodachi Anonymity Verifier:kodachi.cloud](https://www.kodachi.cloud/)** | ✅ Completed | ![██████████](/) 100% |
 | **Kodachi Client-Side Scripts**       | ⚙️ In Development    | ![█████████ ](/) 90%  |
 | **Kodachi Dashboard GUI**             | ⚙️ In Development    | ![████████░░](/) 80%  |
-
-> 🔄 GUI is 80% complete. Remaining work includes final feature integration, UI adjustments, and polishing.  
-> 🧪 Final research and live ISO build process are the key pending tasks before full release.
-
+ 
 ---
 
 ## Component Progress Breakdown
