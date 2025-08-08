@@ -66,8 +66,9 @@ This roadmap provides an overview of the current status of key components in the
 | **Command Guide**        | ✅ Done    | ✅ Done    | CLI helper with context-aware command suggestions.                                                                     |
 | **Tor Manager**          | ✅ Done    | ✅ Done    | Backend development spanned ~6 weeks; frontend finalized in 2 weeks. Complete Tor lifecycle management now functional. |
 | **System Information**   | ✅ Done    | ✅ Done    | Backend and frontend both completed with dynamic hardware and OS data parsing.                                         |
-| **DNS Manager**          | ✅ Done    | ✅ Done    | Backend fully implemented; frontend integration completed.                                                             |
+| **DNS Manager**          | ✅ Done    | ⏳ Pending | Backend fully implemented; GUI frontend still under development.                                                       |
 | **Secure Connectivity**  | ⚙️ In Development | ⏳ Pending | Includes tunneling, proxy, and VPN chaining support.                                                                   |
+| **Blender System**       | ⚙️ In Development | ⏳ Pending | Advanced traffic mixing and obfuscation system under development.                                                      |
 | **Settings Manager**     | ✅ Done    | ⏳ Pending | Core settings logic ready; GUI still under development.                                                                |
 | **CLI-Core Library**     | ✅ Done    | N/A        | Unified command-line interface foundation for all services.                                                            |
 | **Dependencies Checker** | ✅ Done    | N/A        | Comprehensive system dependency verification and management.                                                           |
