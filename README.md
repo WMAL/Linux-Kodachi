@@ -1,4 +1,3 @@
-
 ## Overview
 
 # Linux Kodachi - Kodachi 9 soon 🚀
@@ -15,13 +14,24 @@
 - 🕵️‍♂️ **Anti-Forensic Features:** Includes measures to thwart forensic analysis, ensuring your activities remain private even if your system is physically compromised.
 - 📊 **System Monitoring:** Real-time monitoring tools provide insights into your **network connections**, **system performance**, and **security status**.
 
-<p align="center">
-  <img src="https://www.digi77.com/wp-content/uploads/2024/07/kodachi-green-128.png" alt="Kodachi Logo">
-</p>
+<div align="center">
+
+# 🛡️ Linux Kodachi 9
+
+<img src="https://www.digi77.com/wp-content/uploads/2024/07/kodachi-green-128.png" alt="Kodachi Logo" width="200">
+
+[![Version](https://img.shields.io/badge/Version-9.0--beta-brightgreen?style=for-the-badge)](https://github.com/WMAL/Linux-Kodachi)
+[![Based on](https://img.shields.io/badge/Based%20on-Debian-red?style=for-the-badge&logo=debian)](https://www.debian.org)
+[![Privacy](https://img.shields.io/badge/Privacy-Focused-blue?style=for-the-badge&logo=tor)](https://www.kodachi.cloud)
+[![License](https://img.shields.io/badge/License-Proprietary-yellow?style=for-the-badge)](https://github.com/WMAL/Linux-Kodachi/blob/main/LICENSE)
+
+**🚀 A New Era of Privacy-Focused Computing**
+
+</div>
 
 ### 🚀 **Kodachi 9: A New Era is Coming!** 🚀
 
-**Kodachi 9** is currently under development and will be based on **<span style="color:blue;">Debian</span>**. The project is approximately **<span style="color:green;">82% complete</span>**. Every script has been rewritten from scratch to enhance performance and functionality. This effort has taken time, but the result will significantly improve the Kodachi experience.
+**Kodachi 9** is currently under development and will be based on **<span style="color:blue;">Debian</span>**. The project is approximately **<span style="color:green;">88% complete</span>**. Every script has been rewritten from scratch to enhance performance and functionality. This effort has taken time, but the result will significantly improve the Kodachi experience.
 
 Stay tuned for more updates! 🚀 Check out the [behind-the-scenes progress](https://github.com/WMAL/Linux-Kodachi/tree/main/v9-behind-scenes-progress) for Kodachi 9.
 
@@ -31,51 +41,64 @@ Stay tuned for more updates! 🚀 Check out the [behind-the-scenes progress](htt
 
 This roadmap provides an overview of the current status of key components in the Kodachi project. All code and infrastructure have been written from scratch; however, I have integrated the working code from the old version to avoid reinventing the wheel and accelerate development.
 
-| Component                             | Status              | Completion |
-|---------------------------------------|---------------------|------------|
-| **Kodachi Workers VPS**               | ✅ Completed         | ![██████████](/) 100% |
-| **Kodachi Master VPS**                | ✅ Completed         | ![██████████](/) 100% |
-| **[Kodachi Anonymity Verifier:kodachi.cloud](https://www.kodachi.cloud/)** | ✅ Completed | ![██████████](/) 100% |
-| **Kodachi Client-Side Scripts**       | ⚙️ In Development    | ![█████████ ](/) 90%  |
-| **Kodachi Dashboard GUI**             | ⚙️ In Development    | ![████████░░](/) 80%  |
- 
+| Component | Status | Completion |
+|-----------|--------|------------|
+| **Kodachi Workers VPS** | ✅ Completed | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **Kodachi Master VPS** | ✅ Completed | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **[Kodachi Anonymity Verifier](https://www.kodachi.cloud/)** | ✅ Completed | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **Kodachi Client-Side Scripts** | ⚙️ In Development | ![85%](https://img.shields.io/badge/Progress-85%25-blue?style=flat-square) |
+| **Kodachi Dashboard GUI** | ⚙️ In Development | ![75%](https://img.shields.io/badge/Progress-75%25-orange?style=flat-square) |
+
 ---
 
 ## Component Progress Breakdown
 
-| Feature / Utility               | Backend | Frontend | Notes |
-|--------------------------------|---------|----------|-------|
-| **Login Manager**              | ✅ Done | ✅ Done | Completed both authentication logic and UI integration. |
-| **Internet Fix Utility**       | ✅ Done | ✅ Done | Network diagnostics and recovery utilities implemented. |
-| **Application Launcher**       | ✅ Done | ✅ Done | Modular app launch system for privacy tools. |
-| **Security Tools**             | ✅ Done | ✅ Done | Includes firewall toggles and protection utilities. |
-| **IP Fetch Utility**           | ✅ Done | ✅ Done | Full location + ASN lookup integrated. |
-| **MAC Address Utility**        | ✅ Done | ✅ Done | Automatic and manual MAC spoofing supported. |
-| **Hostname Changer**           | ✅ Done | ✅ Done | Persistent and session-based hostname updates handled. |
-| **Time Zone Utility**          | ✅ Done | ✅ Done | Geo-based adjustment; includes IP-based firewall re-evaluation. |
-| **Command Guide**              | ✅ Done | ✅ Done | CLI helper with context-aware command suggestions. |
-| **Tor Manager**                | ✅ Done | ✅ Done | Backend development spanned ~6 weeks; frontend finalized in 2 weeks. Complete Tor lifecycle management now functional. |
-| **System Information**         | ✅ Done | ✅ Done | Backend and frontend both completed with dynamic hardware and OS data parsing. |
-| **DNS Manager**                | ✅ Done | ⏳ Pending | Backend fully implemented; frontend integration upcoming. |
-| **Secure Connectivity**        | ⏳ Pending | ⏳ Pending | Includes tunneling, proxy, and VPN chaining support. |
-| **Settings Manager**           | ✅ Done | ⏳ Pending | Core settings logic ready; GUI still under development. |
+| Feature / Utility        | Backend    | Frontend   | Notes                                                                                                                  |
+| ------------------------ | ---------- | ---------- | ---------------------------------------------------------------------------------------------------------------------- |
+| **Login Manager**        | ✅ Done    | ✅ Done    | Completed both authentication logic and UI integration.                                                                |
+| **Internet Fix Utility** | ✅ Done    | ✅ Done    | Network diagnostics and recovery utilities implemented.                                                                |
+| **Application Launcher** | ✅ Done    | ✅ Done    | Modular app launch system for privacy tools.                                                                           |
+| **Security Tools**       | ✅ Done    | ✅ Done    | Includes firewall toggles and protection utilities.                                                                    |
+| **IP Fetch Utility**     | ✅ Done    | ✅ Done    | Full location + ASN lookup integrated.                                                                                 |
+| **MAC Address Utility**  | ✅ Done    | ✅ Done    | Automatic and manual MAC spoofing supported.                                                                           |
+| **Hostname Changer**     | ✅ Done    | ✅ Done    | Persistent and session-based hostname updates handled.                                                                 |
+| **Time Zone Utility**    | ✅ Done    | ✅ Done    | Geo-based adjustment; includes IP-based firewall re-evaluation.                                                        |
+| **Command Guide**        | ✅ Done    | ✅ Done    | CLI helper with context-aware command suggestions.                                                                     |
+| **Tor Manager**          | ✅ Done    | ✅ Done    | Backend development spanned ~6 weeks; frontend finalized in 2 weeks. Complete Tor lifecycle management now functional. |
+| **System Information**   | ✅ Done    | ✅ Done    | Backend and frontend both completed with dynamic hardware and OS data parsing.                                         |
+| **DNS Manager**          | ✅ Done    | ✅ Done    | Backend fully implemented; frontend integration completed.                                                             |
+| **Secure Connectivity**  | ⚙️ In Development | ⏳ Pending | Includes tunneling, proxy, and VPN chaining support.                                                                   |
+| **Settings Manager**     | ✅ Done    | ⏳ Pending | Core settings logic ready; GUI still under development.                                                                |
+| **CLI-Core Library**     | ✅ Done    | N/A        | Unified command-line interface foundation for all services.                                                            |
+| **Dependencies Checker** | ✅ Done    | N/A        | Comprehensive system dependency verification and management.                                                           |
+| **Auth-Shared Library**  | ✅ Done    | N/A        | Centralized authentication framework for all backend services.                                                        |
+| **Rust-Updater**         | ✅ Done    | N/A        | Automated dependency updating and API compatibility management.                                                        |
+
+### System-Wide Improvements
+- **📋 Unified Help Menus**: All 10+ Rust services now feature consistent `--help` and `--examples` output formats
+- **🔧 JSON-First Configuration**: Complete migration from YAML to JSON for all configuration and output files  
+- **⚙️ Standardized CLI Options**: Unified `-e`, `-n`, `-v`, `-h`, and `--json` flags across all backend services
+- **🔗 Cross-Service Communication**: Seamless integration between all services using shared libraries and protocols
+- **🎨 GUI Enhancements**: Modern interface updates with real-time status integration and improved error handling
+- **🔐 Security Improvements**: Enhanced authentication, session management, and platform hardening measures
+- **⚡ Performance Optimization**: Improved error handling, memory management, and cryptographic integrity verification
 
 ---
 
 ## Finalization & Release Status
 
-| Stage                         | Status     | Notes |
-|------------------------------|------------|-------|
-| **Clean-up & Polishing**     | ⏳ Pending | Includes final UI adjustments and consistency review |
-| **Final Research Phase**     | ⏳ Pending | Testing edge-case behaviors, hardening, and fallback options |
-| **ISO Build Process**        | ⏳ Pending | Final step before beta; creating the live bootable ISO |
-| **Overall System Testing**   | ⏳ Pending | Includes unit tests, integration tests, and field checks |
-| **Beta Release**             | ⏳ Pending | Will follow ISO build and internal validation |
+| Stage                      | Status     | Notes                                                        |
+| -------------------------- | ---------- | ------------------------------------------------------------ |
+| **Clean-up & Polishing**   | ⏳ Pending | Includes final UI adjustments and consistency review         |
+| **Final Research Phase**   | ⏳ Pending | Testing edge-case behaviors, hardening, and fallback options |
+| **ISO Build Process**      | ⏳ Pending | Final step before beta; creating the live bootable ISO       |
+| **Overall System Testing** | ⏳ Pending | Includes unit tests, integration tests, and field checks     |
+| **Beta Release**           | ⏳ Pending | Will follow ISO build and internal validation                |
 
 ---
 
+Each of the above components is now integrated or in final testing stages. Kodachi 9 will support both GUI-based control and CLI command-driven interaction. 
 
-Each of the above components is now integrated or in final testing stages. Kodachi 9 will support both GUI-based control and CLI command-driven interaction. Further behind-the-scenes breakdowns, including architecture and modular execution flow, will be provided in a dedicated technical insight section.
 
 ## Development Approach
 
@@ -96,19 +119,18 @@ Each of the above components is now integrated or in final testing stages. Kodac
 - **Documentation & Feedback:**  
   Update project documentation to reflect the current progress and gather user feedback for continuous improvement.
 
-## Timeline
+## Updated Timeline (August 2025)
 
 - **Short Term (Next 1-2 Weeks):**  
-  Finalize Kodachi client-side scripts and prepare them for integration testing.
+  Complete remaining secure connectivity modules and finalize comprehensive system testing with new unified infrastructure.
 
 - **Mid Term (Next 1 Month):**  
-  Complete 100% of GUI functionalities, finalize frontend development for pending modules (e.g., DNS, Settings), and begin full integration testing.
+  Complete final GUI polish, conduct end-to-end integration testing with all 10+ Rust services, and prepare ISO build process with the new unified JSON configuration system.
 
-- **Long Term (1-3 Months):**  
-  Conduct end-to-end testing, polish the system, complete ISO build, and roll out the public beta release.
+- **Long Term (1-2 Months):**  
+  Execute comprehensive system testing, complete ISO build with cryptographic signing, and launch public beta release with enhanced authentication and security features.
 
 Stay tuned for further updates.
-
 
 ---
 
@@ -130,6 +152,7 @@ Kodachi is more than just another Linux distribution—it's a **robust**, **ligh
 Kodachi has been critically acclaimed by global publications and consistently recognized as one of the most secure Linux distributions available:
 
 - 🏆 **1st Place** at **TechRadar** for Best Linux Distro for Privacy & Security for **four consecutive years** (2020–2025).
+
   - **[Original Article: TechRadar - Best Linux Distro for Privacy & Security](https://www.techradar.com/news/best-linux-distro-privacy-security)**
   - [TechRadar 2020](https://www.digi77.com/software/kodachi/TechRadar2020.pdf)
   - [TechRadar 2021](https://www.digi77.com/software/kodachi/TechRadar2021.pdf)
@@ -197,7 +220,6 @@ Linux Kodachi is free, but maintaining a project of this magnitude takes time an
 - **<a href="https://www.paypal.com/ncp/payment/TJZSGR6452HS4" target="_blank" rel="noopener noreferrer">Donate with PayPal direct</a>**
 - **<a href="https://donorbox.org/kodachi" target="_blank" rel="noopener noreferrer">Donate with PayPal via Donorbox</a>**
 
-
 Your donations will be used to fund future development, improve user support, and ensure Kodachi remains the **most secure operating system available**.
 
 ---
@@ -243,12 +265,11 @@ For the full version, visit: [Full License](https://github.com/WMAL/Linux-Kodach
 
 ## Warrant Canary
 
-As of July 9, 2025:
+As of August 8, 2025:
 
-- No National Security Letters, gag orders, or warrants received.  
-- Kodachi remains uncompromised and secure.  
+- No National Security Letters, gag orders, or warrants received.
+- Kodachi remains uncompromised and secure.
 - For more details, visit the [official Warrant Canary page](https://www.kodachi.cloud/warrant.html).
-
 
 ---
 
@@ -261,16 +282,14 @@ Special thanks to all the contributors and the open-source community for their i
 ## Contact & Support
 
 For any queries or support, please contact:
+
 - **Kodachi Website:** [Kodachi page](https://www.digi77.com/linux-kodachi/)
 - **Kodachi Anonymity Verifier:** [https://www.kodachi.cloud](https://www.kodachi.cloud)
-- **Discord Support:** [Kodachi support](https://discord.gg/KEFErEx)  
-- **Contact:** [Contact page](https://www.digi77.com/contact/)  
-
-
+- **Discord Support:** [Kodachi support](https://discord.gg/KEFErEx)
+- **Contact:** [Contact page](https://www.digi77.com/contact/)
 
 ---
 
 © 2025 by Warith AL Maawali, Sultanate of Oman, Muscat. All rights reserved.
-
 
 [⬆ Back to Overview](#overview)
