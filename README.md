@@ -31,7 +31,7 @@
 
 ### 🚀 **Kodachi 9: A New Era is Coming!** 🚀
 
-**Kodachi 9** is currently under development and will be based on **<span style="color:blue;">Debian</span>**. The project is approximately **<span style="color:green;">88% complete</span>**. Every script has been rewritten from scratch to enhance performance and functionality. This effort has taken time, but the result will significantly improve the Kodachi experience.
+**Kodachi 9** is currently under development and will be based on **<span style="color:blue;">Debian</span>**. The project is approximately **<span style="color:green;">70% complete</span>** (as of August 12, 2025). Every script has been rewritten from scratch to enhance performance and functionality. This effort has taken time, but the result will significantly improve the Kodachi experience.
 
 Stay tuned for more updates! 🚀 Check out the [behind-the-scenes progress](https://github.com/WMAL/Linux-Kodachi/tree/main/v9-behind-scenes-progress) for Kodachi 9.
 
@@ -41,43 +41,45 @@ Stay tuned for more updates! 🚀 Check out the [behind-the-scenes progress](htt
 
 This roadmap provides an overview of the current status of key components in the Kodachi project. All code and infrastructure have been written from scratch; however, I have integrated the working code from the old version to avoid reinventing the wheel and accelerate development.
 
-| Component | Status | Completion |
-|-----------|--------|------------|
-| **Kodachi Workers VPS** | ✅ Completed | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
-| **Kodachi Master VPS** | ✅ Completed | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
-| **[Kodachi Anonymity Verifier](https://www.kodachi.cloud/)** | ✅ Completed | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
-| **Kodachi Client-Side Scripts** | ⚙️ In Development | ![85%](https://img.shields.io/badge/Progress-85%25-blue?style=flat-square) |
-| **Kodachi Dashboard GUI** | ⚙️ In Development | ![75%](https://img.shields.io/badge/Progress-75%25-orange?style=flat-square) |
+| Component                                                    | Status            | Completion                                                                          |
+| ------------------------------------------------------------ | ----------------- | ----------------------------------------------------------------------------------- |
+| **Kodachi Workers VPS**                                      | ✅ Completed      | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **Kodachi Master VPS**                                       | ✅ Completed      | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **[Kodachi Anonymity Verifier](https://www.kodachi.cloud/)** | ✅ Completed      | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **Kodachi Client-Side Scripts**                              | ⚙️ In Development | ![80%](https://img.shields.io/badge/Progress-80%25-blue?style=flat-square)          |
+| **Kodachi Dashboard GUI**                                    | ⚙️ In Development | ![65%](https://img.shields.io/badge/Progress-65%25-orange?style=flat-square)        |
 
 ---
 
 ## Component Progress Breakdown
 
-| Feature / Utility        | Backend    | Frontend   | Notes                                                                                                                  |
-| ------------------------ | ---------- | ---------- | ---------------------------------------------------------------------------------------------------------------------- |
-| **Login Manager**        | ✅ Done    | ✅ Done    | Completed both authentication logic and UI integration.                                                                |
-| **Internet Fix Utility** | ✅ Done    | ✅ Done    | Network diagnostics and recovery utilities implemented.                                                                |
-| **Application Launcher** | ✅ Done    | ✅ Done    | Modular app launch system for privacy tools.                                                                           |
-| **Security Tools**       | ✅ Done    | ✅ Done    | Includes firewall toggles and protection utilities.                                                                    |
-| **IP Fetch Utility**     | ✅ Done    | ✅ Done    | Full location + ASN lookup integrated.                                                                                 |
-| **MAC Address Utility**  | ✅ Done    | ✅ Done    | Automatic and manual MAC spoofing supported.                                                                           |
-| **Hostname Changer**     | ✅ Done    | ✅ Done    | Persistent and session-based hostname updates handled.                                                                 |
-| **Time Zone Utility**    | ✅ Done    | ✅ Done    | Geo-based adjustment; includes IP-based firewall re-evaluation.                                                        |
-| **Command Guide**        | ✅ Done    | ✅ Done    | CLI helper with context-aware command suggestions.                                                                     |
-| **Tor Manager**          | ✅ Done    | ✅ Done    | Backend development spanned ~6 weeks; frontend finalized in 2 weeks. Complete Tor lifecycle management now functional. |
-| **System Information**   | ✅ Done    | ✅ Done    | Backend and frontend both completed with dynamic hardware and OS data parsing.                                         |
-| **DNS Manager**          | ✅ Done    | ⏳ Pending | Backend fully implemented; GUI frontend still under development.                                                       |
-| **Secure Connectivity**  | ⚙️ In Development | ⏳ Pending | Includes tunneling, proxy, and VPN chaining support.                                                                   |
-| **Blender System**       | ⚙️ In Development | ⏳ Pending | Advanced traffic mixing and obfuscation system under development.                                                      |
-| **Settings Manager**     | ✅ Done    | ⏳ Pending | Core settings logic ready; GUI still under development.                                                                |
-| **CLI-Core Library**     | ✅ Done    | N/A        | Unified command-line interface foundation for all services.                                                            |
-| **Dependencies Checker** | ✅ Done    | N/A        | Comprehensive system dependency verification and management.                                                           |
-| **Auth-Shared Library**  | ✅ Done    | N/A        | Centralized authentication framework for all backend services.                                                        |
-| **Rust-Updater**         | ✅ Done    | N/A        | Automated dependency updating and API compatibility management.                                                        |
+| Feature / Utility        | Backend           | Frontend   | Notes                                                                                                                  |
+| ------------------------ | ----------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------- |
+| **Login Manager**        | ✅ Done           | ✅ Done    | Completed both authentication logic and UI integration.                                                                |
+| **Internet Fix Utility** | ✅ Done           | ✅ Done    | Network diagnostics and recovery utilities implemented.                                                                |
+| **Application Launcher** | ✅ Done           | ✅ Done    | Modular app launch system for privacy tools.                                                                           |
+| **Security Tools**       | ✅ Done           | ✅ Done    | Includes firewall toggles and protection utilities.                                                                    |
+| **IP Fetch Utility**     | ✅ Done           | ✅ Done    | Full location + ASN lookup integrated.                                                                                 |
+| **MAC Address Utility**  | ✅ Done           | ✅ Done    | Automatic and manual MAC spoofing supported.                                                                           |
+| **Hostname Changer**     | ✅ Done           | ✅ Done    | Persistent and session-based hostname updates handled.                                                                 |
+| **Time Zone Utility**    | ✅ Done           | ✅ Done    | Geo-based adjustment; includes IP-based firewall re-evaluation.                                                        |
+| **Command Guide**        | ✅ Done           | ✅ Done    | CLI helper with context-aware command suggestions.                                                                     |
+| **Tor Manager**          | ✅ Done           | ✅ Done    | Backend development spanned ~6 weeks; frontend finalized in 2 weeks. Complete Tor lifecycle management now functional. |
+| **System Information**   | ✅ Done           | ✅ Done    | Backend and frontend both completed with dynamic hardware and OS data parsing.                                         |
+| **DNS Manager**          | ✅ Done           | ⏳ Pending | Backend fully implemented; GUI frontend under development (Task #5).                                                   |
+| **Secure Connectivity**  | ⏳ Pending        | ⏳ Pending | Card System decryption and patching (Task #1, starts Aug 12).                                                         |
+| **Project Connector**    | ⏳ Pending        | ⏳ Pending | Rust implementation (Task #2, starts Aug 17).                                                                         |
+| **Blender System**       | ⏳ Pending        | ⏳ Pending | Rust backend (Task #3, starts Aug 19) and GUI frontend (Task #6, starts Aug 27).                                      |
+| **Settings Manager**     | ✅ Done           | ⏳ Pending | Core settings logic ready; GUI still under development.                                                                |
+| **CLI-Core Library**     | ✅ Done           | N/A        | Unified command-line interface foundation for all services.                                                            |
+| **Dependencies Checker** | ✅ Done           | N/A        | Comprehensive system dependency verification and management.                                                           |
+| **Auth-Shared Library**  | ✅ Done           | N/A        | Centralized authentication framework for all backend services.                                                         |
+| **Rust-Updater**         | ✅ Done           | N/A        | Automated dependency updating and API compatibility management.                                                        |
 
 ### System-Wide Improvements
+
 - **📋 Unified Help Menus**: All 10+ Rust services now feature consistent `--help` and `--examples` output formats
-- **🔧 JSON-First Configuration**: Complete migration from YAML to JSON for all configuration and output files  
+- **🔧 JSON-First Configuration**: Complete migration from YAML to JSON for all configuration and output files
 - **⚙️ Standardized CLI Options**: Unified `-e`, `-n`, `-v`, `-h`, and `--json` flags across all backend services
 - **🔗 Cross-Service Communication**: Seamless integration between all services using shared libraries and protocols
 - **🎨 GUI Enhancements**: Modern interface updates with real-time status integration and improved error handling
@@ -88,48 +90,65 @@ This roadmap provides an overview of the current status of key components in the
 
 ## Finalization & Release Status
 
-| Stage                      | Status     | Notes                                                        |
-| -------------------------- | ---------- | ------------------------------------------------------------ |
-| **Clean-up & Polishing**   | ⏳ Pending | Includes final UI adjustments and consistency review         |
-| **Final Research Phase**   | ⏳ Pending | Testing edge-case behaviors, hardening, and fallback options |
-| **ISO Build Process**      | ⏳ Pending | Final step before beta; creating the live bootable ISO       |
-| **Overall System Testing** | ⏳ Pending | Includes unit tests, integration tests, and field checks     |
-| **Beta Release**           | ⏳ Pending | Will follow ISO build and internal validation                |
+| Stage                             | Status     | Timeline                    | Notes                                                                                  |
+| --------------------------------- | ---------- | --------------------------- | -------------------------------------------------------------------------------------- |
+| **Tor Manager IP Login GUI Fix**  | ⏳ Pending | Aug 21-23 (Task #4)         | Fix IP login functionality in Tor Manager GUI                                          |
+| **Gambas Command Line & Debug**   | ⏳ Pending | Sep 1 (Task #7)             | Command line integration and debugging for Gambas applications                         |
+| **Binary Testing Phase**          | ⏳ Pending | Sep 1-5 (Task #8)           | Test all compiled binaries across different environments                               |
+| **Legacy Feature Verification**   | ⏳ Pending | Sep 5-8 (Task #9)           | Recheck and ensure all Kodachi 8.27 features are properly implemented                 |
+| **Documentation Review**          | ⏳ Pending | Sep 8-10 (Task #10)         | Check and update reference documentation and general MD files                          |
+| **Final Research Phase**          | ⏳ Pending | Sep 10-17 (Task #11)        | Testing edge-case behaviors, hardening, and fallback options                          |
+| **ISO Build Process**             | ⏳ Pending | Sep 17-22 (Task #12)        | Final step before beta; creating the live bootable ISO                                |
+| **Beta Release**                  | ⏳ Pending | September 22, 2025          | Public beta release with enhanced authentication and security features                 |
 
 ---
 
-Each of the above components is now integrated or in final testing stages. Kodachi 9 will support both GUI-based control and CLI command-driven interaction. 
-
+Each of the above components is now integrated or in final testing stages. Kodachi 9 will support both GUI-based control and CLI command-driven interaction.
 
 ## Development Approach
 
 - **From Scratch with Legacy Integration:**  
   Every component has been re-engineered from the ground up to ensure modern, robust architecture. That said, the working code from the previous version was utilized where applicable to maintain proven functionality and save valuable development time.
 
-## Next Steps
+## Next Steps (Following Timeline Tasks)
 
-- **Kodachi Client-Side Script:**  
-  Finalize remaining features and conduct thorough testing to ensure robustness before full deployment.
+- **Immediate Priority (Aug 12-17):**  
+  Complete Card System decryption and patching (Task #1) to enable secure connectivity features.
 
-- **Kodachi GUI:**  
-  Continue refining design and component integration (currently at 70%). Frontend functionalities are actively being implemented across modules.
+- **Backend Development (Aug 17-21):**  
+  Implement Project Connector in Rust (Task #2) and Blender backend system (Task #3) for advanced traffic management.
 
-- **Integration & Testing:**  
-  Once all components are ready, integrate the GUI with backend systems and perform comprehensive system testing.
+- **GUI Enhancements (Aug 21-31):**  
+  Fix Tor Manager IP login functionality (Task #4), complete DNS GUI (Task #5), and implement Blender GUI frontend (Task #6).
 
-- **Documentation & Feedback:**  
-  Update project documentation to reflect the current progress and gather user feedback for continuous improvement.
+- **Testing & Validation (Sep 1-10):**  
+  Debug Gambas command line integration (Task #7), test all binaries (Task #8), verify legacy features (Task #9), and review documentation (Task #10).
+
+- **Final Phase (Sep 10-22):**  
+  Conduct comprehensive research and testing (Task #11), build and sign the ISO (Task #12) for beta release on September 22, 2025.
 
 ## Updated Timeline (August 2025)
 
-- **Short Term (Next 1-2 Weeks):**  
-  Complete remaining secure connectivity modules and finalize comprehensive system testing with new unified infrastructure.
+*Current Date: August 12, 2025*
 
-- **Mid Term (Next 1 Month):**  
-  Complete final GUI polish, conduct end-to-end integration testing with all 10+ Rust services, and prepare ISO build process with the new unified JSON configuration system.
+|  #  | Task                             | Duration (Days) | Cumulative Days |    Estimated Completion Date     |
+| :-: | :------------------------------- | :-------------: | :-------------: | :------------------------------: |
+|  1  | Card System (Decryption & Patch) |        5        |        5        |     Saturday, August 17, 2025    |
+|  2  | Project Connector in Rust        |        2        |        7        |     Monday, August 19, 2025      |
+|  3  | Blender in Rust                  |        2        |        9        |    Wednesday, August 21, 2025    |
+|  4  | Tor Manager IP Login GUI fix     |        2        |       11        |     Friday, August 23, 2025      |
+|  5  | DNS GUI                          |        4        |       15        |     Tuesday, August 27, 2025     |
+|  6  | Blender in GUI                   |        4        |       19        |    Saturday, August 31, 2025     |
+|  7  | Gambas Command Line & Debug      |        1        |       20        |     Sunday, September 1, 2025    |
+|  8  | Test all binaries                |        4        |       24        |    Thursday, September 5, 2025   |
+|  9  | Recheck 8.27 features            |        3        |       27        |     Sunday, September 8, 2025    |
+| 10  | Check Reference General MD       |        2        |       29        |    Tuesday, September 10, 2025   |
+| 11  | Research                         |        7        |       36        |    Tuesday, September 17, 2025   |
+| 12  | Build ISO                        |        5        |       41        | **Sunday, September 22, 2025**   |
 
-- **Long Term (1-2 Months):**  
-  Execute comprehensive system testing, complete ISO build with cryptographic signing, and launch public beta release with enhanced authentication and security features.
+---
+
+The new final estimated completion date is **Sunday, September 22, 2025**.
 
 Stay tuned for further updates.
 
