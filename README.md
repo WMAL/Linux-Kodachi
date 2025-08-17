@@ -2,7 +2,7 @@
 
 # Linux Kodachi - Kodachi 9 soon 🚀
 
-**Linux Kodachi** is a **security-focused operating system** designed for users who value **privacy, anonymity,** and a **secure computing experience**. Developed by **Warith Al Maawali**, Kodachi provides all the tools necessary for anonymous online activities while maintaining ease of use. Built on top of **Xubuntu 18.04.6** and further customized for enhanced privacy and security, Kodachi serves as a **live system** that leaves **no trace** on the host machine.
+**Linux Kodachi** is a **security-focused operating system** designed for users who value **privacy, anonymity,** and a **secure computing experience**. Developed by **Warith Al Maawali**, Kodachi provides all the tools necessary for anonymous online activities while maintaining ease of use. The current stable version is built on top of **Xubuntu 18.04.6** and further customized for enhanced privacy and security, while the upcoming **Kodachi 9** is being rebuilt from the ground up on a **Debian base** for enhanced performance and security. Kodachi serves as a **live system** that leaves **no trace** on the host machine.
 
 ## Features at a Glance
 
@@ -64,12 +64,14 @@ This roadmap provides an overview of the current status of key components in the
 | **Hostname Changer**     | ✅ Done           | ✅ Done    | Persistent and session-based hostname updates handled.                                                                 |
 | **Time Zone Utility**    | ✅ Done           | ✅ Done    | Geo-based adjustment; includes IP-based firewall re-evaluation.                                                        |
 | **Command Guide**        | ✅ Done           | ✅ Done    | CLI helper with context-aware command suggestions.                                                                     |
-| **Tor Manager**          | ✅ Done           | ✅ Done    | Backend development spanned ~6 weeks; frontend finalized in 2 weeks. Complete Tor lifecycle management now functional. |
+| **Gambas Command Line**  | ✅ Done           | ✅ Done    | Command line integration and debugging completed (Task #9).                                                            |
+| **Tor Manager**          | ✅ Done           | ✅ Done    | Backend and frontend complete; IP login testing needed (Task #6, Aug 28).                                              |
 | **System Information**   | ✅ Done           | ✅ Done    | Backend and frontend both completed with dynamic hardware and OS data parsing.                                         |
-| **DNS Manager**          | ✅ Done           | ⏳ Pending | Backend fully implemented; GUI frontend under development (Task #5).                                                   |
-| **Secure Connectivity**  | ✅ Done           | ⏳ Pending | Card System decryption and patching (Task #1, completed Aug 12).                                                       |
-| **Project Connector**    | ⏳ Pending        | ⏳ Pending | Rust implementation (Task #2, starts Aug 17).                                                                         |
-| **Blender System**       | ⏳ Pending        | ⏳ Pending | Rust backend (Task #3, starts Aug 19) and GUI frontend (Task #6, starts Aug 27).                                      |
+| **DNS Manager**          | ✅ Done           | ⏳ Pending | Backend fully implemented; GUI frontend under development (Task #7, Sep 1).                                            |
+| **Card System**          | ✅ Done           | ✅ Done    | Decryption and patching completed (Task #1, Aug 15).                                                                   |
+| **Secure Connectivity**  | ✅ Done           | ✅ Done    | VPN and secure connection management fully implemented.                                                                |
+| **Project Connector**    | ⏳ In Progress    | ⏳ Pending | Rust implementation in progress (Task #2, Aug 17).                                                                     |
+| **Blender System**       | ❌ Cancelled      | ⏳ Pending | Backend cancelled; GUI with scoring planned (Task #8, Sep 5).                                                         |
 | **Settings Manager**     | ✅ Done           | ⏳ Pending | Core settings logic ready; GUI still under development.                                                                |
 | **CLI-Core Library**     | ✅ Done           | N/A        | Unified command-line interface foundation for all services.                                                            |
 | **Dependencies Checker** | ✅ Done           | N/A        | Comprehensive system dependency verification and management.                                                           |
@@ -88,23 +90,80 @@ This roadmap provides an overview of the current status of key components in the
 
 ---
 
-## Finalization & Release Status
+## Kodachi 9 Development Timeline
 
-| Stage                             | Status     | Timeline                    | Notes                                                                                  |
-| --------------------------------- | ---------- | --------------------------- | -------------------------------------------------------------------------------------- |
-| **Card System Implementation**    | ✅ Done    | Aug 12 (Task #1)            | Decryption and patching completed ahead of schedule                                    |
-| **Project Connector (Rust)**      | ⏳ Pending | Aug 17-19 (Task #2)         | Rust implementation of project connector system                                        |
-| **Blender Backend (Rust)**        | ⏳ Pending | Aug 19-21 (Task #3)         | Advanced traffic mixing and obfuscation backend                                        |
-| **Tor Manager IP Login GUI Fix**  | ⏳ Pending | Aug 21-23 (Task #4)         | Fix IP login functionality in Tor Manager GUI                                          |
-| **DNS Manager GUI**               | ⏳ Pending | Aug 23-27 (Task #5)         | Complete GUI frontend for DNS management system                                        |
-| **Blender GUI Frontend**          | ⏳ Pending | Aug 27-31 (Task #6)         | User interface for traffic mixing and obfuscation                                      |
-| **Gambas Command Line & Debug**   | ⏳ Pending | Sep 1 (Task #7)             | Command line integration and debugging for Gambas applications                         |
-| **Binary Testing Phase**          | ⏳ Pending | Sep 1-5 (Task #8)           | Test all compiled binaries across different environments                               |
-| **Legacy Feature Verification**   | ⏳ Pending | Sep 5-8 (Task #9)           | Recheck and ensure all Kodachi 8.27 features are properly implemented                 |
-| **Documentation Review**          | ⏳ Pending | Sep 8-10 (Task #10)         | Check and update reference documentation and general MD files                          |
-| **Final Research Phase**          | ⏳ Pending | Sep 10-17 (Task #11)        | Testing edge-case behaviors, hardening, and fallback options                          |
-| **ISO Build Process**             | ⏳ Pending | Sep 17-22 (Task #12)        | Final step before beta; creating the live bootable ISO                                |
-| **Beta Release**                  | ⏳ Pending | September 22, 2025          | Public beta release with enhanced authentication and security features                 |
+**Development Started:** August 2024  
+**Expected Release:** September 2025  
+**Current Status:** Final Development Phase
+
+### Project Timeline
+
+|  #  | Task                             | Status | Completion Date | Notes |
+| :-: | :------------------------------- | :----: | :-------------: | ----- |
+|  1  | Card System (Decryption & Patch) | ✅ Done | Aug 15, 2025 | Decryption and patching completed |
+|  2  | Project Connector in Rust        | ⏳ In Progress | Aug 17, 2025 | Rust implementation of project connector |
+|  3  | Blender in Rust                  | ❌ Cancelled | - | Not needed |
+|  4  | Test all binaries                | ⏳ Pending | Aug 23, 2025 | Test compiled binaries across environments |
+|  5  | Recheck 8.27 features            | ⏳ Pending | Aug 26, 2025 | Verify all Kodachi 8.27 features |
+|  6  | Tor Manager IP Login GUI fix     | ⏳ Pending | Aug 28, 2025 | Fix IP login functionality |
+|  7  | DNS GUI                          | ⏳ Pending | Sep 1, 2025 | Complete GUI for DNS management |
+|  8  | Blender GUI + scoring            | ⏳ Pending | Sep 5, 2025 | Traffic mixing and obfuscation UI |
+|  9  | Gambas Command Line & Debug      | ✅ Done | Aug 11, 2025 | Command line integration completed |
+| 10  | Check Reference General MD       | ⏳ Pending | Sep 10, 2025 | Documentation review |
+| 11  | Research                         | ⏳ Pending | Sep 17, 2025 | Edge-case testing and hardening |
+| 12  | Build ISO                        | ⏳ Pending | **Sep 22, 2025** | Final ISO build for beta release |
+
+**Beta Release Target:** September 22, 2025
+
+---
+
+## Release Plan Going Forward 🚀
+
+### Phase 1: Kodachi Binaries (Universal Linux)
+**Target:** After binary testing completion (Task #4)  
+**Description:** Release standalone Kodachi binaries that work on any Linux distribution  
+**Benefits:**
+- Fastest deployment to users
+- Cross-distro compatibility testing
+- Early bug detection without needing ISO builds
+- Community feedback on core functionality
+
+### Phase 2: Kodachi Debian Server
+**Target:** 2 weeks after Phase 1  
+**Description:** Terminal-based server edition with optional lightweight TUI  
+**Benefits:**
+- Smaller attack surface for security hardening
+- Network and security module stabilization
+- Core system testing without GUI overhead
+- Foundation for desktop edition
+
+### Phase 3: Kodachi Debian Desktop (Xfce)
+**Target:** 4 weeks after Phase 2  
+**Description:** Full desktop experience with polished Xfce interface  
+**Benefits:**
+- Incorporates all feedback from Phases 1 & 2
+- Refined UX based on real-world usage
+- Most stable and feature-complete release
+
+### Why This Order?
+
+**• Binaries First** = Fastest way to get real-world coverage on any distro. We catch environment bugs early without rebuilding ISOs.
+
+**• Server Next** = Stabilize network and security modules on a smaller, lighter attack surface, and harden the core that the Desktop will use.
+
+**• Desktop Last** = Integrate user feedback, polish UX, and ship the full experience.
+
+### What This Means for Users:
+
+• **Earlier Access**: Get features sooner with smaller downloads  
+• **Better Stability**: Desktop benefits from two phases of testing  
+• **Flexible Deployment**: Choose the edition that fits your needs  
+• **Community-Driven**: Your feedback shapes each subsequent release
+
+### Notes:
+• The Server edition is not the final look - it's the backbone for Desktop  
+• All editions share the same core security and privacy features  
+• Binaries can be integrated into existing Linux installations
 
 ---
 
@@ -115,47 +174,6 @@ Each of the above components is now integrated or in final testing stages. Kodac
 - **From Scratch with Legacy Integration:**  
   Every component has been re-engineered from the ground up to ensure modern, robust architecture. That said, the working code from the previous version was utilized where applicable to maintain proven functionality and save valuable development time.
 
-## Next Steps (Following Timeline Tasks)
-
-- **Immediate Priority (Completed):**  
-  ✅ Card System decryption and patching (Task #1) completed on August 12, 2025.
-
-- **Current Focus - Backend Development (Aug 12-21):**  
-  Implement Project Connector in Rust (Task #2) and Blender backend system (Task #3) for advanced traffic management.
-
-- **GUI Enhancements (Aug 21-31):**  
-  Fix Tor Manager IP login functionality (Task #4), complete DNS GUI (Task #5), and implement Blender GUI frontend (Task #6).
-
-- **Testing & Validation (Sep 1-10):**  
-  Debug Gambas command line integration (Task #7), test all binaries (Task #8), verify legacy features (Task #9), and review documentation (Task #10).
-
-- **Final Phase (Sep 10-22):**  
-  Conduct comprehensive research and testing (Task #11), build and sign the ISO (Task #12) for beta release on September 22, 2025.
-
-## Updated Timeline (August 2025)
-
-*Current Date: August 12, 2025 - Card System (Task #1) ✅ Completed*
-
-|  #  | Task                             | Duration (Days) | Cumulative Days |    Estimated Completion Date     |
-| :-: | :------------------------------- | :-------------: | :-------------: | :------------------------------: |
-|  1  | Card System (Decryption & Patch) |        5        |        5        |  ✅ Completed August 12, 2025    |
-|  2  | Project Connector in Rust        |        2        |        7        |     Monday, August 19, 2025      |
-|  3  | Blender in Rust                  |        2        |        9        |    Wednesday, August 21, 2025    |
-|  4  | Tor Manager IP Login GUI fix     |        2        |       11        |     Friday, August 23, 2025      |
-|  5  | DNS GUI                          |        4        |       15        |     Tuesday, August 27, 2025     |
-|  6  | Blender in GUI                   |        4        |       19        |    Saturday, August 31, 2025     |
-|  7  | Gambas Command Line & Debug      |        1        |       20        |     Sunday, September 1, 2025    |
-|  8  | Test all binaries                |        4        |       24        |    Thursday, September 5, 2025   |
-|  9  | Recheck 8.27 features            |        3        |       27        |     Sunday, September 8, 2025    |
-| 10  | Check Reference General MD       |        2        |       29        |    Tuesday, September 10, 2025   |
-| 11  | Research                         |        7        |       36        |    Tuesday, September 17, 2025   |
-| 12  | Build ISO                        |        5        |       41        | **Sunday, September 22, 2025**   |
-
----
-
-The new final estimated completion date is **Sunday, September 22, 2025**.
-
-Stay tuned for further updates.
 
 ---
 
@@ -176,7 +194,7 @@ Kodachi is more than just another Linux distribution—it's a **robust**, **ligh
 
 Kodachi has been critically acclaimed by global publications and consistently recognized as one of the most secure Linux distributions available:
 
-- 🏆 **1st Place** at **TechRadar** for Best Linux Distro for Privacy & Security for **four consecutive years** (2020–2025).
+- 🏆 **1st Place** at **TechRadar** for Best Linux Distro for Privacy & Security for **six consecutive years** (2020–2025).
 
   - **[Original Article: TechRadar - Best Linux Distro for Privacy & Security](https://www.techradar.com/news/best-linux-distro-privacy-security)**
   - [TechRadar 2020](https://www.digi77.com/software/kodachi/TechRadar2020.pdf)
