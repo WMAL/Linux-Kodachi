@@ -1,0 +1,71 @@
+' Gambas class file
+
+' #Script written by Warith Al Maawali
+' #(c)2021 Founder Of Eagle Eye Digital Solutions
+' #Discord channel https: / / discord.gg / KEFErEx
+' #Twitter http: / / twitter.com / warith2020
+' #Linkedin http: / / www.linkedin.com / In / warith1977
+' #http: / / www.digi77.com
+' #http: / / www.om77.net
+' #Kodachi OS / Software / Code are strictly protected by LICENSE terms at / home / kodachi / LICENSE
+' #
+' #
+' # termForm.class - Class to manage terminal operations for Kodachi Dashboard
+' # This script provides a terminal interface within the application to execute shell commands.
+
+' Declare terminal view and process variables
+Public sTerminal As TerminalView
+pBash As Process
+
+' Function to handle form open event
+Public Sub Form_Open()
+
+  ' Center the form on the screen and set dimensions
+  Me.center
+  Me.Height = 790
+  Me.Width = 1170
+
+  ' Configure terminal view settings
+  With TerminalView1
+    .Clear
+    .Enabled = True
+    '.Blink = False
+    .Background = &H0
+    .Foreground = &HFFFFFF
+    .Border = False
+    .Expand = True
+    .Limit = 0
+
+    '.ReadOnly = True
+    .AutoResize = True
+    .ShowLink = True
+    .ShowScrollBar = True
+  End With
+
+End
+
+' Function to execute a shell command in the terminal
+Public Sub runMe(commandPassed As String)
+
+  ' Print the command to be executed
+  'Print commandPassed
+
+  ' Execute the shell command in the terminal view
+  pBash = TerminalView1.shell(Trim(commandPassed))
+  ' TerminalView1.shell(commandPassed)
+  'TerminalView1.shell(commandPassed)
+  'Try TerminalView1.Exec(["bash"])
+
+End
+
+' Function to handle form close event
+Public Sub Form_Close()
+
+  ' Kill the process and close the terminal view
+  pBash.kill
+  TerminalView1.Kill
+  TerminalView1.Enabled = False
+  pBash.close
+  Me.Close
+
+End

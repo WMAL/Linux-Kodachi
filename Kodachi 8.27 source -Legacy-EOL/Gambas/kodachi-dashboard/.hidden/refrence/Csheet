@@ -1,0 +1,27 @@
+Dynamic :
+DIM Identifier AS [ NEW ] Native Datatype [ Array dimensions ... ]
+
+ex : dim aInt as Integer[10]
+
+Static
+[ STATIC ] { PUBLIC | PRIVATE } Identifier [ Array dimensions ... ] AS
+Native Datatype
+
+
+ex : Private aInt[10] as integer
+
+you can't declare a staic array in a sub
+
+A static array is declared as
+
+PRIVATE TicTacToe[3] AS Integer
+STATIC PRIVATE TicTacToe[3] AS Integer
+
+A dynamic arrays is declared as
+
+DIM TicTacToe AS Integer[3]
+DIM TicTacToe AS Integer[]
+DIM TicTacToe AS NEW Integer[]
+PUBLIC TicTacToe AS Integer[3]
+PUBLIC TicTacToe AS Integer[]
+PRIVATE TicTacToe AS Integer[3]

@@ -1,0 +1,742 @@
+' Gambas module file
+
+' Gambas class file
+
+' Define constants for common values to improve maintainability and performance
+Private Const AUTH_SCRIPT As String = "/home/kodachi/k900/dashboard/hooks/online-auth"
+Private Const COLOR_NEO_GREEN As Integer = &H00FF00
+Private Const COLOR_BLACK As Integer = &H000000
+Private Const BLINK_INTERVAL As Integer = 500 ' ms
+
+' Settings constants to avoid typos
+Private Const SETTING_PREFIX As String = "KodachiApp/"
+Private Const SETTING_FORM_X As String = "KodachiApp/FormX"
+Private Const SETTING_FORM_Y As String = "KodachiApp/FormY"
+Private Const SETTING_FORM_WIDTH As String = "KodachiApp/FormWidth"
+Private Const SETTING_FORM_HEIGHT As String = "KodachiApp/FormHeight"
+Private Const SETTING_CHECKBOX1 As String = "KodachiApp/CheckBox1"
+Private Const SETTING_CHECKBOX2 As String = "KodachiApp/CheckBox2"
+Private Const SETTING_CHECKBOX3 As String = "KodachiApp/CheckBox3"
+Private Const SETTING_TOGGLEBTN1 As String = "KodachiApp/ToggleBtn1"
+Private Const SETTING_TOGGLEBTN2 As String = "KodachiApp/ToggleBtn2"
+
+' Process tracking collection
+Private aActiveProcesses As New Object[]
+
+Public Sub Form_Open()
+
+  ' Disable controls for security
+  SetControlsEnabled(False)
+
+  Dim terms As String
+
+  terms = "🔒 1. By using Linux Kodadchi, you acknowledge and agree that its primary purpose is to protect your privacy." & gb.Lf & gb.Lf &
+    "⚠️ 2. Linux Kodadchi should not be used for any illegal activities or to commit crimes." & gb.Lf & gb.Lf &
+    "🚫 3. If your intention is to engage in unlawful actions, discontinue usage immediately." & gb.Lf & gb.Lf &
+    "📜 4. Linux Kodadchi and its developers disclaim all liability for any illegal actions committed by users." & gb.Lf & gb.Lf &
+    "⚖️ 5. You must comply with the laws of your country when using Linux Kodadchi." & gb.Lf & gb.Lf &
+    "✅ 6. By proceeding, you accept these terms and conditions."
+
+  ' Load icons once and reuse the same picture for efficiency
+  Dim infoPicture As Picture = Picture.Load("../icons/Bokehlicia-Captiva-Help-info.256.png")
+  Dim bugPicture As Picture = Picture.Load("../icons/Janik-Baumgartner-Woocons-Bug.32.png")
+
+  ' Set all icon panels efficiently
+  For i As Integer = 0 To 5
+    IconPanel1[i].Picture = infoPicture
+  Next
+  IconPanel1[6].Picture = bugPicture
+  IconPanel1[7].Picture = infoPicture
+
+  ' Default form size if no settings are available
+  Me.Height = 790
+  Me.Width = 1177
+  Label1.Foreground = &H0002CBF5
+  checkbox1.Mouse = Mouse.Pointing
+  checkbox1.ToolTip = terms
+
+  ' Load saved settings
+  LoadSettings()
+
+End
+
+Public Sub IconPanel1_Click()
+  ' Empty handler - could be removed if not needed for future use
+
+End
+
+Public Sub Button5_Click()
+  ' Execute the heartbeat check command
+
+  ExecuteAuthCommand("check_heartbeat", "Checking heartbeat status...", Label1)
+
+End
+
+Public Sub Button1_Click()
+  ' Execute the login check command
+
+  ExecuteAuthCommand("check_login", "Checking authentication...", Label1)
+
+End
+
+' Centralized method to execute auth commands for better maintainability and security
+Private Sub ExecuteAuthCommand(sCommand As String, sStatusMessage As String, outputComponent As Label)
+
+  Dim Process As Process
+
+  ' Clear text area to show command is running
+  outputComponent.Text = sStatusMessage
+
+  ' Run the command asynchronously in a separate process
+  Process = Exec ["sudo", AUTH_SCRIPT, sCommand] For Read Write As "AuthProcess"
+
+  ' Store the target component reference directly in the process's Tag property
+  Process.Tag = outputComponent
+
+  ' Track the process to prevent memory leaks
+  aActiveProcesses.Add(Process)
+
+End
+
+' Callback when process has output
+Public Sub AuthProcess_Read()
+  ' Get the target component from the process's Tag property
+
+  Dim outputComponent As Label
+  Dim sOutput As String
+  Dim statusIcon As String = "📍" ' Default icon for invalid session
+
+  ' Read output from process and trim spaces
+  sOutput = Trim(Last.ReadLine())
+
+  ' Security: Sanitize the output to prevent XSS-like issues
+  sOutput = SanitizeOutput(sOutput)
+
+  ' Debug output to console only in development environments
+  #If DEBUG
+  Print "Debug - Received output: " & sOutput
+  #Endif
+
+  ' Check for heartbeat status response and update ToggleButton2
+  If sOutput Like "*heartbeat service is running*" Or sOutput Like "*Heartbeat is active*" Then
+    ToggleButton2.Text = "Stop Heartbeat"
+  Else If sOutput Like "*heartbeat service is not running*" Or sOutput Like "*Heartbeat is not active*" Then
+    ToggleButton2.Text = "Start Heartbeat"
+  Endif
+
+  ' Check if output indicates invalid session
+  If sOutput Like "*Session is invalid*" Or sOutput Like "*Please authenticate again*" Then
+    ' Set ToggleButton1 to "Login" state
+    ToggleButton1.Text = "Login"
+
+    ' Disable controls for security
+    SetControlsEnabled(False)
+    statusIcon = "📍" ' Invalid session icon
+
+    ' Check if output indicates valid session
+  Else If sOutput Like "*Session is valid*" Then
+    ' Set ToggleButton1 to "Logout" state
+    ToggleButton1.Text = "Logout"
+
+    ' Enable controls for authenticated users
+    SetControlsEnabled(True)
+    AfterLogingSuccessCalls
+    statusIcon = "✅" ' Valid session icon
+  Endif
+
+  ' Check if Last.Tag is valid before using it
+  If Last.Tag <> Null Then
+    outputComponent = Last.Tag
+
+    ' Set the output component text to the command output
+    outputComponent.Text = FormatOutputMessage(statusIcon, sOutput)
+  Else
+    ' If Tag is null, update Label1 directly
+    Label1.Text = FormatOutputMessage(statusIcon, sOutput)
+    ' Also log to console for debugging
+    #If DEBUG
+    Print "Warning: outputComponent is null. Output: " & sOutput
+    #Endif
+  Endif
+
+  ' Remove this process from tracking array when complete
+  RemoveProcessFromTracking(Last)
+
+End
+
+' Helper function to format output messages consistently
+Private Function FormatOutputMessage(statusIcon As String, message As String) As String
+
+  Return "🕒 " & Format$(Now, "d/m/yy h:nn:ss tt") & " | " & statusIcon & " " & message
+
+End
+
+' Basic output sanitization to prevent potential UI issues
+Private Function SanitizeOutput(sOutput As String) As String
+  ' Remove any control characters that could affect UI display
+
+  Dim sanitized As String = sOutput
+
+  sanitized = Replace(sanitized, Chr$(0), "")
+
+  ' Limit length to prevent UI overflow attacks
+  If Len(sanitized) > 500 Then
+    sanitized = Left(sanitized, 497) & "..."
+  Endif
+
+  Return sanitized
+
+End
+
+' Function to enable or disable controls based on authentication status
+' For security reasons, this centralizes the control of UI elements
+Private Sub SetControlsEnabled(bEnabled As Boolean)
+  ' Enable or disable buttons and controls based on authentication status
+
+  Button2.Enabled = bEnabled
+  Button5.Enabled = bEnabled
+  ToggleButton2.Enabled = bEnabled
+  RadioButton1.Enabled = bEnabled
+  RadioButton2.Enabled = bEnabled
+
+  ' Control IconPanel1 tabs - if disabled, only show tab 0 (Login)
+  If Not bEnabled Then
+    IconPanel1.Index = 0
+    ' Disable all tabs except tab 0
+    For i As Integer = 1 To IconPanel1.Count - 1
+      IconPanel1[i].Enabled = False
+    Next
+  Else
+    ' Enable all tabs when authenticated
+    For i As Integer = 0 To IconPanel1.Count - 1
+      IconPanel1[i].Enabled = True
+    Next
+  Endif
+
+  ' Additional security-related UI elements can be added here
+End
+
+Public Sub Button2_Click()
+
+  Dim sCommand As String
+
+  If RadioButton1.Value = True Then
+    sCommand = "send_heartbeat"
+    Label1.Text = "Sending manual heartbeat ..."
+  Else If RadioButton2.Value = True Then
+    sCommand = "send_heartbeat_with_retry"
+    Label1.Text = "Sending manual heartbeat with retry ..."
+  Else
+    ' Default fallback if no radio button selected (defensive coding)
+    sCommand = "send_heartbeat"
+    Label1.Text = "Sending manual heartbeat ..."
+  Endif
+
+  ExecuteAuthCommand(sCommand, Label1.Text, Label1)
+
+End
+
+Public Sub Button7_Click()
+  ' This appears to be a debug function - could be secured or removed in production
+
+  Dim sTestString As String
+  Dim sResult As String
+
+  sTestString = "abcdef"
+  sResult = "warith al maawali"
+  #If DEBUG
+  Print "Our start string is: " & sTestString
+  Print Subst$("Our Subst string is:", sResult)
+  Print Application.Dir
+  #Endif
+
+End
+
+Public Sub ToggleButton1_Click()
+  ' Check if terms and conditions are accepted
+
+  If Not CheckBox1.Value Then
+    Label1.Text = FormatOutputMessage("⚠️", "You must accept the terms and conditions first.")
+    ' Highlight CheckBox1 with neo green and make it blink
+    CheckBox1.Background = COLOR_NEO_GREEN
+    CheckBox1.Foreground = COLOR_BLACK
+    ' Start blinking effect
+    Timer1.Delay = BLINK_INTERVAL
+    Timer1.Enabled = True
+    Timer1.Start()
+    CheckBox1.SetFocus()
+    Return
+  Endif
+
+  ' Reset background and stop blinking if terms accepted
+  CheckBox1.Background = Color.Default
+  CheckBox1.Foreground = Color.Default
+  Timer1.Stop()
+  Timer1.Enabled = False
+
+  Dim action As String
+  Dim Process As Process
+
+  If ToggleButton1.Text = "Logout" Then
+    action = "logout"
+    ' Run the authentication process asynchronously
+    Process = Exec ["sudo", AUTH_SCRIPT, action] For Read As "AuthToggleProcess"
+  Else
+    ' Check if CheckBox3 is checked to use -k parameter
+    If CheckBox3.Value Then
+      ' Pass -k as a separate parameter for proper command-line argument handling
+      Process = Exec ["sudo", AUTH_SCRIPT, "authenticate", "-k"] For Read As "AuthToggleProcess"
+    Else
+      Process = Exec ["sudo", AUTH_SCRIPT, "authenticate"] For Read As "AuthToggleProcess"
+    Endif
+  Endif
+
+  ' Disable button while processing
+  ToggleButton1.Enabled = False
+  Label1.Text = "Processing authentication request..."
+
+  ' Track the process
+  aActiveProcesses.Add(Process)
+
+End
+
+' Callback for the authentication process
+Public Sub AuthToggleProcess_Read()
+
+  Dim sLine As String = Trim(Last.ReadLine())
+  Dim action As String = "authenticate" ' Default value
+  Dim authWithHeartbeat As Boolean = CheckBox3.Value ' Store if auth was with heartbeat
+
+  ' Determine the current action based on button state
+  If ToggleButton1.Text = "Logout" Then
+    action = "logout"
+  Endif
+
+  ' Sanitize output
+  sLine = SanitizeOutput(sLine)
+
+  #If DEBUG
+  Print "Auth attempt response: " & sLine
+  #Endif
+
+  If sLine = "Authentication successful!" Or sLine = "You are already authenticated." Or sLine Like "*Authentication successful*" Then
+    SetControlsEnabled(True)
+    ToggleButton1.Text = "Logout"
+    Label1.Text = FormatOutputMessage("✅", sLine)
+
+    ' If authentication was done with -k, set ToggleButton2 to "Stop Heartbeat"
+    ' and explicitly start the heartbeat service
+    If authWithHeartbeat Then
+      ToggleButton2.Text = "Stop Heartbeat"
+
+      ' Explicitly start the heartbeat service
+      StartHeartbeatAfterAuth()
+    Endif
+
+    AfterLogingSuccessCalls
+  Else If sLine = "Logout successful!" Or sLine Like "*logout*" Or sLine Like "*logged out*" Then
+    ToggleButton1.Text = "Login"
+    Label1.Text = FormatOutputMessage("✅", sLine)
+    SetControlsEnabled(False) ' Ensure controls are disabled on logout
+  Else If sLine Like "*Rate limit exceeded*" Then
+    ' Handle rate limit exceeded error
+    ToggleButton1.Enabled = False
+    Label1.Text = FormatOutputMessage("⚠️", "You have exceeded the login/logout attempts limit. Please try again later.")
+    #If DEBUG
+    Print "Rate limit exceeded - button disabled"
+    #Endif
+  Else
+    ' Handle other responses
+    Label1.Text = FormatOutputMessage("📍", sLine)
+    SetControlsEnabled(False)
+    ' If we get an error during logout, still reset the button state
+    If action = "logout" Then
+      ToggleButton1.Text = "Login"
+    Endif
+  Endif
+
+  ' Remove this process from tracking array
+  RemoveProcessFromTracking(Last)
+
+End
+
+' Helper method to explicitly start the heartbeat after authentication with -k
+Private Sub StartHeartbeatAfterAuth()
+
+  Dim heartbeatProcess As Process
+
+  ' Start the heartbeat service silently (without updating the UI)
+  heartbeatProcess = Exec ["sudo", AUTH_SCRIPT, "start_heartbeat"] For Read As "HeartbeatStartProcess"
+
+  ' Track the process
+  aActiveProcesses.Add(heartbeatProcess)
+
+End
+
+' Callback for heartbeat start process
+Public Sub HeartbeatStartProcess_Read()
+
+  Dim sOutput As String = Trim(Last.ReadLine())
+
+  ' Sanitize output
+  sOutput = SanitizeOutput(sOutput)
+
+  #If DEBUG
+  Print "Heartbeat start response: " & sOutput
+  #Endif
+
+  ' Ensure ToggleButton2 is set to "Stop Heartbeat" when heartbeat is started
+  ' regardless of the specific response message
+  ToggleButton2.Text = "Stop Heartbeat"
+
+  ' Remove this process from tracking array
+  RemoveProcessFromTracking(Last)
+
+End
+
+Public Sub AfterLogingSuccessCalls()
+  ' Consolidate the repeated code pattern for better maintenance
+
+  ' Only check heartbeat status if we aren't already certain it's on
+  ' (i.e., don't check if we just authenticated with -k)
+  If Not (CheckBox3.Value And ToggleButton1.Text = "Logout") Then
+    ' Check heartbeat status to update ToggleButton2 appropriately (silent mode - don't update Label1)
+    ExecuteHeartbeatStatusCheck(True)
+  Endif
+
+  ' After successful login, check user group
+  ExecuteGroupCommand("which_group", Label2)
+  ExecuteGroupCommand("check_if_blocked", Label4)
+  ExecuteGroupCommand("get_ids", Label7)
+
+End
+
+' Method to check heartbeat status and update ToggleButton2
+' If silentCheck is True, it will only update ToggleButton2 without changing Label1
+Private Sub ExecuteHeartbeatStatusCheck(Optional silentCheck As Boolean = False)
+
+  Dim heartbeatProcess As Process
+
+  If silentCheck Then
+    ' For silent checks, use a separate process callback to avoid updating Label1
+    heartbeatProcess = Exec ["sudo", AUTH_SCRIPT, "check_heartbeat"] For Read As "SilentHeartbeatProcess"
+  Else
+    ' For regular checks, use the standard ExecuteAuthCommand which updates Label1
+    ExecuteAuthCommand("check_heartbeat", "Checking heartbeat status...", Label1)
+    Return
+  Endif
+
+  ' Track the process
+  aActiveProcesses.Add(heartbeatProcess)
+
+End
+
+' Callback for silent heartbeat status checks
+Public Sub SilentHeartbeatProcess_Read()
+
+  Dim sOutput As String = Trim(Last.ReadLine())
+
+  ' Sanitize output
+  sOutput = SanitizeOutput(sOutput)
+
+  #If DEBUG
+  Print "Silent heartbeat status response: " & sOutput
+  #Endif
+
+  ' Update ToggleButton2 based on heartbeat status
+  If sOutput Like "*heartbeat service is running*" Or sOutput Like "*Heartbeat is active*" Then
+    ToggleButton2.Text = "Stop Heartbeat"
+  Else If sOutput Like "*heartbeat service is not running*" Or sOutput Like "*Heartbeat is not active*" Then
+    ToggleButton2.Text = "Start Heartbeat"
+  Endif
+
+  ' Remove this process from tracking array
+  RemoveProcessFromTracking(Last)
+
+End
+
+' Helper method to execute group-related commands
+Private Sub ExecuteGroupCommand(sCommand As String, outputLabel As Label)
+
+  Dim groupProcess As Process
+
+  groupProcess = Exec ["sudo", AUTH_SCRIPT, sCommand] For Read As "GroupProcess"
+
+  ' Set the tag to identify where to output the result
+  groupProcess.Tag = outputLabel
+
+  ' Track the process
+  aActiveProcesses.Add(groupProcess)
+
+End
+
+' Callback when process ends
+Public Sub AuthToggleProcess_Kill()
+  ' Re-enable button when process completes, unless rate limited
+
+  If Not (Label1.Text Like "*exceeded the login/logout attempts limit*") Then
+    ToggleButton1.Enabled = True
+  Endif
+
+  #If DEBUG
+  Print "Authentication process completed"
+  #Endif
+
+  ' Remove this process from tracking array
+  RemoveProcessFromTracking(Last)
+
+End
+
+' Helper to remove a process from the tracking array
+Private Sub RemoveProcessFromTracking(proc As Process)
+
+  Dim i As Integer
+
+  For i = 0 To aActiveProcesses.Count - 1
+    If aActiveProcesses[i] = proc Then
+      aActiveProcesses.Remove(i)
+      Break
+    Endif
+  Next
+
+End
+
+' Callback for the group check process
+Public Sub GroupProcess_Read()
+
+  Dim outputComponent As Label
+  Dim sOutput As String
+  Dim parts As String[]
+  Dim sessionId As String
+
+  ' Read output from process and trim spaces
+  sOutput = Trim(Last.ReadLine())
+
+  ' Sanitize output
+  sOutput = SanitizeOutput(sOutput)
+
+  ' Process various output formats
+  If sOutput Like "*not blocked*" Or sOutput Like "*ANON_SECURE_HASH_ID is not blocked*" Then
+    sOutput = "✅ Not Blocked"
+  Else If sOutput Like "*is blocked*" Or sOutput = "ANON_SECURE_HASH_ID is blocked" Then
+    sOutput = "❌ Blocked"
+  Else If sOutput Like "*User belongs to normal group*" Then
+    sOutput = "👤 Normal"
+  Else If sOutput Like "*User belongs to vip group*" Then
+    sOutput = "🌟 Elite"
+  Else If sOutput Like "*User belongs to custom group*" Then
+    sOutput = "🔧 Custom"
+  Else If sOutput Like "*ANON_SECURE_HASH_ID:*" Then
+    ' Extract the hash ID value after the colon
+    parts = Split(sOutput, ":")
+    If parts.Count > 1 Then
+      sOutput = Trim(parts[1])
+      ' Correctly assign ANON_SECURE_HASH_ID to Label8
+      Label8.Text = sOutput
+    Endif
+  Else If sOutput Like "*Session ID:*" Then
+    ' Extract the session ID value after the colon
+    parts = Split(sOutput, ":")
+    If parts.Count > 1 Then
+      sessionId = Trim(parts[1])
+      ' Format session ID to show first 4 and last 4 characters with dots in between
+      If Len(sessionId) >= 8 Then
+        sOutput = Left(sessionId, 4) & "..." & Right(sessionId, 4)
+      Else
+        sOutput = sessionId
+      Endif
+      ' Correctly assign formatted Session ID to Label7
+      Label7.Text = sOutput
+    Endif
+  Endif
+
+  ' Check if Last.Tag is valid before using it
+  If Last.Tag <> Null Then
+    outputComponent = Last.Tag
+
+    ' Set the output component text to the command output
+    outputComponent.Text = sOutput
+  Else
+    ' If Tag is null, log to console for debugging
+    #If DEBUG
+    Print "Warning: outputComponent is null for GroupProcess. Output: " & sOutput
+    #Endif
+  Endif
+
+  ' Remove this process from tracking array
+  RemoveProcessFromTracking(Last)
+
+End
+
+Public Sub Timer1_Timer()
+  ' Toggle the checkbox background between neo green and default
+
+  If CheckBox1.Background = COLOR_NEO_GREEN Then
+    CheckBox1.Background = Color.Default
+    CheckBox1.Foreground = Color.Default
+  Else
+    CheckBox1.Background = COLOR_NEO_GREEN
+    CheckBox1.Foreground = COLOR_BLACK
+  Endif
+
+End
+
+' Clean up resources when form closes to prevent memory leaks
+Public Sub Form_Close()
+  ' Stop any running timers
+
+  Timer1.Stop()
+  Timer1.Enabled = False
+
+  ' Save settings before closing
+  SaveSettings()
+
+  ' Terminate any active processes
+  For Each proc As Process In aActiveProcesses
+    Try proc.Kill()
+  Next
+
+  ' Clear the process array
+  aActiveProcesses.Clear()
+
+End
+
+' Add the ToggleButton2 click handler to toggle heartbeat state
+Public Sub ToggleButton2_Click()
+
+  Dim action As String
+
+  ' Toggle between starting and stopping heartbeat
+  If ToggleButton2.Text = "Stop Heartbeat" Then
+    action = "stop_heartbeat"
+    ToggleButton2.Text = "Start Heartbeat"
+    Label1.Text = "Stopping heartbeat..."
+  Else
+    action = "start_heartbeat"
+    ToggleButton2.Text = "Stop Heartbeat"
+    Label1.Text = "Starting heartbeat..."
+  Endif
+
+  ' Execute the heartbeat command
+  ExecuteAuthCommand(action, Label1.Text, Label1)
+
+End
+
+' Save application settings to preserve state between sessions
+Private Sub SaveSettings()
+
+  ' Save form position and size
+  Settings.Write(SETTING_FORM_X, Me.X)
+  Settings.Write(SETTING_FORM_Y, Me.Y)
+  Settings.Write(SETTING_FORM_WIDTH, Me.Width)
+  Settings.Write(SETTING_FORM_HEIGHT, Me.Height)
+
+  ' Save checkbox states
+  Settings.Write(SETTING_CHECKBOX1, CheckBox1.Value)
+
+  ' Only save CheckBox2 and CheckBox3 if they exist in the form
+  Try
+  Settings.Write(SETTING_CHECKBOX2, CheckBox2.Value)
+Catch
+  ' Silently ignore if CheckBox2 doesn't exist
+  #If DEBUG
+  Print "CheckBox2 not found: " & Error.Text
+  #Endif
+
+End
+
+Try
+Settings.Write(SETTING_CHECKBOX3, CheckBox3.Value)
+Catch
+' Silently ignore if CheckBox3 doesn't exist
+#If DEBUG
+Print "CheckBox3 not found: " & Error.Text
+#Endif
+
+End
+
+' Save toggle button states (as text since we care about the displayed text)
+Settings.Write(SETTING_TOGGLEBTN1, ToggleButton1.Text)
+Settings.Write(SETTING_TOGGLEBTN2, ToggleButton2.Text)
+
+#If DEBUG
+Print "Settings saved successfully"
+#Endif
+
+End
+
+' Load application settings to restore previous state
+Private Sub LoadSettings()
+
+  ' Load form position and size if settings exist
+  If Settings.Exist(SETTING_FORM_WIDTH) Then
+    Me.Width = Settings.Read(SETTING_FORM_WIDTH, Me.Width)
+  Endif
+
+  If Settings.Exist(SETTING_FORM_HEIGHT) Then
+    Me.Height = Settings.Read(SETTING_FORM_HEIGHT, Me.Height)
+  Endif
+
+  ' Only restore position if both X and Y are saved and valid
+  If Settings.Exist(SETTING_FORM_X) And Settings.Exist(SETTING_FORM_Y) Then
+    ' Ensure the form will be visible on screen
+    Dim screenW As Integer = Screen.Width
+    Dim screenH As Integer = Screen.Height
+    Dim formX As Integer = Settings.Read(SETTING_FORM_X, 0)
+    Dim formY As Integer = Settings.Read(SETTING_FORM_Y, 0)
+
+    ' Make sure the form is visible on screen
+    If formX < screenW - 100 And formY < screenH - 100 And formX >= 0 And formY >= 0 Then
+      Me.X = formX
+      Me.Y = formY
+    Endif
+  Endif
+
+  ' Load checkbox states if settings exist
+  If Settings.Exist(SETTING_CHECKBOX1) Then
+    CheckBox1.Value = Settings.Read(SETTING_CHECKBOX1, False)
+  Endif
+
+  ' Only try to load CheckBox2 and CheckBox3 if they exist in the form
+  If Settings.Exist(SETTING_CHECKBOX2) Then
+    Try
+    CheckBox2.Value = Settings.Read(SETTING_CHECKBOX2, False)
+  Catch
+    ' Silently ignore if CheckBox2 doesn't exist
+    #If DEBUG
+    Print "CheckBox2 not found: " & Error.Text
+    #Endif
+
+End
+
+Endif
+
+If Settings.Exist(SETTING_CHECKBOX3) Then
+  Try
+  CheckBox3.Value = Settings.Read(SETTING_CHECKBOX3, False)
+Catch
+  ' Silently ignore if CheckBox3 doesn't exist
+  #If DEBUG
+  Print "CheckBox3 not found: " & Error.Text
+  #Endif
+
+End
+
+Endif
+
+' Load toggle button states if settings exist
+' Note: We don't restore ToggleButton1 (Login/Logout) from settings as it should
+' be determined by actual authentication state, not saved state
+
+If Settings.Exist(SETTING_TOGGLEBTN2) Then
+  ' Only restore ToggleButton2 if we're already authenticated
+  If ToggleButton1.Text = "Logout" Then
+    ToggleButton2.Text = Settings.Read(SETTING_TOGGLEBTN2, "Start Heartbeat")
+  Endif
+Endif
+
+#If DEBUG
+Print "Settings loaded successfully"
+#Endif
+
+End

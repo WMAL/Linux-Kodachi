@@ -1,0 +1,955 @@
+' Gambas class file
+
+' #Script written by Warith Al Maawali
+' #(c)2021 Founder Of Eagle Eye Digital Solutions
+' #Discord channel https: / / discord.gg / KEFErEx
+' #Twitter http: / / twitter.com / warith2020
+' #Linkedin http: / / www.linkedin.com / In / warith1977
+' #http: / / www.digi77.com
+' #http: / / www.om77.net
+' #Kodachi OS / Software / Code are strictly protected by LICENSE terms at / home / kodachi / LICENSE
+' #
+' #
+' # logs.class - Class to manage and display system logs for Kodachi Dashboard
+' # This script handles the retrieval, display, and management of various system logs.
+' # It provides functionality to view logs, monitor changes, and interact with the log data.
+
+' Declare instances and variables for managing MD5 checks and log display
+md5file As New Md5filecheck
+' Array to store MD5 check instances
+Themd5Engine As New Md5filecheck[]
+' Boolean to track MD5 change status
+md5changestatus As Boolean
+' String to store file path
+filepath As String
+' String to store shell command output
+shelloutput As String
+' Integer to count lines in the log
+lineCounter As Integer
+' Booleans to toggle various states
+mytoggel As Boolean
+mytoggel2 As Boolean
+mytoggel3 As Boolean
+' String to store spacer for echo command
+spacerString As String = "echo " & Chr$(10)
+' String to store terminal command
+terminalCommand As String
+' Terminal view instance
+sTerminal As TerminalView
+' String to store terminal shell output
+terminalShellOutput As String
+' Integer to store selected key in list view
+listviewSelectedKey As Integer = 0
+' String to store terminal type
+sWhichTerminal As String
+' String to store command search
+TheCommandSeach As String
+
+' Function to handle form opening event
+Public Sub Form_Open()
+
+  ' Center the form on the screen
+  Me.Center
+
+  ' Initialize global variables
+  globalVars.getGlobalVars()
+
+  ' Check and set toggle button value from settings
+  If Not IsNull(Settings["logssettings/togglevalue3"]) Then
+    toggleButton3.Value = Settings["logssettings/togglevalue3"]
+  Else
+    toggleButton3.Value = False
+  End If
+
+  ' Setup combo box data and retrieve saved data
+  setupComboData()
+  getSavedData()
+
+End
+
+' Function to retrieve saved data from settings
+Public Sub getSavedData()
+
+  ' Retrieve timer delay value from settings
+  If Not IsNull(Settings["logssettings/timer1value"]) Then
+    Timer1.Delay = Settings["logssettings/timer1value"]
+    SpinBox2.value = Settings["logssettings/timer1value"]
+  Else
+    Timer1.Delay = SpinBox2.value
+  End If
+
+  ' Retrieve number of files value from settings
+  If Not IsNull(Settings["logssettings/numberoffiles"]) Then
+    SpinBox1.Value = Settings["logssettings/numberoffiles"]
+  Else
+    SpinBox1.Value = 50
+  End If
+
+  ' Retrieve selected list view item from settings
+  If Not IsNull(Settings["logssettings/listviewitem"]) Then
+    treeview1[Settings["logssettings/listviewitem"]].Selected = True
+  Else
+    treeview1[0].Selected = True
+
+  End If
+
+  ' Retrieve window position and size from settings
+  If Not IsNull(Settings["logssettings/WindowTop"]) Then
+    Me.Top = Settings["logssettings/WindowTop"]
+  Else
+    Me.Center
+  End If
+
+  If Not IsNull(Settings["logssettings/WindowLeft"]) Then
+    Me.Left = Settings["logssettings/WindowLeft"]
+  Else
+    Me.Center
+  End If
+
+  If Not IsNull(Settings["logssettings/WindowHeight"]) Then
+    Me.Height = Settings["logssettings/WindowHeight"]
+  Else
+    Me.Height = 644
+  End If
+
+  If Not IsNull(Settings["logssettings/WindowWidth"]) Then
+    Me.Width = Settings["logssettings/WindowWidth"]
+  Else
+    Me.Width = 960
+  End If
+
+  ' Retrieve switch button values from settings
+  If Not IsNull(Settings["logssettings/watchvalue"]) Then
+    SwitchButton1.Value = Settings["logssettings/watchvalue"]
+  Else
+    SwitchButton1.Value = False
+  End If
+
+  If Not IsNull(Settings["logssettings/scrollvalue"]) Then
+    SwitchButton2.Value = Settings["logssettings/scrollvalue"]
+  Else
+    SwitchButton2.Value = False
+  End If
+
+  ' Retrieve toggle button values from settings
+  If Not IsNull(Settings["logssettings/togglevalue1"]) Then
+    toggleButton1.Value = Settings["logssettings/togglevalue1"]
+  Else
+    toggleButton1.Value = False
+  End If
+
+  If Not IsNull(Settings["logssettings/togglevalue2"]) Then
+    toggleButton2.Value = Settings["logssettings/togglevalue2"]
+  Else
+    toggleButton2.Value = False
+  End If
+
+  ' Retrieve radio button values from settings
+  If Not IsNull(Settings["logssettings/display1value"]) Then
+    RadioButton1.Value = Settings["logssettings/display1value"]
+  Else
+    RadioButton1.Value = False
+  End If
+
+  If Not IsNull(Settings["logssettings/display2value"]) Then
+    RadioButton2.Value = Settings["logssettings/display2value"]
+  Else
+    RadioButton2.Value = True
+  End If
+
+  If Not IsNull(Settings["logssettings/display3value"]) Then
+    RadioButton3.Value = Settings["logssettings/display3value"]
+  Else
+    RadioButton3.Value = False
+  End If
+
+End
+
+' Function to setup combo box data
+Public Sub setupComboData()
+
+  Dim i As Integer
+
+  ' Set the text for the logs label
+  logs.text = globalVars.osname & " System Monitor"
+
+  ' Check the value of toggle button 3 and setup tree view accordingly
+  If toggleButton3.Value == False Then
+    treeview1.Clear
+    TreeView1.Add(0, " 1) Monitor system logs", Picture["icon:/16/view-detail"])
+    TreeView1.Add(1, " 2) Show boot logs (/var/log/boot)", Picture["icon:/16/view-detail"])
+    TreeView1.Add(2, " 3) Show boot logs (dmesg)", Picture["icon:/16/view-detail"])
+    TreeView1.Add(3, " 4) Show kernel logs (/var/log/kern.log)", Picture["icon:/16/view-detail"])
+    TreeView1.Add(4, " 5) Monitor local " & globalVars.osname & " json inputs", Picture["icon:/16/view-detail"])
+    TreeView1.Add(5, " 6) Display local " & globalVars.osname & " json ", Picture["icon:/16/view-detail"])
+    TreeView1.Add(6, " 7) Display remote " & globalVars.osname & " json ", Picture["icon:/16/view-detail"])
+    TreeView1.Add(7, " 8) Display " & globalVars.osname & " local users", Picture["icon:/16/view-detail"])
+    TreeView1.Add(8, " 9) Display " & globalVars.osname & " hashes of local users", Picture["icon:/16/view-detail"])
+    TreeView1.Add(9, " 10) Display " & globalVars.osname & " local groups", Picture["icon:/16/view-detail"])
+    TreeView1.Add(10, " 11) Display " & globalVars.osname & " local hosts", Picture["icon:/16/view-detail"])
+    TreeView1.Add(11, " 12) Display " & globalVars.osname & " top cpu usage", Picture["icon:/16/view-detail"])
+    TreeView1.Add(12, " 13) Display " & globalVars.osname & " network information", Picture["icon:/16/view-detail"])
+    TreeView1.Add(13, " 14) Display " & globalVars.osname & " bandwith usage", Picture["icon:/16/view-detail"])
+    TreeView1.Add(14, " 15) Display " & globalVars.osname & " port usage", Picture["icon:/16/view-detail"])
+    TreeView1.Add(15, " 16) Display " & globalVars.osname & " nethogs", Picture["icon:/16/view-detail"])
+    TreeView1.Add(16, " 17) Display " & globalVars.osname & " memory information", Picture["icon:/16/view-detail"])
+    TreeView1.Add(17, " 18) Display " & globalVars.osname & " memory usage", Picture["icon:/16/view-detail"])
+    TreeView1.Add(18, " 19) Display advance disk information", Picture["icon:/16/view-detail"])
+    TreeView1.Add(19, " 20) Display installed packages", Picture["icon:/16/view-detail"])
+    TreeView1.Add(20, " 21) Display " & globalVars.osname & " hardware ID", Picture["icon:/16/view-detail"])
+
+    ' Add MD5 check instances for each tree view item
+    For i = 0 To TreeView1.Count
+      themd5Engine.Add(md5file)
+    Next
+
+  Else If toggleButton3.Value == True Then
+    treeview1.Clear
+
+    Dim m As Integer
+    Dim shellStringOutput As String
+    Dim fileName As String
+
+    ' Iterate through files in the specified folder and add to tree view
+    For Each fileName In Dir(globalVars.sFolder, "*", gb.File).Sort()
+
+      ' Check if the file contains the string "warith" and add to tree view
+      Shell "timeout 2 cat " & globalVars.sFolder & "/" & fileName & "|grep warith" Wait To shellStringOutput
+      If InStr(shellStringOutput, "warith") Then
+        TreeView1.Add(m, m & ") " & fileName, Picture["icon:/16/properties"])
+      Endif
+
+      m = m + 1
+    Next
+
+    i = 0
+    For i = 0 To TreeView1.Count
+      themd5Engine.Add(md5file)
+    Next
+
+  End If
+
+End
+
+' Function to handle switch button 1 click event
+Public Sub SwitchButton1_Click()
+
+  ' Enable or disable timer based on switch button value
+  If SwitchButton1.Value == True Then
+    Timer1.Enabled = True
+    SpinBox2.Visible = True
+  Else
+    Timer1.Enabled = False
+    SpinBox2.Visible = False
+  Endif
+
+End
+
+' Function to handle timer 1 timer event
+Public Sub Timer1_Timer()
+
+  ' Retrieve data and call terminal if toggle is enabled
+  If mytoggel == True Then
+    getData
+    callTerminal
+  Else
+    getData
+  Endif
+
+End
+
+' Function to handle button 2 click event
+Public Sub Button2_Click()
+
+  ' Clear terminal or text area based on toggle value
+  If mytoggel == True Then
+    sTerminal.clear
+    TextBox1.clear
+  Else
+    TextArea1.clear
+    TextBox1.clear
+  End If
+
+End
+
+' Function to handle spin box 1 change event
+Public Sub SpinBox1_Change()
+
+  ' Retrieve data and call terminal if toggle is enabled
+  If mytoggel == True Then
+    getData
+    callTerminal
+  Else
+    getData
+  Endif
+
+End
+
+' Function to handle button 1 click event
+Public Sub Button1_Click()
+
+  ' Copy text area content to clipboard
+  Clipboard.Copy(TextArea1.text)
+
+End
+
+' Function to handle button 3 click event
+Public Sub Button3_Click()
+
+  ' Execute shell command to search text area content
+  Try Shell "echo '" & TextArea1.text & "'" & " |grep " & TextBox2.text Wait To TextArea1.text
+  'Shell "cat " & filepath & " |grep '" & TextBox2.text & "'" To TextArea1.text  'Shell "cat " & filepath & " |grep '" & TextBox2.text To TextArea1.text
+  ' Shell "echo " & TextArea1.text & " |grep " & TextBox2.text To TextArea1.text
+  'Try Shell "echo '" & TextArea1.text & "'" & " |grep " & TextBox2.text Wait To TextArea1.text
+  'Shell "sudo echo '" & TextArea1.text & "'" & " > /tmp/tmpsearch"
+  'Print InStr(TextArea1.text, TextBox2.text)
+  'TextArea1.CursorAt(InStr(TextArea1.text, TextBox2.text))
+  'TextArea1.
+  'grep -q "something" file
+
+End
+
+' Function to process data from a specified file path
+Public Sub prcessData(thepath As String)
+
+  Dim changeDate As String
+
+  ' Check if the file exists
+  If Exist(thepath) = False Then
+    TextBox1.text = "Error file: " & thepath & " does not exist"
+  Else
+
+    ' Check MD5 status of the file
+    md5changestatus = themd5Engine[treeview1[listviewSelectedKey].Key].checkfile(thepath)
+
+    ' If MD5 status is true, retrieve and display file content
+    If md5changestatus == True Then
+
+      If RadioButton1.value == True Then
+        Shell "sudo timeout 2 tail " & thepath & " -n " & SpinBox1.Value Wait To shelloutput
+      Endif
+      If RadioButton2.value == True Then
+        Shell "sudo timeout 2 cat " & thepath & " |head -n " & SpinBox1.Value Wait To shelloutput
+      Endif
+      If RadioButton3.value == True Then
+        Shell "sudo timeout 2 cat " & thepath Wait To shelloutput
+      Endif
+
+      shelloutput = Trim(shelloutput)
+      If mytoggel == False Then
+        If (Len(shelloutput) < 1444444) Then
+          TextArea1.text = shelloutput
+          TextArea1.Refresh
+        Else
+          TextArea1.text = "Text too long to display #ch: " & Len(shelloutput)
+        End If
+      End If
+      If SwitchButton2.Value == True Then
+        TextArea1.Pos = TextArea1.Length
+        TextArea1.EnsureVisible
+      End If
+
+    End If
+
+    ' Retrieve and display file modification date
+    changeDate = Format(Stat(thepath).LastModified, "yyyy/mm/dd hh:nn:ss")
+    lineCounter = TextArea1.Line + 1
+    If mytoggel == False Then
+      TextBox1.text = "Showing: " & thepath & "    MD5: " & themd5Engine[treeview1[listviewSelectedKey].Key].originalmd5 & "   #Lines: " & lineCounter & "   #Characters: " & TextArea1.Length & "    Modified: " & changeDate
+    End If
+    terminalCommand = thepath
+
+  End If
+
+End
+
+' Function to process a shell command
+Public Sub prcessCommand(thecommand As String, commandType As String)
+
+  ' Execute shell command based on command type
+  If commandType == "nolimit" Then
+    Shell thecommand To Shelloutput
+    filepath = ""
+  Else
+    Shell thecommand & SpinBox1.Value To Shelloutput
+    filepath = ""
+  End If
+  'Shell "sudo dmesg |head -n " & SpinBox1.Value To Shelloutput
+  If mytoggel == False Then
+    If (Len(shelloutput) < 1444444) Then
+      TextArea1.text = shelloutput
+      TextArea1.Refresh
+    Else
+      TextArea1.text = "Text too long to display #ch: " & Len(shelloutput)
+    End If
+  End If
+  If SwitchButton2.Value == True Then
+    TextArea1.Pos = TextArea1.Length
+    TextArea1.EnsureVisible
+  End If
+  lineCounter = TextArea1.Line + 1
+  If mytoggel == False Then
+    TextBox1.text = "Showing: " & thecommand & "    #Lines: " & lineCounter
+    theCommandSeach = thecommand
+  End If
+  terminalCommand = thecommand
+
+End
+
+' Function to retrieve data based on selected tree view item
+Public Sub getData()
+
+  ' Check if the selected key is valid
+  If treeview1[listviewSelectedKey].Key >= "0" Then
+
+    ' Reset MD5 engine for the selected key
+    themd5Engine[treeview1[listviewSelectedKey].Key].reset
+
+    ' Check the value of toggle button 3 and process data accordingly
+    If toggleButton3.Value == False Then
+      Select Case treeview1[listviewSelectedKey].Key
+        Case 0
+          filepath = "/var/log/syslog"
+          filepath = Trim(filepath)
+          prcessData(filepath)
+
+        Case 1
+          filepath = "/var/log/boot.log"
+          filepath = Trim(filepath)
+          prcessData(filepath)
+
+        Case 2
+          If RadioButton3.value == True Then
+            prcessCommand("sudo dmesg", "nolimit")
+          Else
+            prcessCommand("sudo dmesg |head -n ", "limit")
+          End If
+        Case 3
+          filepath = "/var/log/kern.log"
+          filepath = Trim(filepath)
+          prcessData(filepath)
+        Case 4
+          Dim tempS As String
+          tempS = globalVars.sFolder & "/json.log"
+          filepath = tempS
+          prcessData(filepath)
+
+        Case 5
+
+          filepath = globalVars.jsonFileName
+          prcessData(filepath)
+
+        Case 6
+
+          filepath = globalVars.jsonwebFileName
+          prcessData(filepath)
+
+        Case 7
+          filepath = "/etc/passwd"
+          filepath = Trim(filepath)
+          prcessData(filepath)
+
+        Case 8
+          filepath = "/etc/shadow"
+          filepath = Trim(filepath)
+          prcessData(filepath)
+
+        Case 9
+          filepath = "/etc/group"
+          filepath = Trim(filepath)
+          prcessData(filepath)
+
+        Case 10
+
+          filepath = "/etc/hosts"
+          filepath = Trim(filepath)
+          prcessData(filepath)
+
+        Case 11
+          prcessCommand("ps -e -o pid,cmd,%cpu,%mem --sort=-%cpu | head -n ", "limit")
+
+        Case 12
+          prcessCommand("ifconfig;" & spacerString & " ip link show;" & spacerString & " nmcli device status;" & spacerString & " route -n", "nolimit")
+        Case 13
+          ' shell command called in terminal procedure
+          If mytoggel == False Then
+            toggleButton1.Value = True
+          End If
+        Case 14
+          prcessCommand("sudo lsof -i -P -n | grep LISTEN;" & spacerString & " sudo netstat -tulpn | grep LISTEN;", "nolimit")
+        Case 15
+          'prcessCommand("sudo nethogs -d 3 -c 3", "nolimit")
+          Shell "sudo bash " & globalVars.sFolder & "/gambasexec nethogsapp"
+          TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & "NetHogs running"
+        Case 16
+          filepath = "/proc/meminfo"
+          filepath = Trim(filepath)
+          prcessData(filepath)
+        Case 17
+          prcessCommand("sudo ps_mem", "nolimit")
+        Case 18
+          prcessCommand("sudo fdisk -l;" & spacerString & " findmnt -lo source,target,fstype,label,options,used;" & spacerString & " sudo lsblk;" & spacerString & "sudo hostnamectl", "nolimit")
+        Case 19
+          prcessCommand("sudo apt list --installed", "nolimit")
+        Case 20
+          filepath = globalVars.jsonFileName
+          prcessCommand("cat " & filepath & " |jq -r .kodachihwid ", "nolimit")
+
+        Case Else
+          Print "Else selected"
+
+      End Select
+    Else
+
+      Dim aSplit As String[]
+      Dim sStr As String = treeview1[listviewSelectedKey].Text
+      aSplit = Split(sStr, ")")
+      filepath = globalVars.sFolder & "/" & Trim(aSplit[1])
+      filepath = Trim(filepath)
+      prcessData(filepath)
+
+    End If
+
+  End If
+
+End
+
+' Function to call terminal and execute commands
+Public Sub callTerminal()
+
+  ' Check if the selected key is 13 and clear terminal shell output
+  If treeview1[listviewSelectedKey].Key == 13 Then
+    terminalShellOutput = ""
+  End If
+  If mytoggel == True Then
+    If terminalShellOutput <> shelloutput Then
+      sTerminal = New TerminalView(TerminalView1) As "sTerminal"
+
+      With sTerminal
+        .Clear
+        .Blink = False
+        .Background = &H0
+        .Foreground = &HFFFFFF
+        .Border = False
+        .Expand = True
+        .Limit = 0
+        .ShowScrollBar = True
+        .ReadOnly = True
+        .AutoResize = True
+
+        ' Execute iftop command if selected key is 13
+        If treeview1[listviewSelectedKey].Key == 13 And ToggleButton3.value = False Then
+          .Exec(["sudo", "iftop", "-o", "40s", "-P"])
+          TextBox1.text = "Showing: iftop"
+          'Else If ComboBox1.index == 19
+          '.Exec(["sudo", "htop"])
+        Else
+          ' kill iftop
+          Shell "sudo timeout 2 kill -9 `ps -ef | grep iftop | grep -v grep | awk '{print $2}'`"
+
+          ' Execute echo command to display shell output
+          If Len(shelloutput) < 131000 Then
+            .Exec(["echo", shelloutput])
+            terminalShellOutput = shelloutput
+          Else
+            .Exec(["echo", "Output too long to show here disable terminal view"])
+          End If
+
+          ' Display MD5 and character count in text box
+          If themd5Engine[treeview1[listviewSelectedKey].Key].originalmd5 Then
+            TextBox1.text = "Showing: " & terminalCommand & "    MD5: " & themd5Engine[treeview1[listviewSelectedKey].Key].originalmd5 & "   #Characters: " & Len(shelloutput)
+          Else
+            TextBox1.text = "Showing: " & terminalCommand & "   #Characters: " & Len(shelloutput)
+          End If
+        Endif
+
+      End With
+
+    End If
+  End If
+
+End
+
+' Function to handle toggle button 1 click event
+Public Sub ToggleButton1_Click()
+
+  ' Toggle the value of mytoggel and update UI elements accordingly
+  mytoggel = Not mytoggel
+
+  If mytoggel == True Then
+    TerminalView1.Show
+    TextArea1.hide
+    getData
+    callTerminal
+    Button1.Enabled = False
+    Button3.Enabled = False
+    SwitchButton2.Enabled = False
+    terminalShellOutput = ""
+  Else
+    If treeview1[listviewSelectedKey].Key <> 13 Then
+      TerminalView1.Show
+      TextArea1.hide
+      getData
+      callTerminal
+      Button1.Enabled = True
+      Button3.Enabled = True
+      SwitchButton2.Enabled = True
+    End If
+    TerminalView1.hide
+    TextArea1.show
+  End If
+
+End
+
+' Function to handle radio button 3 click event
+Public Sub RadioButton3_Click()
+
+  ' Retrieve data and call terminal if toggle is enabled
+  If mytoggel == True Then
+    getData
+    callTerminal
+  Else
+    getData
+  Endif
+  If RadioButton3.value == True Then
+    SpinBox1.enabled = False
+    Label2.Enabled = False
+  End If
+
+End
+
+' Function to handle radio button 2 click event
+Public Sub RadioButton2_Click()
+
+  ' Retrieve data and call terminal if toggle is enabled
+  If mytoggel == True Then
+    getData
+    callTerminal
+  Else
+    getData
+  Endif
+
+  If RadioButton3.value == False Then
+    SpinBox1.enabled = True
+    Label2.Enabled = True
+  End If
+
+End
+
+' Function to handle radio button 1 click event
+Public Sub RadioButton1_Click()
+
+  ' Retrieve data and call terminal if toggle is enabled
+  If mytoggel == True Then
+    getData
+    callTerminal
+  Else
+    getData
+  Endif
+  If RadioButton3.value == False Then
+    SpinBox1.enabled = True
+    Label2.Enabled = True
+  End If
+
+End
+
+' Function to handle spin box 2 change event
+Public Sub SpinBox2_Change()
+
+  ' Update timer delay with spin box value
+  Timer1.Delay = SpinBox2.value
+
+End
+
+' Function to handle switch button 2 click event
+Public Sub SwitchButton2_Click()
+
+  ' Ensure text area is visible and scroll to the end
+  TextArea1.Pos = TextArea1.Length
+  TextArea1.EnsureVisible
+
+End
+
+' Function to handle button 5 click event
+Public Sub Button5_Click()
+
+  ' Clear all settings and save
+  Settings.Clear("logssettings")
+  Settings.Save
+  TextBox1.text = "All settings cleared"
+
+End
+
+' Function to handle button 4 click event
+Public Sub Button4_Click()
+
+End
+
+' Function to handle tree view 1 click event
+Public Sub TreeView1_Click()
+
+  ' Update selected key and retrieve data
+  listviewSelectedKey = TreeView1.Item.Key
+
+  If mytoggel == True Then
+    getData
+    callTerminal
+  Else
+    getData
+  Endif
+
+End
+
+' Function to handle button 6 click event
+Public Sub Button6_Click()
+
+  ' Check if the file exists and open it
+  If Exist(filepath) = False Then
+    TextBox1.text = "Error file: " & filepath & " does not exist"
+  Else
+    'Shell "sudo gedit " & filepath
+    Shell "xdg-open " & filepath
+  End If
+
+End
+
+' Function to handle toggle button 2 click event
+Public Sub ToggleButton2_Click()
+
+  ' Toggle the value of mytoggel2 and update tree view visibility
+  mytoggel2 = Not mytoggel2
+
+  If mytoggel2 == True Then
+    treeview1.hide
+  Else
+    treeview1.show
+  Endif
+
+End
+
+' Function to handle tree view 1 select event
+Public Sub TreeView1_Select()
+
+  ' Update selected key and retrieve data
+  listviewSelectedKey = TreeView1.Item.Key
+
+  If mytoggel == True Then
+    getData
+    callTerminal
+  Else
+    getData
+  Endif
+
+End
+
+' Function to handle tree view 1 lost focus event
+Public Sub TreeView1_LostFocus()
+
+  ' Ensure the selected item remains selected
+  treeview1[listviewSelectedKey].Selected = True
+
+End
+
+' Function to handle button 7 click event
+Public Sub Button7_Click()
+
+  ' Check if the file exists and open file manager
+  If Exist(filepath) = False Then
+    TextBox1.text = "Error file: " & filepath & " does not exist"
+  Else
+    File_Manager
+  End If
+
+End
+
+' Function to manage file operations
+Public Sub File_Manager()
+
+  Dim FindStat As Stat
+  Dim siCount As Short
+  Dim sTerminalString As String = filepath
+
+  ' Remove bold tags from terminal string
+  sTerminalString = Replace(sTerminalString, "<b>", "")
+  sTerminalString = Replace(sTerminalString, "</b>", "")
+  Try FindStat = Stat(sTerminalString)
+
+  ' Check if the path is a file and adjust terminal string
+  If FindStat.Type = "1" Then 'It's a file not a directory
+    For siCount = Len(sTerminalString) To 1 Step -1
+      If Mid(sTerminalString, siCount, 1) = "/" Then
+        sTerminalString = Mid(sTerminalString, 1, siCount - 1)
+        Break
+      End If
+    Next
+  End If
+
+  ' Execute shell command to open terminal
+  sTerminalString = Shell$(sTerminalString)
+  Shell "xdg-open " & sTerminalString
+
+End
+
+' Function to open terminal in a specified directory
+Public Sub Open_in_Terminal()
+
+  ' Determine which terminal to use
+  WhichTerminal()
+
+  Dim FindStat As Stat
+  Dim siCount As Short
+  Dim sTerminalString As String = filepath
+  sTerminalString = Replace(sTerminalString, "<b>", "")
+  sTerminalString = Replace(sTerminalString, "</b>", "")
+  FindStat = Stat(sTerminalString)
+
+  ' Check if the path is a file and adjust terminal string
+  If FindStat.Type = "1" Then 'It's a file not a directory
+    For siCount = Len(sTerminalString) To 1 Step -1
+      If Mid(sTerminalString, siCount, 1) = "/" Then
+        sTerminalString = Mid(sTerminalString, 1, siCount - 1)
+        Break
+      End If
+    Next
+  End If
+
+  ' Execute shell command to open terminal
+  sTerminalString = Shell$(sTerminalString)
+  sTerminalString = sWhichTerminal & sTerminalString
+
+  Shell "sudo " & sTerminalString
+
+End
+
+' Function to determine which terminal to use
+Public Sub WhichTerminal()
+
+  'Tested
+  sWhichTerminal = "gnome-terminal --working-directory=" 'Gnome and Cinnamon (tested on Cinnamon not Gnome)
+  If Exist("/usr/bin/konsole") Then sWhichTerminal = "konsole --workdir " 'KDE
+  If Exist("/usr/bin/lxterminal") Then sWhichTerminal = "lxterminal --working-directory=" 'LXDE
+  If Exist("/usr/bin/mate-terminal") Then sWhichTerminal = "mate-terminal --working-directory=" 'Mate
+  If Exist("/usr/bin/xfce4-terminal") Then sWhichTerminal = "xfce4-terminal --working-directory=" 'XFCE4
+
+  'Not tested
+  If Exist("/usr/bin/terminal") Then sWhichTerminal = "terminal --working-directory=" 'XFCE
+
+End
+
+' Function to handle button 8 click event
+Public Sub Button8_Click()
+
+  ' Check if the file exists and open terminal
+  If Exist(filepath) = False Then
+    TextBox1.text = "Error file: " & filepath & " does not exist"
+  Else
+    Open_in_Terminal
+  End If
+
+End
+
+' Function to handle menu 3 click event
+Public Sub Menu3_Click()
+
+  ' Check if the file exists and display MD5
+  If Exist(filepath) = False Then
+    TextBox1.text = "Error file: " & filepath & " does not exist"
+  Else
+    TextBox1.text = "md5: " & themd5Engine[treeview1[listviewSelectedKey].Key].checkmd5(filepath)
+  End If
+
+End
+
+' Function to handle menu 4 click event
+Public Sub Menu4_Click()
+
+  ' Check if the file exists and display SHA256
+  If Exist(filepath) = False Then
+    TextBox1.text = "Error file: " & filepath & " does not exist"
+  Else
+    TextBox1.text = "sha256: " & themd5Engine[treeview1[listviewSelectedKey].Key].checksha256(filepath)
+  End If
+
+End
+
+' Function to handle tree view 1 menu event
+Public Sub TreeView1_Menu()
+
+  ' Display tree view menu
+  Treeviewmenu.Popup
+
+End
+
+' Function to handle menu 1 click event
+Public Sub Menu1_Click()
+
+  ' Call button 6 click event
+  Button6_Click()
+
+End
+
+' Function to handle menu 8 click event
+Public Sub Menu8_Click()
+
+  ' Call button 8 click event
+  Button8_Click()
+
+End
+
+' Function to handle menu 2 click event
+Public Sub Menu2_Click()
+
+  ' Call button 7 click event
+  Button7_Click()
+
+End
+
+' Function to handle menu 5 click event
+Public Sub Menu5_Click()
+
+  ' Toggle the value of mytoggel2 and hide tree view
+  mytoggel2 = Not mytoggel2
+  treeview1.Hide
+
+End
+
+' Function to handle toggle button 3 click event
+Public Sub ToggleButton3_Click()
+
+  ' Toggle the value of mytoggel3 and setup combo data
+  mytoggel3 = Not mytoggel3
+  setupComboData()
+
+End
+
+' Function to handle button 9 click event
+Public Sub Button9_Click()
+
+  ' Refresh text area
+  TextArea1.Refresh
+
+End
+
+' Function to handle form close event
+Public Sub Form_Close()
+
+  ' Save settings before closing the form
+  Settings["logssettings/timer1value"] = Timer1.Delay
+  Settings["logssettings/numberoffiles"] = SpinBox1.Value
+  Settings["logssettings/listviewitem"] = listviewSelectedKey
+  Settings["logssettings/watchvalue"] = SwitchButton1.Value
+  Settings["logssettings/scrollvalue"] = SwitchButton2.Value
+  Settings["logssettings/togglevalue1"] = toggleButton1.Value
+  Settings["logssettings/togglevalue2"] = toggleButton2.Value
+  Settings["logssettings/togglevalue3"] = toggleButton3.Value
+  Settings["logssettings/display1value"] = RadioButton1.Value
+  Settings["logssettings/display2value"] = RadioButton2.Value
+  Settings["logssettings/display3value"] = RadioButton3.Value
+  Settings["logssettings/WindowTop"] = Me.Top
+  Settings["logssettings/WindowLeft"] = Me.Left
+  Settings["logssettings/WindowHeight"] = Me.Height
+  Settings["logssettings/WindowWidth"] = Me.Width
+  Settings.Save
+  TextBox1.text = "Settings saved"
+
+End

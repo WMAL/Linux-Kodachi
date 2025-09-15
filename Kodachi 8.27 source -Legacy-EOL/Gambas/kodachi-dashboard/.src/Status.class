@@ -1,0 +1,291 @@
+' Gambas class file
+
+' #Script written by Warith Al Maawali
+' #(c)2021 Founder Of Eagle Eye Digital Solutions
+' #Discord channel https: / / discord.gg / KEFErEx
+' #Twitter http: / / twitter.com / warith2020
+' #Linkedin http: / / www.linkedin.com / In / warith1977
+' #http: / / www.digi77.com
+' #http: / / www.om77.net
+' #Kodachi OS / Software / Code are strictly protected by LICENSE terms at / home / kodachi / LICENSE
+' #
+' #
+' # Status.class - Class to monitor and display the status of various system scripts
+' # This script checks the status of different system scripts and displays their running status.
+' # It also provides functionality to start and stop scripts and update the UI accordingly.
+
+' Boolean to track the starting time of the form
+Public startingTime As Boolean
+
+' Function to handle form open event
+Public Sub Form_Open()
+
+  ' Show and start the spinner
+  Spinner1.Visible = True
+  Spinner1.start
+  startingTime = True
+
+  ' Center and show the form
+  Me.Center
+  Me.show
+
+  ' Initialize global variables
+  Try globalVars.getGlobalVars()
+
+  ' Set toggle button value based on script status
+  If globalVars.scriptStatus = "Yes" Then
+    ToggleButton1.Value = True
+  Endif
+
+  ' Run the script status check
+  runTheCheck()
+
+  ' Stop the spinner and update starting time
+  startingTime = False
+  Spinner1.Visible = False
+  Spinner1.stop
+
+End
+
+' Function to handle form close event
+Public Sub Form_Close()
+
+  ' Stop and disable the timer
+  Timer1.stop
+  Timer1.Enabled = False
+
+End
+
+' Function to run the script status check
+Public Sub runTheCheck()
+
+  ' Print the internet status
+  'Print globalVars.getInternetStatus()
+
+  ' Wait for 0.5 seconds
+  Wait 0.5
+
+  ' Update frame text to indicate checking status
+  Try Frame1.text = "Scripts health information - checking ..."
+
+  ' Declare variables to store script status and CPU/RAM usage
+  Dim result As String
+  Dim healthScrtiptStatus As String
+  Dim dnsScrtiptStatus As String
+  Dim ux1ScrtiptStatus As String
+  Dim ux2ScrtiptStatus As String
+  Dim sudoScrtiptStatus As String
+  Dim resScrtiptStatus As String
+  Dim cpuRAMStatus As String
+  Dim conky2Status As String
+  Dim conky0Status As String
+  Dim conky1Status As String
+  Dim conky3Status As String
+
+  ' Check the status of various scripts and update UI elements
+  Shell "timeout 2 ps ax | grep -v grep | grep normalspeed" Wait To healthScrtiptStatus
+  healthScrtiptStatus = Trim(healthScrtiptStatus)
+  Shell "timeout 2 ps -A -o %cpu,%mem,cmd|grep normalspeed| awk '{ print $1,$2 }'|head -n 1" Wait To cpuRAMStatus
+  If healthScrtiptStatus Then
+    PictureBox2.Picture = Picture["images/kodachi16.png"]
+    PictureBox2.Tooltip = "systemhealth running CPU/RAM: " & Trim(cpuRAMStatus)
+
+  Else
+    PictureBox2.Picture = Picture["images/kodachi16yellow.png"]
+    PictureBox2.Tooltip = "systemhealth Stopped"
+  End If
+
+  Shell "timeout 2 ps ax | grep -v grep | grep dns_control" Wait To dnsScrtiptStatus
+  dnsScrtiptStatus = Trim(dnsScrtiptStatus)
+  Shell "timeout 2 ps -A -o %cpu,%mem,cmd|grep dns_control| awk '{ print $1,$2 }'|head -n 1" Wait To cpuRAMStatus
+  If dnsScrtiptStatus Then
+    PictureBox3.Picture = Picture["images/kodachi16.png"]
+    PictureBox3.Tooltip = "dns_control running CPU/RAM: " & Trim(cpuRAMStatus)
+
+  Else
+    PictureBox3.Picture = Picture["images/kodachi16yellow.png"]
+    PictureBox3.Tooltip = "dns_control Stopped"
+  End If
+
+  Shell "timeout 2 ps ax | grep -v grep | grep bootguicairo" Wait To ux1ScrtiptStatus
+  ux1ScrtiptStatus = Trim(ux1ScrtiptStatus)
+  Shell "timeout 2 ps -A -o %cpu,%mem,cmd|grep bootguicairo| awk '{ print $1,$2 }'|head -n 1" Wait To cpuRAMStatus
+
+  If ux1ScrtiptStatus Then
+    PictureBox4.Picture = Picture["images/kodachi16.png"]
+    PictureBox4.Tooltip = "bootguicairo running CPU/RAM: " & Trim(cpuRAMStatus)
+
+  Else
+    PictureBox4.Picture = Picture["images/kodachi16yellow.png"]
+    PictureBox4.Tooltip = "bootguicairo Stopped"
+  End If
+
+  Shell "timeout 2 ps ax | grep -v grep | grep bootguiconky" Wait To ux2ScrtiptStatus
+  ux2ScrtiptStatus = Trim(ux1ScrtiptStatus)
+  Shell "timeout 2 ps -A -o %cpu,%mem,cmd|grep bootguiconky| awk '{ print $1,$2 }'|head -n 1" Wait To cpuRAMStatus
+
+  If ux2ScrtiptStatus Then
+    PictureBox5.Picture = Picture["images/kodachi16.png"]
+    PictureBox5.Tooltip = "bootguiconky running CPU/RAM: " & Trim(cpuRAMStatus)
+
+  Else
+    PictureBox5.Picture = Picture["images/kodachi16yellow.png"]
+    PictureBox5.Tooltip = "bootguiconky Stopped"
+  End If
+
+  Shell "timeout 2 ps ax | grep -v grep | grep setsudo" Wait To sudoScrtiptStatus
+  sudoScrtiptStatus = Trim(sudoScrtiptStatus)
+  Shell "timeout 2 ps -A -o %cpu,%mem,cmd|grep setsudo| awk '{ print $1,$2 }'|head -n 1" Wait To cpuRAMStatus
+
+  If sudoScrtiptStatus Then
+    PictureBox6.Picture = Picture["images/kodachi16.png"]
+    PictureBox6.Tooltip = "setsudo running CPU/RAM: " & Trim(cpuRAMStatus)
+
+  Else
+    PictureBox6.Picture = Picture["images/kodachi16yellow.png"]
+    PictureBox6.Tooltip = "setsudo Stopped"
+  End If
+
+  Shell "timeout 2 ps ax | grep -v grep | grep reschangecheck" Wait To resScrtiptStatus
+  resScrtiptStatus = Trim(resScrtiptStatus)
+  Shell "timeout 2 ps -A -o %cpu,%mem,cmd|grep reschangecheck| awk '{ print $1,$2 }'|head -n 1" Wait To cpuRAMStatus
+
+  If resScrtiptStatus Then
+    PictureBox7.Picture = Picture["images/kodachi16.png"]
+    PictureBox7.Tooltip = "reschangecheck running CPU/RAM: " & Trim(cpuRAMStatus)
+
+  Else
+    PictureBox7.Picture = Picture["images/kodachi16yellow.png"]
+    PictureBox7.Tooltip = "reschangecheck Stopped"
+  End If
+
+  Shell "timeout 2 ps ax | grep -v grep | grep .conkyrc0" Wait To conky0Status
+  conky0Status = Trim(conky0Status)
+  Shell "timeout 2 ps -A -o %cpu,%mem,cmd|grep .conkyrc0| awk '{ print $1,$2 }'|head -n 1" Wait To cpuRAMStatus
+
+  If conky0Status Then
+    PictureBox8.Picture = Picture["images/kodachi16.png"]
+    PictureBox8.Tooltip = ".conkyrc0 running CPU/RAM: " & Trim(cpuRAMStatus)
+
+  Else
+    PictureBox8.Picture = Picture["images/kodachi16yellow.png"]
+    PictureBox8.Tooltip = ".conkyrc0 Stopped"
+  End If
+
+  Shell "timeout 2 ps ax | grep -v grep | grep .conkyrc1" Wait To conky1Status
+  conky1Status = Trim(conky1Status)
+  Shell "timeout 2 ps -A -o %cpu,%mem,cmd|grep .conkyrc1| awk '{ print $1,$2 }'|head -n 1" Wait To cpuRAMStatus
+
+  If conky1Status Then
+    PictureBox10.Picture = Picture["images/kodachi16.png"]
+    PictureBox10.Tooltip = ".conkyrc1 running CPU/RAM: " & Trim(cpuRAMStatus)
+
+  Else
+    PictureBox10.Picture = Picture["images/kodachi16yellow.png"]
+    PictureBox10.Tooltip = ".conkyrc1 Stopped"
+  End If
+
+  Shell "timeout 2 ps ax | grep -v grep | grep .conkyrc2" Wait To conky2Status
+  conky2Status = Trim(conky2Status)
+  Shell "timeout 2 ps -A -o %cpu,%mem,cmd|grep .conkyrc2| awk '{ print $1,$2 }'|head -n 1" Wait To cpuRAMStatus
+
+  If conky2Status Then
+    PictureBox11.Picture = Picture["images/kodachi16.png"]
+    PictureBox11.Tooltip = ".conkyrc2 running CPU/RAM: " & Trim(cpuRAMStatus)
+
+  Else
+    PictureBox11.Picture = Picture["images/kodachi16yellow.png"]
+    PictureBox11.Tooltip = ".conkyrc2 Stopped"
+  End If
+
+  Shell "timeout 2 ps ax | grep -v grep | grep .conkyrc3" Wait To conky3Status
+  conky3Status = Trim(conky3Status)
+  Shell "timeout 2 ps -A -o %cpu,%mem,cmd|grep .conkyrc3| awk '{ print $1,$2 }'|head -n 1" Wait To cpuRAMStatus
+
+  If conky3Status Then
+    PictureBox12.Picture = Picture["images/kodachi16.png"]
+    PictureBox12.Tooltip = ".conkyrc3 running CPU/RAM: " & Trim(cpuRAMStatus)
+
+  Else
+    PictureBox12.Picture = Picture["images/kodachi16yellow.png"]
+    PictureBox12.Tooltip = ".conkyrc3 Stopped"
+  End If
+
+  ' Check internet status and update UI elements
+  If globalVars.getInternetStatus() == "Online" Then
+    PictureBox9.Picture = Picture["images/kodachi16.png"]
+    PictureBox9.Tooltip = "Internet online"
+    'Exec ["ping", "-c 1" "-W 10", default_host] Wait To result
+    'Shell "timeout 5 ping -c 1 -w 4 " & default_host Wait To result
+    ' Print result
+    ' If InStr(result, "bytes") > 0 Then
+    ' PictureBox1.Picture = Picture["images/kodachi16.png"]
+    'PictureBox1.Tooltip = "Reachable"
+    'Else
+    ' PictureBox1.Picture = Picture["images/kodachi16yellow.png"]
+    ' PictureBox1.Tooltip = "Unreachable"
+    'Endif
+
+    ' Check the reachability of digi77.com
+    Shell "bash " & globalVars.sFolder & "/gambasexec digi77Status" Wait To result
+    result = Trim(result)
+    If Val(result) == 1 Then
+      PictureBox1.Picture = Picture["images/kodachi16.png"]
+      PictureBox1.Tooltip = "digi77.com reachable"
+    Else
+      PictureBox1.Picture = Picture["images/kodachi16yellow.png"]
+      PictureBox1.Tooltip = "digi77.com unreachable"
+    Endif
+
+  Else
+    PictureBox9.Picture = Picture["images/kodachi16yellow.png"]
+    PictureBox9.Tooltip = "Internet offline"
+  End If
+
+  ' Update frame text and start the timer
+  Frame1.text = "Scripts health information"
+  Timer1.start
+  Timer1.Enabled = True
+
+End
+
+' Function to handle timer 1 timer event
+Public Sub Timer1_Timer()
+
+  ' Show and start the spinner
+  Spinner1.Visible = True
+  Spinner1.start
+
+  ' Run the script status check
+  runTheCheck()
+
+  ' Stop the spinner and hide it
+  Spinner1.stop
+  Spinner1.Visible = False
+
+End
+
+' Function to handle frame 2 mouse down event
+Public Sub Frame2_MouseDown()
+
+  ' Set the position of the form
+  Me.Top = 218
+  Me.Left = 831
+
+End
+
+' Function to handle toggle button 1 click event
+Public Sub ToggleButton1_Click()
+
+  ' Check the script status and update the JSON file accordingly
+  If startingTime = False Then
+    If globalVars.scriptStatus == "Yes"
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json No systemupdating" Wait
+      ToggleButton1.Raise
+    Else
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json Yes systemupdating" Wait
+      ToggleButton1.Lower
+    End If
+  End If
+
+End
