@@ -1,8 +1,0 @@
-[Plymouth Theme]
-Name=Enriki theme
-Description=Enriki theme
-ModuleName=script
-
-[script]
-ImageDir=/lib/plymouth/themes/Enriki-theme
-ScriptFile=/lib/plymouth/themes/Enriki-theme/mdv.script
