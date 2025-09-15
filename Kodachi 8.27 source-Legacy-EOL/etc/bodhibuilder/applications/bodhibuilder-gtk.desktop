@@ -1,0 +1,23 @@
+[Desktop Entry]
+Name=bodhibuilder
+Name[de]=bodhibuilder
+Name[es]=bodhibuilder
+Name[fi]=bodhibuilder
+Name[fr]=bodhibuilder
+Name[ko]=bodhibuilder
+Name[no]=bodhibuilder
+Name[pt_BR]=bodhibuilder
+Name[sl]=bodhibuilder
+Name[sv]=bodhibuilder
+Name[uk]=bodhibuilder
+Name[ro]=bodhibuilder
+Name[zh_TW]=bodhibuilder
+GenericName=bodhibuilder
+Comment=Backup your Ubuntu-based OS
+Comment[de]=Backup your Ubuntu-based OS
+Exec=su-to-root -X -c /usr/bin/bodhibuilder-gtk
+Icon=/usr/share/icons/bodhibuilder-gtk.png
+Terminal=false
+Type=Application
+Categories=GTK;System;
+StartupNotify=true
