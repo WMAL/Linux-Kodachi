@@ -1,0 +1,22 @@
+# Gambas Project File 3.0
+Title=Kodachi Dashboard
+Startup=FMain
+Version=0.0.220
+Component=gb.image
+Component=gb.gui
+Component=gb.form
+Component=gb.dbus
+Component=gb.debug
+Component=gb.desktop
+Component=gb.form.dialog
+Component=gb.settings
+Component=gb.term
+Component=gb.form.terminal
+Component=gb.gui.trayicon
+Component=gb.sdl2.audio
+Component=gb.util.web
+Component=gb.web
+TabSize=2
+Translate=1
+Language=en_US
+Packager=1

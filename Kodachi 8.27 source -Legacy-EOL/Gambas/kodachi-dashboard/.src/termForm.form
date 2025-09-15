@@ -1,0 +1,16 @@
+# Gambas Form File 3.0
+
+{ Form Form
+  MoveScaled(0,0,148,89)
+  Font = Font["9"]
+  Text = ("Kodachi Terminal view")
+  Icon = Picture["images/kodachi32.png"]
+  Arrangement = Arrange.Vertical
+  { !TerminalView1 TerminalView
+    MoveScaled(0,0,45,38)
+    #Public = True
+    Font = Font["9"]
+    AutoResize = False
+    Blink = True
+  }
+}

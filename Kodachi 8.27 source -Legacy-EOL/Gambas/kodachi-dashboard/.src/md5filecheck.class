@@ -1,0 +1,77 @@
+' Gambas class file
+
+' #Script written by Warith Al Maawali
+' #(c)2021 Founder Of Eagle Eye Digital Solutions
+' #Discord channel https: / / discord.gg / KEFErEx
+' #Twitter http: / / twitter.com / warith2020
+' #Linkedin http: / / www.linkedin.com / In / warith1977
+' #http: / / www.digi77.com
+' #http: / / www.om77.net
+' #Kodachi OS / Software / Code are strictly protected by LICENSE terms at / home / kodachi / LICENSE
+' #
+' #
+' # md5filecheck.class - Class to perform MD5 and SHA256 checksum operations
+' # This script provides functions to check and reset MD5 and SHA256 checksums for files.
+
+' Public variables to store original and new MD5 values
+Public originalmd5 As String
+Public newmd5 As String
+
+' Function to check the MD5 checksum of a file
+Public Sub checkfile(thepath As String) As String
+
+  Dim md5status As Boolean
+
+  ' Execute shell command to calculate MD5 checksum
+  Shell "sudo md5sum " & thepath & " |awk '{print $1}'|xargs" Wait To originalmd5
+  originalmd5 = Trim(originalmd5)
+
+  ' Compare original and new MD5 values
+  If (originalmd5 <> newmd5) Then
+
+    md5status = True
+    newmd5 = originalmd5
+  Else
+    md5status = False
+  End If
+
+  ' Return MD5 status
+  Return md5status
+
+End
+
+' Function to reset MD5 values
+Public Sub reset()
+
+  originalmd5 = ""
+  newmd5 = ""
+
+End
+
+' Function to check the MD5 checksum of a file and return the value
+Public Sub checkmd5(thepath As String) As String
+
+  Dim md5value As String
+
+  ' Execute shell command to calculate MD5 checksum
+  Shell "sudo md5sum " & thepath & " |awk '{print $1}'|xargs" Wait To md5value
+  md5value = Trim(md5value)
+
+  ' Return the MD5 value
+  Return md5value
+
+End
+
+' Function to check the SHA256 checksum of a file and return the value
+Public Sub checksha256(thepath As String) As String
+
+  Dim md5value As String
+
+  ' Execute shell command to calculate SHA256 checksum
+  Shell "sudo sha256sum " & thepath & " |awk '{print $1}'|xargs" Wait To md5value
+  md5value = Trim(md5value)
+
+  ' Return the SHA256 value
+  Return md5value
+
+End

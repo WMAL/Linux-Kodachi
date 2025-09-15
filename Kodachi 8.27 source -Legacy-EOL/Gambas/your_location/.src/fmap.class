@@ -1,0 +1,54 @@
+' Gambas class file
+
+Public Sub Form_Open()                                                          'Off we go..
+
+  Start                                                                         'Run the 'Start' routine
+
+End
+
+Public Sub Start(Optional cData As Collection)                                  'Start routine
+
+  Dim siCount, siRow As Short                                                                                         'Counters
+  'Dim sURL As String = "https://www.openstreetmap.org/#map=11/[LAT]/[LONG]"                                          ' Openstreetmap - VERY slow
+  'Dim sURL As String = "https://www.google.com/maps/@[LAT],[LONG],18.5z/data=!3m1!1e3"                               ' Google maps, needs qt5
+  Dim sURL As String = "https://www.bing.com/maps/?v=2&cp=[LAT]~[LONG]&lvl" '=11&sty=h&form=LMLTCC"                   ' Bing maps
+  Dim sHeaders As String[] = ["", "Country", "Country code", "Region code", "Region Name", "City", "ZIP/Post code",
+    "Latitude", "Longitude", "Time zone", "ISP name", "Organisation name", "As number/name", "IP address used"]       'String for 'Headers'
+
+  If Not cData Then                                                             'If no data has been sent to the routine then..
+    Web.GetFile("http://ip-api.com/csv/")                                       'Send the IP address to ip-api to get IP details as a file
+    cData = GetCSV()                                                            'Get the data as a Collection
+  End If
+
+  GridViewDetails.Clear                                                         'Clear the textbox
+
+  HSplit1.Layout = [30, 70]                                                     'Split the HSplit 40/60%
+  GridViewDetails.Columns.count = 2                                             'Give the GridView 2 columns
+
+  For siCount = 1 To sHeaders.Max                                               'For each of the headers (except the 1st)
+    If Not cData[Str(siCount)] Then Continue                                    'If theere is no data then skip it
+    GridViewDetails.Rows.Count += 1                                             'Add another row to the GridView
+    GridViewDetails[siRow, 0].Text = sHeaders[siCount]                          'Put the Header on the left side of the GridView
+    GridViewDetails[siRow, 0].Alignment = Align.Right                           'Right align the text
+    GridViewDetails[siRow, 1].Text = cData[Str(siCount)]                        'Put the data in the right side of the GridView
+    GridViewDetails[siRow, 1].Font.Bold = True                                  'Make the text 'Bold'
+    Inc siRow                                                                   'Increase row counter
+  Next
+
+  GridViewDetails.Columns.Width = -1                                            'Auto size the GridView column widths
+
+  sURL = Replace(sURL, "[LAT]", cData["7"])                                     'Replace the [LAT] in the URL string with the latitude
+  sURL = Replace(sURL, "[LONG]", cData["8"])                                    'Replace the [LONG] in the URL string with the longitude
+  'e.g. www.google.com = https://www.openstreetmap.org/#map=11/37.4192/-122.0574
+  WebViewMap.Url = sURL                                                         'Get the WebView to display the newly created URL
+
+End
+
+Public Sub GetCSV() As Collection                                               'To get the URL details as a .csv file
+
+  Dim hCSVFile As New CsvFile("/tmp/Your_location.csv")                         'Get the file created by the Web.GetFile command
+  Dim cData As Collection = hCSVFile.Read()                                     'Read the data as a Collection
+
+  Return cData                                                                  'Return the Collection
+
+End
