@@ -1,9 +1,0 @@
-[Desktop Entry]
-Name=iso_boot_script
-GenericName=
-Icon=display
-Exec=/etc/bodhibuilder/isofiles/iso_boot_script.sh &
-Terminal=false
-Type=Application
-Categories=Settings;HardwareSettings;AudioVideo;Audio;Video;
-StartupNotify=true
