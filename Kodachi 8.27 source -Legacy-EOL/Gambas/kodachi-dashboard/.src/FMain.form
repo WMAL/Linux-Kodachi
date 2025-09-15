@@ -1,0 +1,1825 @@
+# Gambas Form File 3.0
+
+{ Form Form
+  MoveScaled(0,0,192,126)
+  Font = Font["9"]
+  Icon = Picture["images/kodachi16.png"]
+  Arrangement = Arrange.Vertical
+  Centered = True
+  { Menu11 Menu
+    Text = ("Menu11")
+    Visible = False
+    { Menu48 Menu
+      Text = ("Show Dashboard")
+    }
+    { Menu1 Menu
+      Text = ("System monitor")
+    }
+    { Menu2 Menu
+      Text = ("VPN")
+      { Menu13 Menu
+        Text = ("Connect VPN")
+      }
+      { Menu14 Menu
+        Text = ("Disconnect VPN")
+      }
+    }
+    { Menu15 Menu
+      Text = ("TOR")
+      { Menu16 Menu
+        Text = ("Enable")
+      }
+      { Menu17 Menu
+        Text = ("Disable")
+      }
+      { Menu51 Menu
+        Text = ("Torify")
+      }
+    }
+    { Menu18 Menu
+      Text = ("DNS")
+      { Menu19 Menu
+        Text = ("DNScrypt")
+      }
+      { Menu20 Menu
+        Text = ("TORDNS")
+      }
+    }
+    { Menu23 Menu
+      Text = ("IP info source")
+      { Menu24 Menu
+        Text = ("Digi77")
+      }
+      { Menu25 Menu
+        Text = ("Other")
+      }
+    }
+    { Menu21 Menu
+      Text = ("Hacks")
+      { Menu22 Menu
+        Text = ("Block all traffic")
+      }
+      { Menu26 Menu
+        Text = ("Hide screen info")
+      }
+      { Menu27 Menu
+        Text = ("Disable network devices")
+      }
+      { Menu28 Menu
+        Text = ("Disable wifi")
+      }
+      { Menu29 Menu
+        Text = ("Disable bluetooth")
+      }
+      { Menu30 Menu
+        Text = ("Disable RF")
+      }
+      { Menu31 Menu
+        Text = ("Change all MAC")
+      }
+      { Menu32 Menu
+        Text = ("Clean RAM")
+      }
+      { Menu33 Menu
+        Text = ("Wipe RAM")
+      }
+      { Menu34 Menu
+        Text = ("Block USB")
+      }
+      { Menu35 Menu
+        Text = ("Wipe logs")
+      }
+      { Menu36 Menu
+        Text = ("Lock screen")
+      }
+      { Menu37 Menu
+        Text = ("Shutdown now!")
+      }
+      { Menu38 Menu
+        Text = ("Destroy system")
+      }
+      { Menu39 Menu
+        Text = ("Repair display")
+      }
+      { Menu40 Menu
+        Text = ("Repair network")
+      }
+    }
+    { Menu41 Menu
+      Text = ("Integrity")
+      { Menu42 Menu
+        Text = ("Verify Md5")
+      }
+      { Menu43 Menu
+        Text = ("Scan home Aide")
+      }
+    }
+    { Menu44 Menu
+      Text = ("About")
+      { Menu49 Menu
+        Text = ("Restore all settings to defaults")
+      }
+      { Menu50 Menu
+        Text = ("Kodachi health status")
+      }
+      { Menu45 Menu
+        Text = ("Visit Kodachi website")
+      }
+      { Menu46 Menu
+        Text = ("Visit kodachi support community")
+      }
+    }
+    { Menu47 Menu
+      Text = Shortcut(("Quit"), "Q")
+    }
+  }
+  { Menu10 Menu
+    Text = ("Menu10")
+    Visible = False
+    { Menu3 Menu
+      Text = ("Open directory")
+    }
+    { Menu4 Menu
+      Text = ("Edit profile")
+    }
+    { Menu6 Menu
+      Text = ("Check selected md5 value")
+    }
+    { Menu7 Menu
+      Text = ("Check selected sha256 value")
+    }
+    { Menu8 Menu
+      Text = ("Terminal on current selected item")
+    }
+    { Menu5 Menu
+      Text = ("Delete profile")
+    }
+    { Menu9 Menu
+      Text = ("Refresh file list")
+    }
+    { Menu12 Menu
+      Text = ("Update list from server")
+    }
+  }
+  { Expander1 Expander
+    MoveScaled(-1,-1,166,32)
+    Font = Font["9"]
+    Expand = True
+    Arrangement = Arrange.Fill
+    Border = False
+    { HBox12 HBox
+      MoveScaled(1,0,169,24)
+      Font = Font["9"]
+      { Frame7 Frame
+        MoveScaled(0,1,27,20)
+        Font = Font["9"]
+        Expand = True
+        AutoResize = True
+        Text = ("System information")
+        { Label17 Label
+          MoveScaled(1,3,9,6)
+          Font = Font["9"]
+          Expand = True
+          AutoResize = True
+          Text = ("Status:")
+        }
+        { Label18 Label
+          MoveScaled(13,3,12,6)
+          Font = Font["9"]
+          Expand = True
+          AutoResize = True
+          Text = ("Loading") & "..."
+        }
+      }
+      { Frame8 Frame
+        MoveScaled(27.1429,1,25.5714,20)
+        Font = Font["9"]
+        Expand = True
+        AutoResize = True
+        Text = ("System information")
+        { Label19 Label
+          MoveScaled(0.5714,3,9,6)
+          Font = Font["9"]
+          Expand = True
+          AutoResize = True
+          Text = ("Status:")
+        }
+        { Label20 Label
+          MoveScaled(15.2857,3,12,6)
+          Font = Font["9"]
+          Expand = True
+          AutoResize = True
+          Text = ("Loading") & "..."
+        }
+      }
+      { Frame4 Frame
+        MoveScaled(53,1,41.5714,20)
+        Font = Font["9"]
+        Expand = True
+        Text = ("IP information")
+        { Label12 Label
+          MoveScaled(14,3,36,5)
+          Font = Font["9"]
+          ToolTip = ("VPN connection details will be shown here after VPN connection is established")
+          Expand = True
+          AutoResize = True
+          Text = ("Loading") & "..."
+        }
+        { Label11 Label
+          MoveScaled(1,3,11,5)
+          Font = Font["9"]
+          Expand = True
+          AutoResize = True
+          Text = ("Status:")
+        }
+        { Spinner3 Spinner
+          MoveScaled(12,12,8,7)
+          Visible = False
+        }
+      }
+      { Frame5 Frame
+        MoveScaled(95,1,40.7143,20)
+        Font = Font["9"]
+        Expand = True
+        Text = ("Network information")
+        { Label13 Label
+          MoveScaled(1,3,9,6)
+          Font = Font["9"]
+          Expand = True
+          AutoResize = True
+          Text = ("Status:")
+        }
+        { Label14 Label
+          MoveScaled(17,3,12,6)
+          Font = Font["9"]
+          Expand = True
+          AutoResize = True
+          Text = ("Loading") & "..."
+        }
+      }
+      { Frame6 Frame
+        MoveScaled(136,1,30,20)
+        Font = Font["9"]
+        Expand = True
+        Text = ("Remote information")
+        { Label15 Label
+          MoveScaled(1,3,9,6)
+          Font = Font["9"]
+          Expand = True
+          AutoResize = True
+          Text = ("Status:")
+        }
+        { Label16 Label
+          MoveScaled(14,3,12,6)
+          Font = Font["9"]
+          Expand = True
+          AutoResize = True
+          Text = ("Loading") & "..."
+        }
+      }
+    }
+  }
+  { TabStrip1 ToolPanel
+    MoveScaled(2,30,168,75)
+    Font = Font["9"]
+    Arrangement = Arrange.Vertical
+    Count = 5
+    Index = 0
+    Text = ("VPN")
+    Picture = Picture["icon:/16/grid"]
+    { Frame9 Frame
+      MoveScaled(0,-2,168,36)
+      AutoResize = True
+      { HBox13 HBox
+        MoveScaled(0.7143,2,36,28)
+        Font = Font["9"]
+        Expand = True
+        { TreeView1 TreeView
+          MoveScaled(1,2,21,25)
+          Expand = True
+          Border = False
+        }
+      }
+      { Button8 Button
+        MoveScaled(37,2,15,4)
+        Font = Font["9"]
+        ToolTip = ("Connect to selected VPN provider")
+        Text = Shortcut(("Connect"), "C")
+      }
+      { Button9 Button
+        MoveScaled(37,7,15,4)
+        Font = Font["9"]
+        ToolTip = ("Disconnect/Disable VPN")
+        Text = Shortcut(("Disconnect"), "D")
+      }
+      { Button11 Button
+        MoveScaled(37,12,15,4)
+        Font = Font["9"]
+        ToolTip = ("Edit config of the selected provider")
+        Text = Shortcut(("Edit config file"), "E")
+      }
+      { Button13 Button
+        MoveScaled(37,17,15,4)
+        Font = Font["9"]
+        ToolTip = ("Update VPN profiles from server for selected provider")
+        Text = Shortcut(("Update profiles"), "U")
+      }
+      { Button12 Button
+        MoveScaled(37,22,15,4)
+        Font = Font["9"]
+        ToolTip = ("Speed test selected provider")
+        Text = Shortcut(("Speed test"), "S")
+      }
+      { Button10 Button
+        MoveScaled(37,27,15,4)
+        Font = Font["9"]
+        ToolTip = ("Open directory for selected provider")
+        Text = Shortcut(("Open directory"), "r")
+      }
+      { HBox14 HBox
+        MoveScaled(103.5714,1,62.8571,30)
+        Font = Font["9"]
+        { FileView1 FileView
+          MoveScaled(1,2,58,22)
+          Font = Font["9"]
+          Expand = True
+          Border = False
+          ShowHidden = True
+        }
+      }
+      { Frame10 Frame
+        MoveScaled(53,1,50,34)
+        Font = Font["9"]
+        Text = ("VPN kill switch VPN forced traffic")
+        { ToggleButton1 ToggleButton
+          MoveScaled(27.7143,10,4,4)
+          Font = Font["9"]
+          ToolTip = ("Enable sound alerts on the left 2 options")
+          Picture = Picture["icon:/16/volume"]
+        }
+        { TextBox2 TextBox
+          MoveScaled(4,4,25,4)
+          Font = Font["9"]
+          ToolTip = ("IP address that will be watched for changes")
+        }
+        { Button14 Button
+          MoveScaled(40,4,4,4)
+          Font = Font["9"]
+          ToolTip = ("Update your watched IP from internet")
+          Picture = Picture["icon:/16/download"]
+        }
+        { Button15 Button
+          MoveScaled(45,4,4,4)
+          Font = Font["9"]
+          ToolTip = ("Grab your watched IP from VPN profile")
+          Picture = Picture["icon:/16/user"]
+        }
+        { CheckBox1 CheckBox
+          MoveScaled(0.7143,9,24,3)
+          Font = Font["9"]
+          ToolTip = ("If enabled traffic will be blocked if VPN process drops")
+          Text = ("Block traffic on VPN down")
+        }
+        { CheckBox2 CheckBox
+          MoveScaled(0.7143,12,24,3)
+          Font = Font["9"]
+          ToolTip = ("Block traffic if the watched IP is changed")
+          Text = ("Block traffic on IP change")
+        }
+        { CheckBox3 CheckBox
+          MoveScaled(0.7143,15,32,3)
+          Font = Font["9"]
+          ToolTip = ("Block traffic if the watched IP is changed based on Iptables")
+          Text = ("Block traffic on IP change (Iptables)")
+        }
+        { CheckBox4 CheckBox
+          MoveScaled(0.7143,18,36,3)
+          Font = Font["9"]
+          ToolTip = ("Block traffic if the watched IP/port/protocol is changed based on Iptables")
+          Text = ("Block traffic on IP/port change (Iptables)")
+        }
+        { CheckBox5 CheckBox
+          MoveScaled(0.7143,21,32,3)
+          Font = Font["9"]
+          ToolTip = ("Block all TCP/UDP traffic now")
+          Text = ("Block all traffic now regardless VPN")
+        }
+        { Label21 Label
+          MoveScaled(1,4,3,4)
+          Font = Font["9"]
+          Text = ("IP:")
+        }
+        { PictureBox1 PictureBox
+          MoveScaled(24.7143,9,2.1429,3)
+          Visible = False
+          Font = Font["9"]
+          Picture = Picture.Load("icon:/16/flag")
+        }
+        { PictureBox2 PictureBox
+          MoveScaled(24.7143,12,2.1429,3)
+          Visible = False
+          Font = Font["9"]
+          Picture = Picture.Load("icon:/16/flag")
+        }
+        { PictureBox3 PictureBox
+          MoveScaled(32.7143,21,2.1429,3)
+          Visible = False
+          Font = Font["9"]
+          Picture = Picture.Load("icon:/16/flag")
+        }
+        { CheckBox8 CheckBox
+          MoveScaled(0.7143,24,35,3)
+          Font = Font["9"]
+          ToolTip = ("Automatically change my timezone based on the assigned ip address")
+          Text = ("Auto change my timezone based on IP")
+        }
+        { CheckBox23 CheckBox
+          MoveScaled(0.7143,30,39,3)
+          Font = Font["9"]
+          ToolTip = ("New spoofed MAC address will be generated each time you try to connect to a VPN server")
+          Text = ("Auto spoof my MAC on new VPN connection")
+        }
+        { CheckBox24 CheckBox
+          MoveScaled(0.7143,27,50,3)
+          Font = Font["9"]
+          ToolTip = ("Auto update Kodachi system time based on the new city of the timezone")
+          Text = ("Update the time based on the new location of timezone")
+        }
+        { ToggleButton11 ToggleButton
+          MoveScaled(35,4,4,4)
+          Font = Font["9"]
+          ToolTip = ("Auto update your watched IP from internet")
+          Picture = Picture["icon:/32/open-recent"]
+        }
+        { Button25 Button
+          MoveScaled(30,4,4,4)
+          Font = Font["9"]
+          ToolTip = ("Clear IP")
+          Picture = Picture["icon:/16/clear"]
+        }
+      }
+      { Button89 Button
+        MoveScaled(1,31,8,4)
+        Font = Font["9"]
+        ToolTip = ("Show me next Kodachi VPN ip for client and server side TOR")
+        Text = ("Next IP")
+      }
+      { Spinner2 Spinner
+        MoveScaled(42,31.4286,4,4)
+        Visible = False
+      }
+    }
+    { Expander2 Expander
+      MoveScaled(-3,35,168,17)
+      Font = Font["9"]
+      Expand = True
+      Arrangement = Arrange.Horizontal
+      { TextArea1 TextArea
+        MoveScaled(43,5,13,9)
+        Font = Font["9"]
+        Expand = True
+        ReadOnly = True
+        Border = False
+      }
+      { ToggleButton7 ToggleButton
+        MoveScaled(60,6,4,4)
+        Font = Font["9"]
+        ToolTip = ("Clear and stop updating the log text area")
+        Picture = Picture["icon:/16/make-all"]
+      }
+    }
+    Index = 1
+    Text = ("TOR")
+    Picture = Picture["icon:/16/grid"]
+    { Frame11 Frame
+      MoveScaled(0,-2,166,72.8571)
+      Expand = True
+      { TreeView2 TreeView
+        MoveScaled(0.2857,1,35,69)
+        Font = Font["9"]
+        Border = False
+      }
+      { Button19 Button
+        MoveScaled(36,4,16,4)
+        Font = Font["9"]
+        ToolTip = ("Start the TOR engine")
+        Text = Shortcut(("Start/Set Tor"), "S")
+      }
+      { Button20 Button
+        MoveScaled(53,4,15,4)
+        Font = Font["9"]
+        ToolTip = ("Stop/Disable TOR process")
+        Text = Shortcut(("Disable Tor"), "D")
+      }
+      { Button21 Button
+        MoveScaled(36,9,16,4)
+        Font = Font["9"]
+        ToolTip = ("Open a toriffied shell")
+        Text = Shortcut(("Torified shell"), "T")
+      }
+      { Button22 Button
+        MoveScaled(53,9,15,4)
+        Font = Font["9"]
+        ToolTip = ("Edit TOR obfuscation settings")
+        Text = Shortcut(("Tor obfuscation"), "o")
+      }
+      { Frame12 Frame
+        MoveScaled(36,19,32,20)
+        Font = Font["9"]
+        Text = ("Country filter")
+        { RadioButton6 RadioButton
+          MoveScaled(1,3,24,4)
+          Font = Font["9"]
+          ToolTip = ("Random Country - Exclude 5 eyes countries")
+          Text = ("Random exclude 5 eyes")
+        }
+        { RadioButton5 RadioButton
+          MoveScaled(1,7,24,4)
+          Font = Font["9"]
+          ToolTip = ("Random Country - Exclude 9 eyes countries ")
+          Text = ("Random exclude 9 eyes")
+        }
+        { RadioButton4 RadioButton
+          MoveScaled(1,11,24,4)
+          Font = Font["9"]
+          ToolTip = ("Random Country - Exclude14 eyes countries (recommended)")
+          Text = ("Random exclude 14 eyes ")
+        }
+        { RadioButton3 RadioButton
+          MoveScaled(1,14,27,5)
+          Font = Font["9"]
+          ToolTip = ("Any country is allowed")
+          Text = ("Random country world wide")
+          Value = True
+        }
+      }
+      { Frame13 Frame
+        MoveScaled(36,40,32,15)
+        Font = Font["9"]
+        Text = ("VPN restrictions")
+        { RadioButton1 RadioButton
+          MoveScaled(1,3,24,4)
+          Font = Font["9"]
+          ToolTip = ("TOR will only work if VPN is on - Loaded browser only")
+          Text = ("Start Tor with VPN only")
+          Value = True
+        }
+        { RadioButton2 RadioButton
+          MoveScaled(1,7,24,4)
+          Font = Font["9"]
+          ToolTip = ("TOR will will work even though VPN is off - Loaded browser only")
+          Text = ("Start Tor regardless VPN")
+        }
+        { CheckBox22 CheckBox
+          MoveScaled(1,11,24,3)
+          Font = Font["9"]
+          ToolTip = ("All traffic will be forced to go through TOR network ")
+          Text = ("Torify entire system")
+        }
+      }
+      { Frame14 Frame
+        MoveScaled(36,57,32,13)
+        Font = Font["9"]
+        Text = ("TOR kill switch")
+        { ToggleButton2 ToggleButton
+          MoveScaled(27,7,4,4)
+          Font = Font["9"]
+          ToolTip = ("Enable sound alerts on the left 2 options")
+          Picture = Picture["icon:/16/volume"]
+        }
+        { CheckBox6 CheckBox
+          MoveScaled(1,4,25,4)
+          Font = Font["9"]
+          ToolTip = ("Traffic will be blocked if TOR process is down")
+          Text = ("Block traffic if Tor is down")
+        }
+        { CheckBox7 CheckBox
+          MoveScaled(1,8,21,4)
+          Font = Font["9"]
+          ToolTip = ("Kill TOR process if VPN is down")
+          Text = ("Kill Tor if VPN is down")
+        }
+        { PictureBox4 PictureBox
+          MoveScaled(26,5,2.1429,3)
+          Visible = False
+          Font = Font["9"]
+          Picture = Picture.Load("icon:/16/flag")
+        }
+        { PictureBox5 PictureBox
+          MoveScaled(23,9,2.1429,3)
+          Visible = False
+          Font = Font["9"]
+          Picture = Picture.Load("icon:/16/flag")
+        }
+      }
+      { Expander3 Expander
+        MoveScaled(69,-1,97,71)
+        Font = Font["9"]
+        Expand = True
+        Arrangement = Arrange.Horizontal
+        { TextArea2 TextArea
+          MoveScaled(24,54,14,8)
+          Font = Font["9"]
+          Expand = True
+          ReadOnly = True
+          Border = False
+        }
+        { PictureBox7 PictureBox
+          MoveScaled(20,24,25,26)
+          Visible = False
+          ToolTip = ("The FVEY Map <br> Double click for more information from the web")
+          Expand = True
+          Picture = Picture.Load("images/Five-Eyes-Countries-Map.png")
+          Stretch = True
+        }
+        { ToggleButton6 ToggleButton
+          MoveScaled(35,53,4,4)
+          Font = Font["9"]
+          ToolTip = ("Clear and stop updating the log text area")
+          Picture = Picture["icon:/16/make-all"]
+        }
+      }
+      { ToggleButton4 ToggleButton
+        MoveScaled(53,14,15,4)
+        Font = Font["9"]
+        ToolTip = ("Show eyes countries FVEY")
+        Text = ("Eyes countries")
+      }
+      { Button72 Button
+        MoveScaled(36,14,16,4)
+        Font = Font["9"]
+        ToolTip = ("Renew TOR circuit new exit node")
+        Text = ("Renew Tor circuit")
+      }
+    }
+    Index = 2
+    Text = ("DNS/IP info")
+    Picture = Picture["icon:/16/grid"]
+    { HBox15 HBox
+      MoveScaled(1,1,167,68)
+      Expand = True
+      { Frame15 Frame
+        MoveScaled(-1,-3,86,70)
+        { TreeView3 TreeView
+          MoveScaled(0.2857,4,42,65)
+          Font = Font["9"]
+          Border = False
+        }
+        { Frame18 Frame
+          MoveScaled(43,4,42,25)
+          Font = Font["9"]
+          Text = ("Manual DNS changer")
+          { TextBox3 TextBox
+            MoveScaled(8,6,28,4)
+            Font = Font["9"]
+          }
+          { TextBox4 TextBox
+            MoveScaled(8,12,28,4)
+            Font = Font["9"]
+          }
+          { Button27 Button
+            MoveScaled(1,18,19,4)
+            Font = Font["9"]
+            ToolTip = ("Update the DNS file based on your own inputs")
+            Text = Shortcut(("Set DNS manually"), "S")
+          }
+          { Button26 Button
+            MoveScaled(21,18,19,4)
+            Font = Font["9"]
+            ToolTip = ("Edit the DNS file manually")
+            Text = Shortcut(("Manual edit DNS file"), "M")
+          }
+          { Label23 Label
+            MoveScaled(1,12,7,5)
+            Font = Font["9"]
+            Text = ("DNS #2:")
+          }
+          { Label22 Label
+            MoveScaled(1,6,7,4)
+            Font = Font["9"]
+            Text = ("DNS #1:")
+          }
+          { Button31 Button
+            MoveScaled(37,9,4,4)
+            Font = Font["9"]
+            ToolTip = ("Grab DNS servers from DNS file")
+            Picture = Picture["icon:/16/user"]
+          }
+        }
+        { Frame17 Frame
+          MoveScaled(43,31,42,17)
+          Font = Font["9"]
+          Text = ("DNS kill switch")
+          { CheckBox10 CheckBox
+            MoveScaled(1,4,26,5)
+            Font = Font["9"]
+            ToolTip = ("Block traffic if DNS file is changed")
+            Text = ("Block traffic on DNS change")
+          }
+          { CheckBox9 CheckBox
+            MoveScaled(1,10,27,4)
+            Font = Font["9"]
+            ToolTip = ("If your DNS fails system will switch to recovery DNS")
+            Text = ("DNS auto recovery")
+            Value = CheckBox.True
+          }
+          { ToggleButton3 ToggleButton
+            MoveScaled(31,5,4,4)
+            Font = Font["9"]
+            ToolTip = ("Enable sound alerts on the left option")
+            Picture = Picture["icon:/16/volume"]
+          }
+          { PictureBox6 PictureBox
+            MoveScaled(27,5,2.1429,3)
+            Visible = False
+            Font = Font["9"]
+            Picture = Picture.Load("icon:/16/flag")
+          }
+        }
+        { Label26 Label
+          MoveScaled(30,-1,18,5)
+          Font = Font["9"]
+          Foreground = Color.Gray
+          Text = ("DNS infomation")
+        }
+        { Frame23 Frame
+          MoveScaled(43,50,42,11)
+          Font = Font["9"]
+          Text = ("Other DNS settings")
+          { Button30 Button
+            MoveScaled(21,4,19,4)
+            Font = Font["9"]
+            ToolTip = ("This will validate current DNS server used by your system")
+            Text = Shortcut(("Validate current DNS"), "V")
+          }
+          { Button29 Button
+            MoveScaled(1.4286,4,19,4)
+            Font = Font["9"]
+            ToolTip = ("The test shows DNS leaks and your external IP. <br>If you use the same ASN for DNS and connection - you have no leak, otherwise here might be a problem.")
+            Text = Shortcut(("DNS leak test"), "D")
+          }
+        }
+      }
+      { Frame16 Frame
+        MoveScaled(86,-3,81,70)
+        { TreeView4 TreeView
+          MoveScaled(1,4,31,41)
+          Font = Font["9"]
+          Border = False
+        }
+        { TextArea3 TextArea
+          MoveScaled(33,4,47.1429,41)
+          Font = Font["9"]
+          ReadOnly = True
+          Border = False
+        }
+        { Label25 Label
+          MoveScaled(26,-1,18,5)
+          Font = Font["9"]
+          Foreground = Color.Gray
+          Text = ("IP retrieve information")
+        }
+        { Frame25 Frame
+          MoveScaled(1,46,79,23)
+          Font = Font["9"]
+          Text = ("IP source settings")
+          { RadioButton10 RadioButton
+            MoveScaled(1,7,33,6)
+            Font = Font["9"]
+            ToolTip = ("Retrieve IP information from digi77 only (centralized)")
+            Text = ("Retrieve IP from digi77 (centralized)")
+            Value = True
+          }
+          { RadioButton11 RadioButton
+            MoveScaled(1,13,38,3)
+            Font = Font["9"]
+            ToolTip = ("Retrieve IP information from below input (centralized)")
+            Text = ("Retrieve IP from below input (centralized)")
+          }
+          { Label24 Label
+            MoveScaled(1,16,7,8)
+            Font = Font["9"]
+            Foreground = Color.Gray
+            Text = ("URL:")
+          }
+          { TextBox5 TextBox
+            MoveScaled(5,18,31,4)
+            Font = Font["9"]
+            ToolTip = ("Enter a valid url name for plain ip retrieving")
+          }
+          { Button28 Button
+            MoveScaled(37,18,19,4)
+            Font = Font["9"]
+            ToolTip = ("Set domain manually for IP retrieve")
+            Text = Shortcut(("Set domain"), "i")
+          }
+          { Button32 Button
+            MoveScaled(57,18,19,4)
+            Font = Font["9"]
+            ToolTip = ("Get whois information for the selected domain")
+            Text = Shortcut(("Whois information "), "W")
+          }
+          { RadioButton8 RadioButton
+            MoveScaled(1,3,35,5)
+            Font = Font["9"]
+            ToolTip = ("Retrieve IP information from the above list randomly  (decentralized)")
+            Text = ("Retrieve IP randomly (decentralized)")
+          }
+          { ToggleButton5 ToggleButton
+            MoveScaled(74,3,4,4)
+            Font = Font["9"]
+            ToolTip = ("Hide whois text area")
+            Picture = Picture["icon:/16/make-all"]
+          }
+        }
+      }
+    }
+    Index = 3
+    Text = ("Panic room")
+    Picture = Picture["icon:/16/grid"]
+    { HBox1 HBox
+      MoveScaled(1,1,166,71)
+      Expand = True
+      { Frame3 Frame
+        MoveScaled(0,-2,167,71)
+        Expand = True
+        { Frame19 Frame
+          MoveScaled(1,2,27,68)
+          Font = Font["9"]
+          Text = ("General controls")
+          { Button1 Button
+            MoveScaled(1,3,24,4)
+            Font = Font["9"]
+            ToolTip = ("Monitor all types of system logs <br> View Kodachi source code")
+            Text = ("System source monitor")
+          }
+          { Button44 Button
+            MoveScaled(1,43,24,4)
+            Font = Font["9"]
+            ToolTip = ("MAC control tools change / restore")
+            Text = ("MAC control")
+          }
+          { Button65 Button
+            MoveScaled(1,38,24,4)
+            Font = Font["9"]
+            ToolTip = ("Clean or wipe your memory")
+            Text = ("Memory control")
+          }
+          { Button45 Button
+            MoveScaled(1,33,24,4)
+            Font = Font["9"]
+            ToolTip = ("USB security control tools")
+            Text = ("USB control")
+          }
+          { Button46 Button
+            MoveScaled(1,48,24,4)
+            Font = Font["9"]
+            ToolTip = ("Install any missing drivers")
+            Text = ("Install drivers")
+          }
+          { Button48 Button
+            MoveScaled(1,18,24,4)
+            Font = Font["9"]
+            ToolTip = ("Learn how to increase your security score")
+            Text = Shortcut(("Security evaluation"), "e")
+          }
+          { Button58 Button
+            MoveScaled(1,8,24,4)
+            Font = Font["9"]
+            ToolTip = ("Change your system passwords")
+            Text = ("Password manager")
+          }
+          { Button59 Button
+            MoveScaled(1,13,24,4)
+            Font = Font["9"]
+            ToolTip = ("Kodachi health status")
+            Text = ("Scripts control")
+          }
+          { Button60 Button
+            MoveScaled(1,28,24,4)
+            Font = Font["9"]
+            ToolTip = ("IP locator on map")
+            Text = ("IP locator")
+          }
+          { Button61 Button
+            MoveScaled(1,23,24,4)
+            Font = Font["9"]
+            ToolTip = ("Verify and cross check my IP with other providers")
+            Text = ("IP verification")
+          }
+          { Button62 Button
+            MoveScaled(13.5714,58,11.4286,4)
+            Font = Font["9"]
+            ToolTip = ("Block all UDP ports through iptable except DNS")
+            Text = ("Block UDP")
+          }
+          { Button66 Button
+            MoveScaled(1,63,24,4)
+            Font = Font["9"]
+            ToolTip = ("Disable and clear all firewall rules")
+            Text = ("Clear firewall rules")
+          }
+          { Button90 Button
+            MoveScaled(1,53,24,4)
+            Font = Font["9"]
+            ToolTip = ("Show firewall rules")
+            Text = ("Show firewall rules")
+          }
+          { Button34 Button
+            MoveScaled(1,58,11.4286,4)
+            Font = Font["9"]
+            ToolTip = ("Block all TCP/UDP traffic now")
+            Text = ("Block all")
+          }
+        }
+        { Frame1 Frame
+          MoveScaled(89,54,76,16)
+          Text = ("Integrity controls")
+          { Button38 Button
+            MoveScaled(1,4,12,4)
+            Font = Font["9"]
+            ToolTip = ("Check Kodachi folder for integrity of any file changes that you did not approve")
+            Text = ("Md5 check")
+          }
+          { Button39 Button
+            MoveScaled(14,4,13,4)
+            Font = Font["9"]
+            ToolTip = ("Verify the integrity check")
+            Text = Shortcut(("Verify Md5"), "i")
+          }
+          { Button40 Button
+            MoveScaled(52,4,23,4)
+            Font = Font["9"]
+            ToolTip = ("Check Kodachi home folder for integrity with Aide")
+            Text = ("Scan home with Aide")
+          }
+          { Button41 Button
+            MoveScaled(52,9,23,4)
+            Font = Font["9"]
+            ToolTip = ("Check entire system for integrity with Aide takes time!")
+            Text = Shortcut(("Scan system with Aide"), "a")
+          }
+          { Button42 Button
+            MoveScaled(28,4,23,4)
+            Font = Font["9"]
+            ToolTip = ("Reinitialize Aide Database for Kodachi home folder")
+            Text = ("Reinitialize Aide DB home")
+          }
+          { Button43 Button
+            MoveScaled(28,9,23,4)
+            Font = Font["9"]
+            ToolTip = ("Reinitialize Aide Database for entire system takes time!")
+            Text = ("Reinitialize Aide DB system")
+          }
+          { Button78 Button
+            MoveScaled(1,9,26,4)
+            Font = Font["9"]
+            ToolTip = ("This will performs an extensive health scan of the OS to support system hardening and compliance testing.")
+            Text = ("Lynis audit")
+          }
+        }
+        { Frame22 Frame
+          MoveScaled(29,2,70,17)
+          Font = Font["9"]
+          Text = ("SSL/TLS fingerprint verification")
+          { TextBox7 TextBox
+            MoveScaled(6,5,33,4)
+            Font = Font["9"]
+            ToolTip = ("URL goes here for ex: digi77.com")
+          }
+          { Button52 Button
+            MoveScaled(40,5,24,4)
+            Font = Font["9"]
+            ToolTip = ("Get to verify the given URL finger print")
+            Text = Shortcut(("Verify"), "V")
+          }
+          { Button55 Button
+            MoveScaled(65,4.7143,4,4)
+            Font = Font["9"]
+            ToolTip = ("Clear URL")
+            Picture = Picture["icon:/16/clear"]
+          }
+          { TextBox8 TextBox
+            MoveScaled(12,11,47,4)
+            Font = Font["9"]
+            ReadOnly = True
+          }
+          { Button53 Button
+            MoveScaled(60,11.2857,4,4)
+            Font = Font["9"]
+            ToolTip = ("Copy Fingerprint")
+            Picture = Picture["icon:/16/copy"]
+          }
+          { Button54 Button
+            MoveScaled(65,11.2857,4,4)
+            Font = Font["9"]
+            ToolTip = ("Clear Fingerprint")
+            Picture = Picture["icon:/16/clear"]
+          }
+          { Label3 Label
+            MoveScaled(2,5,14,4)
+            Font = Font["9"]
+            Text = ("URL:")
+          }
+          { Label4 Label
+            MoveScaled(2,11.2857,10,3)
+            Font = Font["9"]
+            Text = ("Fingerprint:")
+          }
+        }
+        { Frame2 Frame
+          MoveScaled(29,21,70,18)
+          Font = Font["9"]
+          Text = ("Host name control")
+          { TextBox6 TextBox
+            MoveScaled(1,6,33,4)
+            Font = Font["9"]
+            ToolTip = ("Any string for the host name")
+          }
+          { Button37 Button
+            MoveScaled(35,6,4,4)
+            Font = Font["9"]
+            ToolTip = ("Get current system host name")
+            Picture = Picture["icon:/16/download"]
+          }
+          { Button36 Button
+            MoveScaled(40,6,24,4)
+            Font = Font["9"]
+            ToolTip = ("Set the text as system host name")
+            Text = Shortcut(("Set host"), "h")
+          }
+          { Button56 Button
+            MoveScaled(65,6,4,4)
+            Font = Font["9"]
+            ToolTip = ("Clear host name")
+            Picture = Picture["icon:/16/clear"]
+          }
+          { Button7 Button
+            MoveScaled(1,12,24,4)
+            Font = Font["9"]
+            ToolTip = ("Set the system with a random host name")
+            Text = ("Set random host name")
+          }
+          { Button35 Button
+            MoveScaled(40,12,24,4)
+            Font = Font["9"]
+            ToolTip = ("Restore Kodachi host name")
+            Text = ("Revert default host name")
+          }
+          { Button57 Button
+            MoveScaled(65,12,4,4)
+            Font = Font["9"]
+            ToolTip = ("Copy host name")
+            Picture = Picture["icon:/16/copy"]
+          }
+          { Label1 Label
+            MoveScaled(1,2,17,4)
+            Font = Font["9"]
+            Text = ("Current host name:")
+          }
+        }
+        { Frame24 Frame
+          MoveScaled(29,40,70,12)
+          Font = Font["9"]
+          Text = ("Bitcoin balance checker")
+          { TextBox9 TextBox
+            MoveScaled(1,6,30,4)
+            Font = Font["9"]
+          }
+          { Button63 Button
+            MoveScaled(32,6,13,4)
+            Font = Font["9"]
+            ToolTip = ("Check the balance of the given Bitcoin address")
+            Text = Shortcut(("Check balance"), "b")
+          }
+          { TextBox10 TextBox
+            MoveScaled(46,6,18,4)
+            Font = Font["9"]
+            ReadOnly = True
+          }
+          { Button64 Button
+            MoveScaled(65,6,4,4)
+            Font = Font["9"]
+            ToolTip = ("Clear Bitcoin address")
+            Picture = Picture["icon:/16/clear"]
+          }
+          { Label6 Label
+            MoveScaled(1,3,11,3)
+            Font = Font["9"]
+            Text = ("Btc address:")
+          }
+          { Label7 Label
+            MoveScaled(46,3,11,2)
+            Font = Font["9"]
+            Text = ("Balance:")
+          }
+        }
+        { Frame20 Frame
+          MoveScaled(101,2,36,50)
+          Font = Font["9"]
+          Text = ("Settings")
+          { CheckBox11 CheckBox
+            MoveScaled(1,3,25,4)
+            Font = Font["9"]
+            ToolTip = ("Hide or show desktop information")
+            Text = ("Hide Desktop screen info")
+          }
+          { CheckBox12 CheckBox
+            MoveScaled(1,6,25,4)
+            Font = Font["9"]
+            ToolTip = ("Disable all network devices net will be lost")
+            Text = ("Disable network devices")
+          }
+          { CheckBox17 CheckBox
+            MoveScaled(1,9,14,4)
+            Font = Font["9"]
+            ToolTip = ("Disable all wifi devices")
+            Text = ("Disable wifi")
+          }
+          { CheckBox16 CheckBox
+            MoveScaled(1,12,25,4)
+            Font = Font["9"]
+            ToolTip = ("Disable all blutooth devices")
+            Text = ("Disable Bluetooth")
+          }
+          { CheckBox20 CheckBox
+            MoveScaled(1,15,28,4)
+            Font = Font["9"]
+            ToolTip = ("Block all RF devices like wifi and bluetooth")
+            Text = ("Disable RF devices (Wifi - BT)")
+          }
+          { CheckBox13 CheckBox
+            MoveScaled(1,18,14,4)
+            Font = Font["9"]
+            ToolTip = ("Enable system swap memory")
+            Text = ("Enable swap")
+          }
+          { CheckBox14 CheckBox
+            MoveScaled(1,24,25,4)
+            Font = Font["9"]
+            ToolTip = ("Enable IPv6 for the system")
+            Text = ("Enable IPv6")
+          }
+          { CheckBox15 CheckBox
+            MoveScaled(1,27,25,4)
+            Font = Font["9"]
+            ToolTip = ("System will login without asking you for username and passsword")
+            Text = ("Enable OS auto login")
+          }
+          { CheckBox18 CheckBox
+            MoveScaled(1,30,25,4)
+            Font = Font["9"]
+            ToolTip = ("Enable printer cups to print this will open local ports for you")
+            Text = ("Enable printer cups")
+          }
+          { CheckBox21 CheckBox
+            MoveScaled(1,33,26,4)
+            Font = Font["9"]
+            ToolTip = ("If your score is below 40 system will warn you")
+            Text = ("Warn if security score is < 40")
+          }
+          { CheckBox19 CheckBox
+            MoveScaled(1,36,34,4)
+            Font = Font["9"]
+            ToolTip = ("If screen resolution is changed adjust the fonts size accordingly")
+            Text = ("Enable auto desktop fonts adjustment")
+            Value = CheckBox.True
+          }
+          { !SpinBox2 SpinBox
+            MoveScaled(17,40,15,4.1429)
+            #Public = True
+            Font = Font["9"]
+            ToolTip = ("This will adjust Desktop conky font size based on your input")
+            MinValue = 2
+            MaxValue = 20
+            Value = 10
+          }
+          { ToggleButton13 ToggleButton
+            MoveScaled(31,33,4,4)
+            Font = Font["9"]
+            ToolTip = ("Enable sound alerts on the left option")
+            Picture = Picture["icon:/16/volume"]
+          }
+          { Label2 Label
+            MoveScaled(2,40,15,4)
+            Font = Font["9"]
+            Text = ("Desktop font size:")
+          }
+          { PictureBox11 PictureBox
+            MoveScaled(28,34,2.1429,3)
+            Visible = False
+            Font = Font["9"]
+            Picture = Picture.Load("icon:/16/flag")
+          }
+          { SpinBox1 SpinBox
+            MoveScaled(17,45,15,4.1429)
+            Font = Font["9"]
+            ToolTip = ("Update information board every specified ms 1000 = 1 second <br> The lower you set the higher resouces it will consume")
+            MinValue = 1000
+            MaxValue = 86400000
+            Step = 1000
+            Value = 5000
+          }
+          { Label8 Label
+            MoveScaled(2,45,15,4)
+            Font = Font["9"]
+            Text = ("Dashboard timer:")
+          }
+          { CheckBox25 CheckBox
+            MoveScaled(1,21,14,4)
+            Font = Font["9"]
+            ToolTip = ("Enable system logs (rsyslog)")
+            Text = ("Enable logs")
+          }
+          { CheckBox26 CheckBox
+            MoveScaled(16,21,19,4)
+            Font = Font["9"]
+            ToolTip = ("Enable terminal commands history")
+            Text = ("Enable cmd history")
+          }
+          { CheckBox27 CheckBox
+            MoveScaled(16,9,19,4)
+            Font = Font["9"]
+            ToolTip = ("Don't use my real hardware generated ID please generate a random fake id for Kodachi VPN")
+            Text = ("Random HWID")
+          }
+          { CheckBox37 CheckBox
+            MoveScaled(16,18,15,4)
+            Enabled = False
+            Font = Font["9"]
+            ToolTip = ("Encrypt all swap files")
+            Text = ("Encrypt swap")
+          }
+        }
+        { Frame21 Frame
+          MoveScaled(139,2,26,50)
+          Font = Font["9"]
+          Text = ("Panic control")
+          { Button67 Button
+            MoveScaled(1,8,11.4286,4)
+            Font = Font["9"]
+            ToolTip = ("Fast clean system memeory")
+            Text = ("Clean RAM")
+          }
+          { ToggleButton8 ToggleButton
+            MoveScaled(13,8,11.4286,4)
+            Font = Font["9"]
+            ToolTip = ("Wipe the system memory")
+            Text = ("Wipe RAM")
+          }
+          { ToggleButton12 ToggleButton
+            MoveScaled(1,13,11.4286,4)
+            Font = Font["9"]
+            ToolTip = ("Fast lock all USB devices (New once)")
+            Text = ("Block USB")
+          }
+          { Button6 Button
+            MoveScaled(13,13,11.4286,4)
+            Font = Font["9"]
+            ToolTip = ("Wipe all system logs")
+            Text = Shortcut(("Wipe logs"), "W")
+          }
+          { ToggleButton10 ToggleButton
+            MoveScaled(1,18,24,4)
+            Font = Font["9"]
+            ToolTip = ("Wipe free disk space")
+            Text = ("Wipe free disk space")
+          }
+          { Button47 Button
+            MoveScaled(1,23,24,4)
+            Font = Font["9"]
+            ToolTip = ("Scan system for Root kits or Trojans")
+            Text = ("Root kit hunter")
+          }
+          { Button5 Button
+            MoveScaled(1,28,11.4286,4)
+            Font = Font["9"]
+            ToolTip = ("Lock your system now <br> To unloack type your user password on screen and hit enter")
+            Text = ("Lock screen")
+          }
+          { Button68 Button
+            MoveScaled(13.5714,28,11.4286,4)
+            Font = Font["9"]
+            ToolTip = ("Shutdown the system now!")
+            Text = Shortcut(("Shutdown"), "S")
+          }
+          { Button49 Button
+            MoveScaled(1,33,24,4)
+            Font = Font["9"]
+            ToolTip = (" Wipe entire system!")
+            Text = Shortcut(("Destroy system"), "D")
+          }
+          { Button4 Button
+            MoveScaled(1,38,11.8571,4)
+            Font = Font["9"]
+            ToolTip = ("Fix any dispaly issues")
+            Text = ("Repair display")
+          }
+          { Button3 Button
+            MoveScaled(13.4286,38,11.5714,4)
+            Font = Font["9"]
+            ToolTip = ("Restart the XFCE panels")
+            Text = ("Repair XFCE")
+          }
+          { Button2 Button
+            MoveScaled(1,43,14,4)
+            Font = Font["9"]
+            ToolTip = ("If you lost internet try to repair it after checking your DNS")
+            Text = Shortcut(("Repair network"), "n")
+          }
+          { Button70 Button
+            MoveScaled(1,3,11.4286,4)
+            Font = Font["9"]
+            ToolTip = ("Generate new spoofed MAC address")
+            Text = Shortcut(("Spoof MAC"), "M")
+          }
+          { Button71 Button
+            MoveScaled(13,3,11.4286,4)
+            Font = Font["9"]
+            ToolTip = ("If you have network problems you can restore your original MAC address on all interfaces")
+            Text = Shortcut(("Restore MAC"), "R")
+          }
+          { Button79 Button
+            MoveScaled(15.7143,43,9.2857,4)
+            Font = Font["9"]
+            ToolTip = ("Scan your ssid via terminal")
+            Text = ("Wifi scan")
+          }
+        }
+        { Frame27 Frame
+          MoveScaled(29,54,59,16)
+          Font = Font["9"]
+          Text = ("Keystroke anonymizer (Kloak)")
+          { SpinBox3 SpinBox
+            MoveScaled(9,4,10,4.1429)
+            Font = Font["9"]
+            ToolTip = ("Determine which device file corresponds to the physical keyboard Vmware is 5")
+            MinValue = 1
+            Value = 5
+          }
+          { SpinBox4 SpinBox
+            MoveScaled(9,9,10,4.1429)
+            Font = Font["9"]
+            ToolTip = ("Maximum delay (milliseconds) of released events. Default 100")
+            MinValue = 100
+            MaxValue = 10000
+            Step = 100
+            Value = 100
+          }
+          { Label9 Label
+            MoveScaled(1,4,11,4)
+            Font = Font["9"]
+            Text = ("Event No:")
+          }
+          { Label10 Label
+            MoveScaled(1,8.2857,6,4)
+            Font = Font["9"]
+            Text = ("Delay:")
+          }
+          { Button73 Button
+            MoveScaled(20,4,17,4)
+            Font = Font["9"]
+            ToolTip = ("Test to see if the device event number is a keyboard input by typing on your keyboard")
+            Text = ("Test event")
+          }
+          { Button74 Button
+            MoveScaled(20,9,17,4)
+            Font = Font["9"]
+            ToolTip = ("Enable kloake to anonymize your keys typed on your keyboard")
+            Text = ("Enable kloak")
+          }
+          { Button75 Button
+            MoveScaled(38,9,19,4)
+            Enabled = False
+            Font = Font["9"]
+            ToolTip = ("Disable or stop the keystroke anonymizer")
+            Text = ("Disable kloak")
+          }
+          { Button76 Button
+            MoveScaled(38,4,19,4)
+            Font = Font["9"]
+            ToolTip = ("Verify the keystroke anonymizer is working")
+            Text = ("Verify")
+          }
+        }
+      }
+    }
+    Index = 4
+    Text = ("Settings")
+    Picture = Picture["icon:/16/grid"]
+    { Frame26 Frame
+      MoveScaled(1,1,166,71)
+      Font = Font["9"]
+      { PictureBox8 PictureBox
+        MoveScaled(103,26,57,21)
+        ToolTip = ("Double click to visit Kodachi website")
+        Picture = Picture.Load("images/Kodachi Logo_Dark RGB 72ppi for digital.png")
+        Stretch = True
+      }
+      { Frame28 Frame
+        MoveScaled(84,49,81,20)
+        Font = Font["9"]
+        Text = ("Updates")
+        { Button77 Button
+          MoveScaled(57,14,23,5)
+          Enabled = False
+          Font = Font["9"]
+          ToolTip = ("Allows you to update Kodachi the button will be enabled only if there is an update announcement <br><br> Getting fresh ISO is much better for your security and privacy !")
+          Text = ("Update Kodachi")
+          Picture = Picture["images/kodachi16red.png"]
+        }
+        { Label28 Label
+          MoveScaled(2,3,17,3)
+          Font = Font["9"]
+          Text = ("Latest ISO version:")
+        }
+        { Label29 Label
+          MoveScaled(18,3,38,3)
+          Font = Font["9"]
+          ToolTip = ("Double click to copy the hash information")
+          Text = ("Updating info..")
+        }
+        { Label30 Label
+          MoveScaled(2,7,25,3)
+          Font = Font["9"]
+          Text = ("Latest Dashboard version:")
+        }
+        { Label31 Label
+          MoveScaled(24,7,26,3)
+          Font = Font["9"]
+          ToolTip = ("Double click to visit Kodachi website")
+          Text = ("Updating info..")
+        }
+        { Label5 Label
+          MoveScaled(25,11,25,3)
+          Font = Font["9"]
+          ToolTip = ("Double click to visit Kodachi video guide")
+          Text = ("Updating info..")
+        }
+        { Label32 Label
+          MoveScaled(2,11,25,3)
+          Font = Font["9"]
+          Text = ("Latest Kodachi video guide:")
+        }
+        { Button87 Button
+          MoveScaled(57,8,23,5)
+          Font = Font["9"]
+          ToolTip = ("Verify the hash of Kodachi ISO file")
+          Text = ("Verify ISO")
+        }
+        { Button88 Button
+          MoveScaled(57,2,23,5)
+          Font = Font["9"]
+          ToolTip = ("Get the latest Kodachi ISO file")
+          Text = ("Download ISO")
+        }
+        { Label27 Label
+          MoveScaled(2,15,13,3)
+          Font = Font["9"]
+          Text = ("Achievements:")
+        }
+        { Label33 Label
+          MoveScaled(15,15,12,3)
+          Font = Font["9"]
+          ToolTip = ("Double click to visit")
+          Text = ("Linux Format |")
+        }
+        { Label34 Label
+          MoveScaled(27,15,4,3)
+          Font = Font["9"]
+          ToolTip = ("Double click to visit")
+          Text = ("APC|")
+        }
+        { Label35 Label
+          MoveScaled(32,15,5,3)
+          Font = Font["9"]
+          ToolTip = ("Double click to visit")
+          Text = ("TR 1|")
+        }
+        { Label36 Label
+          MoveScaled(37,15,5,3)
+          Font = Font["9"]
+          ToolTip = ("Double click to visit")
+          Text = ("TR 2 |")
+        }
+        { Label37 Label
+          MoveScaled(42,15,10,3)
+          Font = Font["9"]
+          ToolTip = ("Double click to visit")
+          Text = ("Linux Hunt")
+        }
+      }
+      { Frame29 Frame
+        MoveScaled(59,49,22,20)
+        Font = Font["9"]
+        Text = ("Links")
+        { Button81 Button
+          MoveScaled(2,14,18,4)
+          Font = Font["9"]
+          ToolTip = ("Visit Kodachi community for support")
+          Text = ("Kodachi community")
+        }
+        { Button16 Button
+          MoveScaled(2,9,18,4)
+          Font = Font["9"]
+          ToolTip = ("Support the project with Linux Kodachi kit")
+          Text = ("Kodachi kit")
+        }
+        { Button23 Button
+          MoveScaled(2,4,18,4)
+          Font = Font["9"]
+          ToolTip = ("Visit Kodachi page")
+          Text = ("Kodachi page")
+        }
+      }
+      { Frame30 Frame
+        MoveScaled(0,49,57,20)
+        Font = Font["9"]
+        Text = ("Donations keeps this project alive!")
+        { PictureBox9 PictureBox
+          MoveScaled(2,3,12,12)
+          Font = Font["9"]
+          ToolTip = ("BTC Donations: 19pufEJUkQGPJYXCfA1b7GaKSUNeYEsApU <br>Your commitment will keep this project alive<br> Double click on the QR code to copy the address")
+          Picture = Picture.Load("images/qr.png")
+        }
+        { PictureBox12 PictureBox
+          MoveScaled(43,3,12,12)
+          Font = Font["9"]
+          ToolTip = ("XMR Donations: 44SFJtdWqp85xnRRA8vRs6PimuZXzq36ZHW8fYHFjCk98jpYxNWeJQ7DxwQmWxzeuPQWfp7uqpq9gMQxpdQq3C3dV1taKDE  <br>Your commitment will keep this project alive <br> Double click on the QR to copy the address")
+          Picture = Picture.Load("images/XMR.png")
+          Stretch = True
+        }
+        { PictureBox10 PictureBox
+          MoveScaled(24,3,12,12)
+          Font = Font["9"]
+          ToolTip = ("Paypal Donations<br>Your commitment will keep this project alive <br> Double click on the icon to open payment gateway")
+          Picture = Picture.Load("images/iconfinder_aami6-93_633705.png")
+          Stretch = True
+        }
+        { TextLabel1 TextLabel
+          MoveScaled(2,16,11,4)
+          Font = Font["9"]
+          Text = ("Bitcoin - BTC")
+        }
+        { TextLabel2 TextLabel
+          MoveScaled(26,16,7,4)
+          Font = Font["9"]
+          Text = ("Paypal")
+        }
+        { TextLabel3 TextLabel
+          MoveScaled(43,16,12,4)
+          Font = Font["9"]
+          Text = ("Monero - XMR")
+        }
+      }
+      { Frame31 Frame
+        MoveScaled(1,14,165,10)
+        Font = Font["9"]
+        Text = ("Backup/Export/Restore Settings")
+        { Button82 Button
+          MoveScaled(120,4,14.2857,5)
+          Font = Font["9"]
+          ToolTip = ("Restore all settings to what you have backed up earlier")
+          Text = ("Restore settings")
+        }
+        { Button69 Button
+          MoveScaled(105,4,14.2857,5)
+          Font = Font["9"]
+          ToolTip = ("Backup/Export all settings before you update so you can restore them later")
+          Text = ("Backup settings")
+        }
+        { TextBox11 TextBox
+          MoveScaled(24,4,42,5)
+          Font = Font["9"]
+        }
+        { TextLabel4 TextLabel
+          MoveScaled(2,5,21,4)
+          Font = Font["9"]
+          Text = ("Backup/Restore location:")
+        }
+        { Button83 Button
+          MoveScaled(72,4,4,5)
+          Font = Font["9"]
+          ToolTip = ("Clear the path")
+          Picture = Picture["icon:/16/clear"]
+        }
+        { Button84 Button
+          MoveScaled(67,4,4,5)
+          Font = Font["9"]
+          ToolTip = ("Copy the path ")
+          Picture = Picture["icon:/16/copy"]
+        }
+        { TextLabel5 TextLabel
+          MoveScaled(77,5,27,4)
+          Font = Font["9"]
+          Text = ("Last backup on: none")
+        }
+        { Button86 Button
+          MoveScaled(150,4,14.2857,5)
+          Font = Font["9"]
+          ToolTip = ("Restore all original Kodachi files from the website")
+          Text = ("Full restore ")
+        }
+        { Button33 Button
+          MoveScaled(135,4,14.2857,5)
+          Font = Font["9"]
+          ToolTip = ("Clear all settings to default")
+          Text = ("Clear settings")
+        }
+      }
+      { Frame32 Frame
+        MoveScaled(1,1,165,11)
+        Font = Font["9"]
+        Text = ("Predefined anonymous & security profiles")
+        { ComboBox1 ComboBox
+          MoveScaled(1,4,144,5)
+        }
+        { Button24 Button
+          MoveScaled(151,4,13,5)
+          ToolTip = ("Change settings to match selected profile")
+          Text = ("Activate")
+        }
+        { Button51 Button
+          MoveScaled(146,4,4,5)
+          Font = Font["9"]
+          ToolTip = ("Clear the box")
+          Picture = Picture["icon:/16/clear"]
+        }
+      }
+      { Frame33 Frame
+        MoveScaled(1,39,95,9)
+        Font = Font["9"]
+        Text = ("Process Killer")
+        { Button17 Button
+          MoveScaled(76,3,18,5)
+          ToolTip = ("This will kill any process by given name")
+          Text = ("Kill the process")
+        }
+        { Button18 Button
+          MoveScaled(71,3,4,5)
+          Font = Font["9"]
+          ToolTip = ("Clear the name")
+          Picture = Picture["icon:/16/clear"]
+        }
+        { TextBox12 TextBox
+          MoveScaled(21,3,49,5)
+          Font = Font["9"]
+        }
+        { TextLabel6 TextLabel
+          MoveScaled(2,4,18,4)
+          Font = Font["9"]
+          Text = ("Process name to kill:")
+        }
+      }
+      { Frame34 Frame
+        MoveScaled(1,26,95,12)
+        Font = Font["9"]
+        Text = ("Periodic tasks")
+        { CheckBox28 CheckBox
+          MoveScaled(1,5,18,4)
+          ToolTip = ("Wipe the system memory")
+          Text = ("Wipe Ram")
+        }
+        { CheckBox29 CheckBox
+          MoveScaled(1,8,18,4)
+          ToolTip = ("Wipe free disk space")
+          Text = ("Wipe free space")
+        }
+        { CheckBox30 CheckBox
+          MoveScaled(1,2,18,4)
+          ToolTip = ("Wipe all system logs")
+          Text = ("Wipe logs")
+        }
+        { CheckBox31 CheckBox
+          MoveScaled(18,2,18,4)
+          ToolTip = ("Renew TOR circuit new exit node")
+          Text = ("Renew Tor circuit")
+        }
+        { CheckBox32 CheckBox
+          MoveScaled(18,5,18,4)
+          ToolTip = ("Generate new spoofed MAC address")
+          Text = ("Spoof new MAC")
+        }
+        { CheckBox33 CheckBox
+          MoveScaled(18,8,18,4)
+          ToolTip = ("Lock your system now <br> To unloack type your user password on screen and hit enter")
+          Text = ("Lock screen")
+        }
+        { CheckBox34 CheckBox
+          MoveScaled(36,2,18,4)
+          ToolTip = ("Shred all files in /home/user/Documents ")
+          Text = ("Shred documents")
+        }
+        { CheckBox35 CheckBox
+          MoveScaled(36,5,18,4)
+          ToolTip = ("Shred all files in /home/user/Downloads ")
+          Text = ("Shred downloads")
+        }
+        { CheckBox36 CheckBox
+          MoveScaled(36,8,18,4)
+          ToolTip = ("Shred all files in /home/user/Desktop ")
+          Text = ("Shred desktop")
+        }
+        { ToggleButton9 ToggleButton
+          MoveScaled(76,2,18,4)
+          ToolTip = ("Activate selected tasks periodically")
+          Text = ("Activate timer")
+        }
+        { Button50 Button
+          MoveScaled(76,7,18,4)
+          ToolTip = ("Execute selected tasks now")
+          Text = ("Execute now")
+        }
+        { Spinner1 Spinner
+          MoveScaled(62,7,6,4)
+          Visible = False
+        }
+        { SpinBox5 SpinBox
+          MoveScaled(59,2,15,4)
+          Font = Font["9"]
+          ToolTip = ("Delay in milliseconds")
+          MinValue = 1000
+          MaxValue = 86400000
+          Step = 1000
+          Value = 1800000
+        }
+      }
+      { ColorButton1 ColorButton
+        MoveScaled(152,30,6,5)
+        ToolTip = ("Change fonts color")
+      }
+    }
+    Index = 0
+  }
+  { TextBox1 TextBox
+    MoveScaled(1,118,44,6)
+    Font = Font["9"]
+    ReadOnly = True
+  }
+  { Timer1 #Timer
+    #MoveScaled(53,112)
+    Delay = 10000
+  }
+  { Timer2 #Timer
+    #MoveScaled(61,105)
+    Enabled = True
+    Delay = 3000
+  }
+  { Timer3 #Timer
+    #MoveScaled(69,109)
+    Delay = 3000
+  }
+  { Timer4 #Timer
+    #MoveScaled(77,109)
+    Delay = 3000
+  }
+  { Timer5 #Timer
+    #MoveScaled(86,109)
+    Delay = 5000
+  }
+  { Timer6 #Timer
+    #MoveScaled(94,109)
+    Delay = 3000
+  }
+  { Timer7 #Timer
+    #MoveScaled(102,109)
+    Delay = 3000
+  }
+  { Timer8 #Timer
+    #MoveScaled(110,109)
+    Delay = 5000
+  }
+  { Timer9 #Timer
+    #MoveScaled(118,106)
+    Enabled = True
+    Delay = 3000
+  }
+  { Timer10 #Timer
+    #MoveScaled(126,109)
+    Delay = 3000
+  }
+  { Timer11 #Timer
+    #MoveScaled(134,109)
+    Delay = 3000
+  }
+  { TrayIcon1 #TrayIcon
+    #MoveScaled(158,74)
+    PopupMenu = "Menu11"
+  }
+  { Timer12 #Timer
+    #MoveScaled(142,109)
+    Delay = 20000
+  }
+  { Timer13 #Timer
+    #MoveScaled(150,112)
+    Delay = 500
+  }
+  { Timer14 #Timer
+    #MoveScaled(159,109)
+    Delay = 500
+  }
+  { Timer15 #Timer
+    #MoveScaled(167,109)
+    Delay = 3600
+  }
+}

@@ -1,0 +1,264 @@
+' Gambas class file
+
+' #Script written by Warith Al Maawali
+' #(c)2021 Founder Of Eagle Eye Digital Solutions
+' #Discord channel https: / / discord.gg / KEFErEx
+' #Twitter http: / / twitter.com / warith2020
+' #Linkedin http: / / www.linkedin.com / In / warith1977
+' #http: / / www.digi77.com
+' #http: / / www.om77.net
+' #Kodachi OS / Software / Code are strictly protected by LICENSE terms at / home / kodachi / LICENSE
+' #
+' #
+' # engineX.class - Main engine class for Kodachi Dashboard
+' # This script collects and formats system information including:
+' # - Network/IP/VPN status
+' # - System resources (CPU, RAM, etc)
+' # - Hardware details
+' # - OS configuration
+' # - Security settings
+' # The data is displayed in the dashboard UI via labels and tooltips
+
+' Inherits from Task to enable multi-threading
+Inherits Task
+
+' Public variables to store label and tooltip text that will be displayed in UI
+Public theoutput As String
+Public label11 As String
+Public label12 As String
+Public label13 As String
+Public label14 As String
+Public label15 As String
+Public label16 As String
+Public label17 As String
+Public label18 As String
+Public label19 As String
+Public label20 As String
+Public tooltip1 As String
+Public tooltip2 As String
+Public tooltip3 As String
+
+' Main entry point that calls getData() and returns formatted output
+Public Sub Main() As Variant
+
+  ' Call getData to collect system information
+  getData
+
+  ' Return all labels and tooltips concatenated with ^/newline delimiters
+  Return label11 & Chr$(10) & "^" & Chr$(10) & label12 & Chr$(10) & "^" & Chr$(10) & label13 & Chr$(10) & "^" & Chr$(10) & label14 & Chr$(10) & "^" & Chr$(10) & label15 & Chr$(10) & "^" & Chr$(10) & label16 & Chr$(10) & "^" & Chr$(10) & label17 & Chr$(10) & "^" & Chr$(10) & label18 & Chr$(10) & "^" & Chr$(10) & label19 & Chr$(10) & "^" & Chr$(10) & label20 & Chr$(10) & "^" & Chr$(10) & tooltip1 & Chr$(10) & "^" & Chr$(10) & tooltip2 & Chr$(10) & "^" & Chr$(10) & tooltip3
+
+End
+
+' Main function that collects and formats all system data
+Public Sub getData()
+
+  ' HTML line break for tooltip formatting
+  Dim mrbreaker As String = "<br>"
+
+  ' Variables to store temporary text
+  Dim mytext As String
+  Dim mytextex As String
+  Dim mytextex2 As String
+
+  ' Variables to store JSON data from local and remote sources
+  Dim localJson As String
+  Dim remoteJson As String
+  Dim collJson As Collection
+  Dim collJsonRemote As Collection
+
+  ' Variables to store system information
+  Dim theMac As String ' MAC address
+  Dim theGateway As String ' Gateway IP
+  Dim pingSpeed As String ' Network latency
+  Dim cpuLoad As String ' CPU usage
+  Dim memLoad As String ' Memory usage
+  Dim threadsNo As String ' Number of threads
+  Dim osuptime As String ' System uptime
+  Dim allProcess As String ' Total processes
+  Dim screenRes As String ' Screen resolution
+  Dim theKernel As String ' Kernel version
+  Dim openPorts As String ' Open ports count
+  Dim dnsServer1 As String ' Primary DNS
+  Dim dnsServer2 As String ' Secondary DNS
+  Dim dnsProvider As String ' DNS provider name
+  Dim connectionsNo As String ' Active connections
+  Dim loggedUsers As String ' Logged in users
+  Dim totalWorkspace As String ' Total workspaces
+  Dim currentWorkspace As String ' Current workspace
+
+  ' System architecture and hardware info
+  Dim sArch As String ' System architecture
+  Dim sProc As String ' Processor details
+  Dim sLanguage As String ' System language
+  Dim sDesktop As String ' Desktop environment
+  Dim sSession As String ' Desktop session
+  Dim sTimezone As String ' System timezone
+  Dim sBrand As String ' PC brand
+  Dim sModel As String ' PC model
+  Dim pcName As String ' Hostname
+  Dim pcUser As String ' Username
+  Dim sCores As String ' CPU cores
+  Dim gCard1 As String ' Graphics card
+  Dim sWm As String ' Window manager
+  Dim sBash As String ' Shell type
+
+  ' Read local JSON configuration
+  Shell "timeout 2 cat " & globalVars.jsonFileName Wait To localJson
+  collJson = JSON.Decode(localJson, True)
+
+  ' Read remote JSON configuration
+  Shell "timeout 2 cat " & globalVars.jsonwebFileName Wait To remoteJson
+  collJsonRemote = Json.decode(remoteJson, True)
+
+  ' Get DNS server information
+  Shell "timeout 2 cat /etc/resolv.conf |grep nameserver|cut -d r -f 3| awk 'NR==1'|xargs" Wait To dnsServer1
+  dnsServer1 = Trim(dnsServer1)
+  Shell "timeout 2 cat /etc/resolv.conf |grep nameserver|cut -d r -f 3| awk 'NR==2'|xargs" Wait To dnsServer2
+  dnsServer2 = Trim(dnsServer2)
+  Shell "timeout 2 cat /etc/resolv.conf |grep DNSused|cut -d : -f 2" Wait To dnsProvider
+  dnsProvider = Trim(dnsProvider)
+
+  ' Format IP information labels
+  mytext = "ISP IP:" & Chr$(10) & "ISP country:" & Chr$(10) & "VPN IP:" & Chr$(10) & "VPN country:" & Chr$(10) & "TOR IP:" & Chr$(10) & "TOR country:" & Chr$(10) & "Torrify IP:" & Chr$(10) & "Torrify country:" & Chr$(10) & "DNS provider:" & Chr$(10) & "DNS servers:"
+  label11 = mytext
+
+  ' Fill IP information with values from JSON
+  mytext = collJson["OriginalISPIPAddress"] & Chr$(10) & collJson["OriginalISPCountry"] & Chr$(10) & collJson["VPNIP"] & Chr$(10) & collJson["VPNCountry"] & Chr$(10) & collJson["TORIP"] & Chr$(10) & collJson["TORCountry"] & Chr$(10) & collJson["TORRIFYIP"] & Chr$(10) & collJson["TORRIFYCountry"] & Chr$(10) & dnsProvider & Chr$(10) & dnsServer1 & " " & dnsServer2
+  Label12 = mytext
+
+  ' Get network interface information
+  Shell "bash " & globalVars.sFolder & "/gambasexec themac" Wait To theMac
+  theMac = Trim(theMac)
+  Shell "bash " & globalVars.sFolder & "/gambasexec thegateway" Wait To theGateway
+  theGateway = Trim(theGateway)
+  Shell "bash " & globalVars.sFolder & "/gambasexec pingspeed" Wait To pingSpeed
+  pingSpeed = Trim(pingSpeed)
+  Shell "sudo timeout 2 lsof -i -P -n | grep LISTEN|wc -l" Wait To openPorts
+  openPorts = Trim(openPorts)
+  Shell "timeout 2 netstat -ant | awk '{print $6}' | sort | uniq -c | sort -n|grep ESTABLISHED|awk '{print $1}'" Wait To connectionsNo
+  connectionsNo = Trim(connectionsNo)
+  If Not connectionsNo Then
+    connectionsNo = 0
+  Endif
+
+  ' Format network information labels
+  mytext = "Internet: " & Chr$(10) & "Ping speed: " & Chr$(10) & "Bandwidth: " & Chr$(10) & "Net interface: " & Chr$(10) & "MAC: " & Chr$(10) & "Gateway: " & Chr$(10) & "IP source: " & Chr$(10) & "IP domain:" & Chr$(10) & "Ports/Connections:" & Chr$(10) & "VPN status:"
+  Label13 = mytext
+
+  ' Fill network information with values
+  mytext = collJson["InternetStatus"] & Chr$(10) & pingSpeed & " ms" & Chr$(10) & collJson["kodachivpnbandwidth"] & " GB" & Chr$(10) & collJson["netintused"] & Chr$(10) & theMac & Chr$(10) & theGateway & Chr$(10) & collJson["Ipdomainsource"] & Chr$(10) & collJson["Ipdomainsshorturl"] & Chr$(10) & openPorts & " / " & connectionsNo & Chr$(10) & collJson["SecurityStatus"]
+  Label14 = mytext
+
+  ' Format remote information labels
+  mytext = UCase(Left(globalVars.osname, 1)) & Right(globalVars.osname, -1) & " status:" & Chr$(10) & "HWID status:" & Chr$(10) & "Server load:" & Chr$(10) & "BTC price:" & Chr$(10) & "XMR price:" & Chr$(10) & "BTC donations:" & Chr$(10) & globalVars.osname & " Verion:" & Chr$(10) & "Latest version:" & Chr$(10) & "Powered by:" & Chr$(10) & "Developed by:"
+  Label15 = mytext
+
+  ' Fill remote information with values from remote JSON
+  mytext = collJsonRemote["isactive"] & Chr$(10) & collJson["banstatus"] & Chr$(10) & collJsonRemote["cpuLoad"] & Chr$(10) & collJsonRemote["ServerFeed1"]["Cryptostatus"]["btcPrice"] & Chr$(10) & collJsonRemote["ServerFeed1"]["Cryptostatus"]["xmrPrice"] & Chr$(10) & collJsonRemote["ServerFeed1"]["Cryptostatus"]["walletBlance"] & Chr$(10) & globalVars.theVersion & Chr$(10) & collJsonRemote["version"] & Chr$(10) & collJsonRemote["powerby"] & Chr$(10) & collJsonRemote["developer"]
+  Label16 = mytext
+
+  ' Get system resource information
+  Shell "bash " & globalVars.sFolder & "/gambasexec cpu" Wait To cpuLoad
+  cpuLoad = Trim(cpuLoad)
+  Shell "bash " & globalVars.sFolder & "/gambasexec ram" Wait To memLoad
+  memLoad = Trim(memLoad)
+  Shell "bash " & globalVars.sFolder & "/gambasexec threads" Wait To threadsNo
+  threadsNo = Trim(threadsNo)
+  Shell "bash " & globalVars.sFolder & "/gambasexec osuptime" Wait To osuptime
+  osuptime = Trim(osuptime)
+  Shell "bash " & globalVars.sFolder & "/gambasexec totalprocess" Wait To allProcess
+  allProcess = Trim(allProcess)
+  Shell "bash " & globalVars.sFolder & "/gambasexec screen" Wait To screenRes
+  screenRes = Trim(screenRes)
+  Shell "timeout 2 uname -r |cut -d - -f 1" Wait To theKernel
+  theKernel = Trim(theKernel)
+  Shell "timeout 2 who | cut --delimiter=' ' -f 1 | sort -u | wc -l" Wait To loggedUsers
+  loggedUsers = Trim(loggedUsers)
+  Shell "timeout 2 wmctrl -d | wc -l" Wait To totalWorkspace
+  totalWorkspace = Trim(totalWorkspace)
+  Shell "bash " & globalVars.sFolder & "/gambasexec currentWorkspace" Wait To currentWorkspace
+  currentWorkspace = Trim(currentWorkspace)
+
+  ' Get system architecture and hardware details
+  sArch = collJsonRemote["product"] & " " & System.Architecture
+  Shell "timeout 2 cat /proc/cpuinfo | grep -i ghz | uniq | cut -f2 -d" & ":" Wait To sProc
+  sProc = Trim(sProc)
+  sLanguage = System.Language
+  sDesktop = Desktop.Type
+  Shell "timeout 2 env | grep DESKTOP_SESSION= | cut -d '=' -f 2" Wait To sSession
+  sSession = Trim(sSession)
+  Shell "timeout 2 timedatectl status | grep 'Time zone:' |awk '{print $3}'" Wait To sTimezone
+  sTimezone = Trim(sTimezone)
+
+  ' Format timezone if it contains a /
+  If InStr(sTimezone, "/") Then
+    Dim temSplit As String[]
+    temSplit = Split(sTimezone, "/", "")
+    Try sTimezone = Trim(temSplit[1])
+  End If
+
+  ' Get hardware manufacturer info
+  Shell "timeout 2 cat /sys/devices/virtual/dmi/id/sys_vendor" Wait To sBrand
+  sBrand = Trim(sBrand)
+  Shell "timeout 2 cat /sys/devices/virtual/dmi/id/product_name" Wait To sModel
+  sModel = Trim(sModel)
+
+  ' Get system identifiers
+  pcName = System.Host
+  pcUser = System.User.Name
+
+  ' Get CPU and graphics info
+  Shell "timeout 2 lscpu -p | egrep -v '^#' | wc -l" Wait To sCores
+  sCores = Trim(sCores)
+  Shell "timeout 2 lspci | grep -i vga" Wait To gCard1
+  gCard1 = Mid(gCard1, InStr(gCard1, ":", 5) + 2)
+  gCard1 = Trim(gCard1)
+
+  ' Get shell and window manager info
+  Shell "echo $SHELL" Wait To sBash
+  sBash = Trim(sBash)
+  Shell "timeout 2 wmctrl -m | grep Name | cut -d: -f2" Wait To sWm
+  sWm = Trim(sWm)
+
+  ' Format hardware information for tooltip1
+  mytextex = "PC brand: " & sBrand & mrbreaker & "PC model: " & sModel & mrbreaker & "Processor: " & sProc & mrbreaker & "Cores: " & sCores & mrbreaker & "Architecture: " & sArch & mrbreaker & "Language: " & sLanguage & mrbreaker & "Charset: " & Desktop.Charset & mrbreaker & "Desktop: " & sDesktop & mrbreaker & "WM: " & sWm & mrbreaker & "Shell: " & sBash & mrbreaker & "Session: " & sSession & mrbreaker & "Username: " & pcUser & mrbreaker & "Hostname: " & pcName & mrbreaker & "Workgroup: " & System.Domain & mrbreaker & "Graphic card: " & gCard1 & mrbreaker & "Screen resolution: " & screenRes & mrbreaker & "HWID: " & collJson["kodachihwid"]
+  tooltip1 = mytextex
+
+  ' Format system information labels
+  mytext = "CPU:" & Chr$(10) & "RAM:" & Chr$(10) & "Open files:" & Chr$(10) & "Threads:" & Chr$(10) & "Processes:" & Chr$(10) & "Uptime:" & Chr$(10) & "Work space:" & Chr$(10) & "Logged users:" & Chr$(10) & "Timezone:" & Chr$(10) & "Kernel:"
+  Label17 = mytext
+
+  ' Fill system information with values
+  mytext = cpuLoad & Chr$(10) & memLoad & Chr$(10) & collJson["openfiles"] & Chr$(10) & threadsNo & Chr$(10) & allProcess & Chr$(10) & osuptime & Chr$(10) & currentWorkspace & " / " & totalWorkspace & Chr$(10) & loggedUsers & Chr$(10) & sTimezone & Chr$(10) & theKernel
+  Label18 = mytext
+
+  ' Get RAM information
+  pcinfo.ramInfo()
+
+  ' Format system info 2 labels
+  mytext = "OS boot/live:" & Chr$(10) & "OS encrypt/nuke:" & Chr$(10) & "Swaps/encrypted:" & Chr$(10) & "USB gurad" & "/" & "kill:" & Chr$(10) & "Print cups" & "/" & "Ipv6:" & Chr$(10) & "Auto fonts/size:" & Chr$(10) & "Gufw firewall:" & Chr$(10) & "OS auto login:" & Chr$(10) & "OS script status:" & Chr$(10) & "Security score:"
+  Label19 = mytext
+
+  ' Fill system info 2 with values
+  mytext = collJson["boottype"] & " / " & collJson["livemode"] & Chr$(10) & collJson["hddencryptstatus"] & " / " & collJson["osnukestatus"] & Chr$(10) & collJson["totalswap"] & " / " & collJson["swapcryptstatus"] & Chr$(10) & collJson["usbguardstatus"] & " / " & collJson["usbkillstatus"] & Chr$(10) & collJson["printcapsstatus"] & " / " & collJson["ipv6status"] & Chr$(10) & collJson["Forcefonts"] & " / " & collJson["Screenfontsize"] & Chr$(10) & collJson["firewallstatus"] & Chr$(10) & collJson["autologinstatus"] & Chr$(10) & collJson["healthsactionstatus"] & Chr$(10) & collJson["securityscore"] & "/100"
+  Label20 = mytext
+
+  ' Format RAM information for tooltip2
+  mytext = "Total RAM: " & pcinfo.total & mrbreaker & "Used RAM: " & pcinfo.used & mrbreaker & "Free RAM: " & pcinfo.freee & mrbreaker & "Buffers: " & pcinfo.buffers & mrbreaker & "Cached: " & pcinfo.cached & mrbreaker & "Shared: " & pcinfo.shared & mrbreaker & "Swapt total: " & pcinfo.swaptotal & mrbreaker & "Used swap: " & pcinfo.usedonthistime
+
+  ' Get disk information
+  pcinfo._inits_DD
+  pcinfo.Dat_DD
+
+  mytextex2 = pcinfo.sVendor & mrbreaker & pcinfo.sModel & mrbreaker & pcinfo.sReal_Size & mrbreaker & pcinfo.sPart & mrbreaker & pcinfo.sSize & mrbreaker & pcinfo.sUtil & " / " & pcinfo.sPorc & mrbreaker & pcinfo.sFree & mrbreaker & pcinfo.sType
+
+  ' Combine RAM and disk info for tooltip2
+  tooltip2 = mytext & mrbreaker & "----------------------------------------------" & mrbreaker & mytextex2
+
+  ' Format VPN information for tooltip3 if VPN is active
+  If (collJson["VPNIP"] <> "-") Then
+    mytext = "VPN type: " & collJson["VPNtype"] & mrbreaker & "VPN profile: " & collJson["VPNprofile"] & mrbreaker & "VPN protocol: " & collJson["VPNprotocol"] & mrbreaker & "VPN port: " & collJson["VPNport"] & mrbreaker & "VPN status: " & collJson["SecurityStatus"]
+    tooltip3 = mytext
+  End If
+
+End

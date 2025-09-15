@@ -1,0 +1,191 @@
+# Gambas Form File 3.0
+
+{ Form Form
+  MoveScaled(0,0,172,92)
+  Font = Font["9"]
+  Text = ("System Monitor")
+  Icon = Picture["images/kodachi32.png"]
+  Arrangement = Arrange.Vertical
+  Centered = True
+  { Treeviewmenu Menu
+    Text = ("Menu6")
+    Visible = False
+    { Menu1 Menu
+      Text = ("Edit selected item")
+    }
+    { Menu2 Menu
+      Text = ("Open directory of selected item")
+    }
+    { Menu8 Menu
+      Text = ("Terminal on current selected item")
+    }
+    { Menu3 Menu
+      Text = ("Check selected md5 value")
+    }
+    { Menu4 Menu
+      Text = ("Check selected sha256 value")
+    }
+    { Menu5 Menu
+      Text = ("Hide list")
+    }
+  }
+  { Expander4 Expander
+    MoveScaled(2,-3,105,61)
+    Font = Font["9"]
+    Expand = True
+    Arrangement = Arrange.Horizontal
+    { TreeView1 TreeView
+      MoveScaled(0,0,43,21)
+      Font = Font["9"]
+      Editable = True
+      Border = False
+    }
+    { TextArea1 TextArea
+      MoveScaled(44,1,58,48)
+      Font = Font["Bold,9"]
+      NoTabFocus = True
+      Expand = True
+      ReadOnly = True
+    }
+    { TerminalView1 TerminalView
+      MoveScaled(47,0,67,58)
+      Visible = False
+      Background = Color.Black
+      Foreground = Color.White
+      NoTabFocus = True
+      Expand = True
+      Limit = 0
+      ReadOnly = True
+    }
+  }
+  { Frame1 Frame
+    MoveScaled(-2,72,139,17)
+    Font = Font["9"]
+    { SwitchButton1 SwitchButton
+      MoveScaled(2,9,7,3)
+      Font = Font["9"]
+      ToolTip = ("Enable auto update")
+    }
+    { SwitchButton2 SwitchButton
+      MoveScaled(2,13,7,3)
+      Font = Font["9"]
+      ToolTip = ("Enable auto scroll")
+    }
+    { RadioButton1 RadioButton
+      MoveScaled(42,8,21,4)
+      Font = Font["9"]
+      Text = ("Show end of file (tail)")
+      Value = True
+    }
+    { RadioButton2 RadioButton
+      MoveScaled(42,4,27,5)
+      Font = Font["9"]
+      Text = ("Show begining of the file (cat)")
+    }
+    { RadioButton3 RadioButton
+      MoveScaled(42,12,24,3)
+      Font = Font["9"]
+      Text = ("Show entire file")
+    }
+    { Button1 Button
+      MoveScaled(76,10,16,4)
+      Font = Font["9"]
+      ToolTip = ("Copy the test into clipboard")
+      Text = Shortcut(("Copy to Clipboard"), "C")
+    }
+    { Button2 Button
+      MoveScaled(94,10,22,4)
+      Font = Font["9"]
+      ToolTip = ("Clear the information")
+      Text = Shortcut(("Clear"), "l")
+    }
+    { Button3 Button
+      MoveScaled(76,5,16,4)
+      Font = Font["9"]
+      ToolTip = ("Find any keyword on the text area")
+      Text = Shortcut(("Find keyword"), "F")
+    }
+    { ToggleButton1 ToggleButton
+      MoveScaled(125,5,4,4)
+      Font = Font["9"]
+      ToolTip = ("Enable terminal view")
+      Picture = Picture["icon:/16/terminal"]
+      Value = True
+    }
+    { TextLabel2 TextLabel
+      MoveScaled(11,13,9,3)
+      Font = Font["9"]
+      Text = ("Auto Scroll")
+    }
+    { Label1 Label
+      MoveScaled(11,9,5,3)
+      Font = Font["9"]
+      Text = ("Watch")
+    }
+    { Label2 Label
+      MoveScaled(3,4,16,4)
+      Font = Font["9"]
+      Text = ("Number of lines:")
+    }
+    { TextBox2 TextBox
+      MoveScaled(94,5,22,4)
+      Font = Font["9"]
+    }
+    { SpinBox1 SpinBox
+      MoveScaled(21,4,13,4.1429)
+      Font = Font["9"]
+      ToolTip = ("How may lines to dispaly")
+      MinValue = 1
+      MaxValue = 50000
+      Value = 50
+    }
+    { SpinBox2 SpinBox
+      MoveScaled(21,9,13,4.1429)
+      Visible = False
+      Font = Font["9"]
+      ToolTip = ("Delay in milliseconds")
+      MinValue = 1000
+      MaxValue = 86400000
+      Step = 1000
+      Value = 5000
+    }
+    { ToggleButton2 ToggleButton
+      MoveScaled(120,5,4,4)
+      Font = Font["9"]
+      ToolTip = ("Hide or show list of items")
+      Picture = Picture["icon:/16/office"]
+    }
+    { Button6 Button
+      MoveScaled(120,10,4,4)
+      Font = Font["9"]
+      ToolTip = ("Open selected file on editor")
+      Picture = Picture["icon:/16/database"]
+    }
+    { Button7 Button
+      MoveScaled(125,10,4,4)
+      Font = Font["9"]
+      ToolTip = ("Browse selected file directory")
+      Picture = Picture["icon:/16/directory"]
+    }
+    { Button8 Button
+      MoveScaled(130,10,4,4)
+      Font = Font["9"]
+      ToolTip = ("Open selected file path on terminal")
+      Picture = Picture["icon:/16/lower"]
+    }
+    { ToggleButton3 ToggleButton
+      MoveScaled(130,5,4,4)
+      Font = Font["9"]
+      ToolTip = ("View Kodachi source code")
+      Picture = Picture["icon:/16/difference"]
+    }
+  }
+  { TextBox1 TextBox
+    MoveScaled(-5,89,59,5)
+    Font = Font["9"]
+    ReadOnly = True
+  }
+  { Timer1 #Timer
+    #MoveScaled(101,20)
+  }
+}

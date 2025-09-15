@@ -1,0 +1,28 @@
+# Gambas Form File 3.0
+
+{ Form Form
+  MoveScaled(0,0,171,77)
+  Background = Color.DarkGray
+  Text = ("Kodachi Locator")
+  Icon = Picture["Kodachi Icon_Original_16x16.png"]
+  Arrangement = Arrange.Vertical
+  Centered = True
+  Padding = 5
+  { HSplit1 HSplit
+    MoveScaled(0,4,58,26)
+    Font = Font["9"]
+    Expand = True
+    Border = False
+    { GridViewDetails GridView
+      MoveScaled(16,3,19,10)
+      Font = Font["9"]
+      Background = Color.DarkGray
+      Foreground = Color.Green
+      Expand = True
+    }
+    { WebViewMap WebView
+      MoveScaled(40,1,14,5)
+      Expand = True
+    }
+  }
+}

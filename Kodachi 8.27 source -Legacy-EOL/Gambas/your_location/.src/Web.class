@@ -1,0 +1,26 @@
+' Gambas class file
+
+'Needs gb.net.curl
+Export
+Create Static
+
+Public Sub GetFile({URL} As String) As String                                   'To 'Get' stuff from the web
+
+  Dim hClient As HttpClient                                                     'To create a HTTP Client
+  Dim sResult As String                                                         'To store the word's meaning
+  Dim sHeaders As String[] = ["0", "1", "2", "3", "4", "5", "6",
+    "7", "8", "9", "10", "11", "12", "13"]                                      'Creates a 'Header' for the CSV file
+
+  hClient = New HttpClient As "hClient"                                         'Create a HTTP Client
+  With hClient                                                                  'With the Client..
+    .URL = {URL}                                                                'Set up the URL
+    .Async = False                                                              'No Asynchronous transmission?
+    .TimeOut = 60                                                               'Don't hang around waiting for more than 60 seconds
+    .get                                                                        'Get the data
+  End With
+
+  If Lof(hClient) Then sResult = Read #hClient, Lof(hClient)                    'When all the data is downloaded store it in sResult
+  sResult = sHeaders.Join(",") & gb.NewLine & sResult                           'Add the Headers to the data
+  File.Save("/tmp/Your_location.csv", sResult)                                  'Store the results in the /tmp folder
+
+End

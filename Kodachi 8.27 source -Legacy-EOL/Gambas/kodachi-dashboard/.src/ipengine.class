@@ -1,0 +1,31 @@
+' Gambas class file
+
+' #Script written by Warith Al Maawali
+' #(c)2021 Founder Of Eagle Eye Digital Solutions
+' #Discord channel https: / / discord.gg / KEFErEx
+' #Twitter http: / / twitter.com / warith2020
+' #Linkedin http: / / www.linkedin.com / In / warith1977
+' #http: / / www.digi77.com
+' #http: / / www.om77.net
+' #Kodachi OS / Software / Code are strictly protected by LICENSE terms at / home / kodachi / LICENSE
+' #
+' #
+' # ipengine.class - Class to handle IP-related operations for Kodachi Dashboard
+' # This script retrieves the plain IP address using a shell command and returns it.
+
+' Inherits from Task to enable multi-threading
+Inherits Task
+
+' Main function to retrieve and return the plain IP address
+Public Sub Main() As Variant
+
+  Dim thePlainIP As String
+
+  ' Execute shell command to get the plain IP address
+  Shell "bash " & globalVars.sFolder & "/gambasexec getplainip" Wait To thePlainIP
+  thePlainIP = Trim(thePlainIP)
+
+  ' Return the trimmed IP address
+  Return Trim(thePlainIP)
+
+End

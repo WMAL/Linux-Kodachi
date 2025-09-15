@@ -1,0 +1,4963 @@
+' Gambas class file
+
+' #Script written by Warith Al Maawali
+' #(c)2021 Founder Of Eagle Eye Digital Solutions
+' #Discord channel https: / / discord.gg / KEFErEx
+' #Twitter http: / / twitter.com / warith2020
+' #Linkedin http: / / www.linkedin.com / In / warith1977
+' #http: / / www.digi77.com
+' #http: / / www.om77.net
+' #Kodachi OS / Software / Code are strictly protected by LICENSE terms at / home / kodachi / LICENSE
+' #
+' #
+' # FMain.class - Main form class for Kodachi Dashboard
+' # This script initializes the main form and sets up the engine and IP engine instances.
+' # It manages the selection keys for various list views and handles user interactions.
+
+' Public variable to store notification messages
+Public notifyMessage As String
+
+' Instance of EngineX class to handle system data
+Public myEngine As EngineX
+
+' Instance of Ipengine class to handle IP-related data
+Public ipEnginex As Ipengine
+
+' Variables to store selected keys for different list views
+Public listviewSelectedKey As Integer = 0
+Public listviewSelectedKeyTor As Integer = 0
+Public listviewSelectedKeyDNS As Integer = 0
+Public listviewSelectedKeyDomain As Integer = 0
+Public VPNprofile As String
+Public TorProfile As String
+Public torCountry As String
+Public dnsEntry As String
+Public folderpath As String
+Public spacerString As String = "echo " & Chr$(10)
+Public filepath As String
+Public terminalCommand As String
+Public profileScript As String
+Public vpnLog As String
+Public md5file As New Md5filecheck
+Public localJson As String
+Public collJson As Collection
+Public ipTowatch As String
+Public soundToggle As Boolean
+Public soundToggletor As Boolean
+Public soundToggledns As Boolean
+Public soundToggleScore As Boolean
+Public ipautoupdateToggle As Boolean
+Public currentnetIP As String
+Public currentnetIP2 As String
+Public torLog As String
+Public dnsFileHash As String
+Public screenFontSize As Integer = 10
+Public isupdating As Boolean
+Public digi77isonline As Boolean
+Public startingTime As Boolean
+
+' Subroutine to handle form opening event
+Public Sub Form_Open()
+
+  startingTime = True
+  ' Skip all run by insurance script on startup engine
+  Spinner3.Visible = True
+  Spinner3.start
+  ' Try to get global variables
+  Try globalVars.getGlobalVars()
+  Dim KodachiGambasstaus As String
+  ' Check if Kodachi-Dashboard.gambas is already running
+  Shell "timeout 2 ps ax | grep -v grep | grep Kodachi-Dashboard.gambas|wc -l" Wait To KodachiGambasstaus
+  KodachiGambasstaus = Trim(KodachiGambasstaus)
+  If Val(KodachiGambasstaus) > 1 Then
+    ' If more than one instance is running, bring the existing instance to the front and quit
+    Shell "bash " & User.Home & "/.kbase/gambasexec bringtofront"
+    Quit
+  End If
+
+  ' Disable certain checkboxes if the OS is live
+  If globalVars.isOsLive = "Yes" Then
+    CheckBox13.Enabled = False
+    CheckBox37.Enabled = False
+  Endif
+
+  ' Center the form and set its dimensions
+  Me.center
+  Me.Height = 790
+  Me.Width = 1170
+  Me.show
+
+  ' Setup combo data for TOR and DNS
+  Try setupComboDataTOR
+  Try setupComboDataDNS
+
+  ' Send JSON inputs
+  Shell "bash " & User.Home & "/.kbase/gambasexec sendjsoninputs"
+
+  ' Setup combo data and profiles
+  Try setupComboData
+  Try setupComboDataDomains
+  Try setComboDataProfiles
+
+  ' Enable timers
+  Timer13.Enabled = True
+  repeaterOps()
+  Timer1.Enabled = True
+
+  ' Stop and hide the spinner
+  Spinner3.stop
+  Spinner3.Visible = False
+
+End
+
+' Subroutine to set up combo data profiles
+Public Sub setComboDataProfiles()
+
+  ComboBox1.Clear
+
+  ' Add profile options to ComboBox1
+  ComboBox1.add(" 1) Level 1: Block traffic if VPN Drops + Kill TOR if VPN drops", 0)
+  ComboBox1.add(" 2) Level 2: Update Time & Timezone based on IP", 1)
+  ComboBox1.add(" 3) Level 3: Level1 + Level2", 2)
+  ComboBox1.add(" 4) Level 4: Level2 + Block traffic if IP changes", 3)
+  ComboBox1.add(" 5) Level 5: Level2 + Torrify entire system", 4)
+  ComboBox1.add(" 6) Level 6: Level5 + Block traffic if TOR is down", 5)
+  ComboBox1.add(" 7) Paranoid: Block all traffic + Disable Network + Disable RF + Disable Wifi + Dead DNS", 6)
+
+End
+
+' Subroutine to handle button click event
+Public Sub Button24_Click()
+
+  ' Check if a profile is selected
+  If ComboBox1.Index = -1 Then
+    TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "No profile selected"
+  Else If ComboBox1.Index = 0 Then ' Level 1
+
+    ' Enable checkboxes for Level 1 profile
+    If CheckBox1.Value = False Then
+      CheckBox1.Value = True
+      'blockonVPNDown
+    Endif
+    If CheckBox7.Value = False Then
+      CheckBox7.Value = True
+      'killToronVPNDown
+    Endif
+
+    TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & ComboBox1.Text & " activated"
+
+  Else If ComboBox1.Index = 1 Then ' Level 2
+    ' Enable checkboxes for Level 2 profile
+    If CheckBox24.Value = False Then
+      CheckBox24.Value = True
+      'TimezonePro
+    Endif
+
+    If CheckBox8.Value = False Then
+      CheckBox8.Value = True
+      ' timeChanger
+    Endif
+    TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & ComboBox1.Text & " activated"
+
+  Else If ComboBox1.Index = 2 Then ' Level 3
+    ' Enable checkboxes for Level 3 profile
+    If CheckBox1.Value = False Then
+      CheckBox1.Value = True
+      'blockonVPNDown
+    Endif
+    If CheckBox7.Value = False Then
+      CheckBox7.Value = True
+      'killToronVPNDown
+    Endif
+
+    If CheckBox24.Value = False Then
+      CheckBox24.Value = True
+      ' TimezonePro
+    Endif
+
+    If CheckBox8.Value = False Then
+      CheckBox8.Value = True
+      ' timeChanger
+    Endif
+
+    TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & ComboBox1.Text & " activated"
+
+  Else If ComboBox1.Index = 3 Then ' Level 4
+    ' Enable checkboxes for Level 4 profile
+    TextBox2.text = getPlainIP()
+    If CheckBox24.Value = False Then
+      CheckBox24.Value = True
+      'TimezonePro
+    Endif
+
+    If CheckBox8.Value = False Then
+      CheckBox8.Value = True
+      'timeChanger
+    Endif
+
+    If CheckBox2.Value = False Then
+      CheckBox2.Value = True
+
+      'blockIFIPChanged
+    Endif
+    TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & ComboBox1.Text & " activated"
+
+  Else If ComboBox1.Index = 4 Then ' Level 5
+    ' Enable checkboxes for Level 5 profile
+    TextBox2.text = getPlainIP()
+    If CheckBox24.Value = False Then
+      CheckBox24.Value = True
+      'TimezonePro
+    Endif
+
+    If CheckBox8.Value = False Then
+      CheckBox8.Value = True
+      'timeChanger
+    Endif
+
+    If CheckBox22.Value = False Then
+      CheckBox22.Value = True
+
+      'torrifiytheSystem
+    Endif
+    TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & ComboBox1.Text & " activated"
+
+  Else If ComboBox1.Index = 5 Then ' Level 6
+    ' Enable checkboxes for Level 6 profile
+    If CheckBox24.Value = False Then
+      CheckBox24.Value = True
+      'TimezonePro
+    Endif
+
+    If CheckBox8.Value = False Then
+      CheckBox8.Value = True
+      'timeChanger
+    Endif
+
+    If CheckBox22.Value = False Then
+      CheckBox22.Value = True
+
+      'torrifiytheSystem
+    Endif
+
+    If CheckBox6.Value = False Then
+      CheckBox6.Value = True
+
+      'blocktrafficonTordown
+    Endif
+
+    TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & ComboBox1.Text & " activated"
+
+  Else If ComboBox1.Index = 6 Then ' Level 7
+    ' Enable checkboxes for Level 7 profile
+    If CheckBox9.Value = True Then
+      CheckBox9.Value = False
+
+      'DNS
+    Endif
+    ' set 0 to DNS
+    TextBox3.Text = "0.0.0.0"
+    TextBox4.Text = "0.0.0.0"
+    setManualDNS
+
+    If CheckBox17.Value = False Then
+      CheckBox17.Value = True
+
+      'wifi
+    Endif
+
+    If CheckBox20.Value = False Then
+      CheckBox20.Value = True
+
+      'RF
+    Endif
+
+    If CheckBox5.Value = False Then
+      CheckBox5.Value = True
+
+      'blocktrafficall
+    Endif
+
+    If CheckBox12.Value = False Then
+      CheckBox12.Value = True
+
+      'bnetwork down
+    Endif
+
+    If CheckBox16.Value = False Then
+      CheckBox16.Value = True
+
+      'bluetooth
+    Endif
+
+    TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & ComboBox1.Text & " activated"
+  End If
+
+  ' Save the selected profile to settings
+  Settings["fmainsettingsabout/Combobox1"] = ComboBox1.text
+
+End
+
+' Subroutine to set up combo data for VPN profiles
+Public Sub setupComboData()
+
+  treeview1.Clear
+  ' Add VPN profile options to TreeView1
+  TreeView1.Add(0, " 1) " & globalVars.osname & " VPN (TOR client side)", Picture["images/security-high-icon.png"])
+  TreeView1.Add(1, " 2) " & globalVars.osname & " VPN (TOR server side)", Picture["images/security-high-icon.png"])
+  TreeView1.Add(2, " 3) Mullvad VPN", Picture["images/security-high-icon.png"])
+  TreeView1.Add(3, " 4) Hideme VPN", Picture["images/security-high-icon.png"])
+  TreeView1.Add(4, " 5) Nord VPN", Picture["images/security-high-icon.png"])
+  TreeView1.Add(5, " 6) Proton VPN", Picture["images/security-high-icon.png"])
+  TreeView1.Add(6, " 7) Riseup free public VPN", Picture["images/security-high-icon.png"])
+  TreeView1.Add(7, " 8) Gate free public VPN", Picture["images/security-high-icon.png"])
+  TreeView1.Add(8, " 9) Your own VPN config", Picture["images/security-high-icon.png"])
+
+End
+
+Public Sub setupComboDataTOR()
+
+  TreeView2.Clear
+  TreeView2.Add(0, " 1) Switzerland TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(1, " 2) Austria TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(2, " 3) Luxembourg TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(3, " 4) Romania TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(4, " 5) Seychelles TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(5, " 6) Poland TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(6, " 7) Czech Republic", Picture["images/security-high-icon.png"])
+  TreeView2.Add(7, " 8) S-Africa TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(8, " 9) S-Korea TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(9, " 10) Japan TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(10, " 11) Thailand TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(11, " 12) Brazil TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(12, " 13) Iceland TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(13, " 14) Russian TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(14, " 15) Ukraine TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(15, " 16) Moldava TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(16, " 17) Belize TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(17, " 18) Hungary TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(18, " 19) Bulgaria TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(19, " 20) Singapore TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(20, " 21) Finland TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(21, " 22) Turkey TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(22, " 23) Lithuania TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(23, " 24) Sweden TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(24, " 25) Italy TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(25, " 26) Spain TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(26, " 27) Belgium TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(27, " 28) Germany TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(28, " 29) Norway TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(29, " 30) Netherlands TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(30, " 31) France TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(31, " 32) Denmark TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(32, " 33) Australia TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(33, " 34) Canada TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(34, " 35) UK TOR", Picture["images/security-high-icon.png"])
+  TreeView2.Add(35, " 36) USA TOR", Picture["images/security-high-icon.png"])
+
+End
+
+Public Sub setupComboDataDNS()
+
+  TreeView3.Clear
+  TreeView3.Add(0, " 1) DNS-Crypt (Encrypted)", Picture["images/security-high-icon.png"])
+  TreeView3.Add(1, " 2) Tor DNS (Encrypted)", Picture["images/security-high-icon.png"])
+  TreeView3.Add(2, " 3) Mullvad DNS", Picture["images/security-high-icon.png"])
+  TreeView3.Add(3, " 4) Free DNS", Picture["images/security-high-icon.png"])
+  TreeView3.Add(4, " 5) Nord DNS", Picture["images/security-high-icon.png"])
+  TreeView3.Add(5, " 6) DNS watch", Picture["images/security-high-icon.png"])
+  TreeView3.Add(6, " 7) Level3 DNS", Picture["images/security-high-icon.png"])
+  TreeView3.Add(7, " 8) Verisign DNS", Picture["images/security-high-icon.png"])
+  TreeView3.Add(8, " 9) Comodo DNS", Picture["images/security-high-icon.png"])
+  TreeView3.Add(9, " 10) FDN DNS", Picture["images/security-high-icon.png"])
+  TreeView3.Add(10, " 11) Next DNS", Picture["images/security-high-icon.png"])
+  TreeView3.Add(11, " 12) Yandex DNS", Picture["images/security-high-icon.png"])
+  TreeView3.Add(12, " 13) Censurfridns DNS", Picture["images/security-high-icon.png"])
+  TreeView3.Add(13, " 14) Quad9 DNS", Picture["images/security-high-icon.png"])
+  TreeView3.Add(14, " 15) Quad9 Unsecured DNS", Picture["images/security-high-icon.png"])
+  TreeView3.Add(15, " 16) AdGuard DNS", Picture["images/security-high-icon.png"])
+  TreeView3.Add(16, " 17) Open Nic DNS", Picture["images/security-high-icon.png"])
+  TreeView3.Add(17, " 18) Cloudflare DNS", Picture["images/security-high-icon.png"])
+  TreeView3.Add(18, " 19) Neustar DNS", Picture["images/security-high-icon.png"])
+  TreeView3.Add(19, " 20) Cloudflare Maleware Filter DNS", Picture["images/security-high-icon.png"])
+  TreeView3.Add(20, " 21) Cloudflare Maleware Adult Filter DNS", Picture["images/security-high-icon.png"])
+  TreeView3.Add(21, " 22) Neustar Maleware Filter DNS", Picture["images/security-high-icon.png"])
+  TreeView3.Add(22, " 23) Neustar Maleware Adult Filter DNS", Picture["images/security-high-icon.png"])
+
+End
+
+Public Sub setupComboDataDomains()
+
+  Dim sTemp As String
+  Dim i As Integer
+
+  For Each sTemp In globalVars.ipDomanValiadtor
+    'Print sTemp
+    treeView4.Add(i, sTemp, Picture["images/security-high-icon.png"])
+    i = i + 1
+  Next
+
+End
+
+Public Sub getSavedData()
+
+  ' ' get settings vpn
+
+  If Not IsNull(Settings["fmainsettingsabout/colorbox"]) Then
+    ColorButton1.Color = Settings["fmainsettingsabout/colorbox"]
+    ColorButton1_Click
+
+  End If
+
+  If Not IsNull(Settings["fmainsettingsvpn/textbox2"]) Then
+    textbox2.text = Settings["fmainsettingsvpn/textbox2"]
+  Else
+    textbox2.text = ""
+  End If
+
+  If Not IsNull(Settings["fmainsettingsvpn/listviewitem"]) Then
+    treeview1[Settings["fmainsettingsvpn/listviewitem"]].Selected = True
+  Else
+    treeview1[0].Selected = True
+  End If
+
+  If Not IsNull(Settings["fmainsettingsvpn/togglevalue1"]) Then
+    toggleButton1.Value = Settings["fmainsettingsvpn/togglevalue1"]
+  Else
+    toggleButton1.Value = False
+  End If
+
+  If Not IsNull(Settings["fmainsettingsvpn/togglevalue7"]) Then
+    toggleButton7.Value = Settings["fmainsettingsvpn/togglevalue7"]
+  Else
+    toggleButton7.Value = False
+  End If
+
+  If Not IsNull(Settings["fmainsettingsvpn/togglevalue11"]) Then
+    toggleButton11.Value = Settings["fmainsettingsvpn/togglevalue11"]
+  Else
+    toggleButton11.Value = False
+  End If
+
+  If Not IsNull(Settings["fmainsettingsvpn/checkbox1"]) Then
+    CheckBox1.Value = Settings["fmainsettingsvpn/checkbox1"]
+  Else
+    CheckBox1.Value = False
+  End If
+
+  If Not IsNull(Settings["fmainsettingsvpn/checkbox8"]) Then
+    CheckBox8.Value = Settings["fmainsettingsvpn/checkbox8"]
+  Else
+    CheckBox8.Value = False
+  End If
+
+  If Not IsNull(Settings["fmainsettingsvpn/checkbox2"]) Then
+    CheckBox2.Value = Settings["fmainsettingsvpn/checkbox2"]
+  Else
+    CheckBox2.Value = False
+  End If
+
+  If Not IsNull(Settings["fmainsettingsvpn/checkbox4"]) Then
+    ' CheckBox4.Value = Settings["fmainsettingsvpn/checkbox4"]
+  Else
+    ' CheckBox4.Value = False
+  End If
+
+  If Not IsNull(Settings["fmainsettingsvpn/checkbox24"]) Then
+    CheckBox24.Value = Settings["fmainsettingsvpn/checkbox24"]
+  Else
+    CheckBox24.Value = False
+  End If
+
+  ' get saved data TOR
+
+  If Not IsNull(Settings["fmainsettingstor/listviewitemtor"]) Then
+
+    treeview2[Settings["fmainsettingstor/listviewitemtor"]].Selected = True
+    Wait 0.001
+    TreeView2.Scroll(Settings["fmainsettingstor/listviewitemtor"], 0)
+
+  Else
+    ' treeview2[0].Selected = True
+
+  End If
+
+  If Not IsNull(Settings["fmainsettingstor/togglevalue2"]) Then
+    toggleButton2.Value = Settings["fmainsettingstor/togglevalue2"]
+  Else
+    toggleButton2.Value = False
+  End If
+
+  If Not IsNull(Settings["fmainsettingstor/checkbox6"]) Then
+    CheckBox6.Value = Settings["fmainsettingstor/checkbox6"]
+  Else
+    CheckBox6.Value = False
+  End If
+
+  If Not IsNull(Settings["fmainsettingstor/checkbox7"]) Then
+    CheckBox7.Value = Settings["fmainsettingstor/checkbox7"]
+  Else
+    CheckBox7.Value = False
+  End If
+
+  If Not IsNull(Settings["fmainsettingstor/togglevalue6"]) Then
+    toggleButton6.Value = Settings["fmainsettingstor/togglevalue6"]
+  Else
+    toggleButton6.Value = False
+  End If
+
+  ' get saved data DNS
+  'Print Settings["fmainsettingstor/listviewitemddns"]
+  If Not IsNull(Settings["fmainsettingsdns/listviewitemddns"]) Then
+    treeview3[Settings["fmainsettingsdns/listviewitemddns"]].Selected = True
+    Wait 0.001
+    TreeView3.Scroll(Settings["fmainsettingsdns/listviewitemddns"], 0)
+
+  Else
+    'treeview3[0].Selected = True
+  End If
+
+  If Not IsNull(Settings["fmainsettingsdns/checkbox10"]) Then
+    CheckBox10.Value = Settings["fmainsettingsdns/checkbox10"]
+  Else
+    CheckBox10.Value = False
+  End If
+
+  If Not IsNull(Settings["fmainsettingsdns/togglevalue5"]) Then
+    toggleButton5.Value = Settings["fmainsettingsdns/togglevalue5"]
+  Else
+    toggleButton5.Value = False
+  End If
+
+  If Not IsNull(Settings["fmainsettingsdns/togglevalue3"]) Then
+    toggleButton3.Value = Settings["fmainsettingsdns/togglevalue3"]
+  Else
+    toggleButton3.Value = False
+  End If
+
+  If Not IsNull(Settings["fmainsettingsdns/textbox3"]) Then
+    textbox3.text = Settings["fmainsettingsdns/textbox3"]
+  Else
+    textbox3.text = ""
+  End If
+
+  If Not IsNull(Settings["fmainsettingsdns/textbox4"]) Then
+    textbox4.text = Settings["fmainsettingsdns/textbox4"]
+  Else
+    textbox4.text = ""
+  End If
+
+  If Not IsNull(Settings["fmainsettingsdns/textbox5"]) Then
+    textbox5.text = Settings["fmainsettingsdns/textbox5"]
+  Else
+    textbox5.text = ""
+    Try Treeview4[listviewSelectedKeyDomain].Selected = True
+  End If
+
+  ' get saved data controls
+
+  ' Network disable settings
+  Dim loopBack As String
+  Shell "timeout 2 ifconfig |grep lo:" Wait To loopBack
+  loopBack = Trim(loopBack)
+
+  If IsNull(loopBack) = True Then
+    CheckBox12.Value = True
+  Else
+    CheckBox12.Value = False
+  End If
+
+  ' Wifi settings
+  Dim wifistatus As String
+  Shell "timeout 2 nmcli radio wifi" Wait To wifistatus 'sending wifi status to the wifistat variable for later use
+
+  If wifistatus = "enabled\n" Then
+    CheckBox17.value = False
+  Else
+    CheckBox17.value = True
+  End If
+
+  'Bluetooth settings
+
+  Dim bluetoothstatus As String
+  Shell "timeout 2 systemctl is-enabled bluetooth" Wait To bluetoothstatus 'sending bluetooth status to the bluetoothstatus variable for later use
+
+  If bluetoothstatus = "enabled\n" Then
+    CheckBox16.value = False
+  Else
+    CheckBox16.value = True
+  End If
+
+  ' RF settings
+
+  Dim rfkillStatus As String
+
+  Shell "sudo timeout 2 rfkill list all|grep Soft |cut -d':' -f2" Wait To rfkillStatus
+  rfkillStatus = Trim(rfkillStatus)
+
+  If rfkillStatus = "no" Then
+    CheckBox20.value = False
+  End If
+  If rfkillStatus = Null Then
+    CheckBox20.value = False
+  End If
+  If rfkillStatus = "yes" Then
+    CheckBox20.value = True
+  End If
+
+  ' settings from json
+  Dim syslogStatus As String
+  Shell "sudo timeout 2 service rsyslog status|grep dead" Wait To syslogStatus
+  syslogStatus = Trim(syslogStatus)
+  If syslogStatus Then
+    CheckBox25.Value = False
+  Else
+    CheckBox25.Value = True
+  End If
+
+  Dim comhistStatus2 As String
+  Shell "timeout 2 cat ~/.bashrc |grep '#HISTSIZE=0'" Wait To comhistStatus2
+  If comhistStatus2 Then
+    CheckBox26.Value = True
+  Else
+    CheckBox26.Value = False
+  End If
+
+  Dim austosppfmac2 As String = Trim(globalVars.autoSpoofMac)
+  If austosppfmac2 = "Yes" Then
+    CheckBox23.Value = True
+  Else
+    CheckBox23.Value = False
+  Endif
+
+  Dim ipV67 As String = Trim(globalVars.ipV6)
+  If ipV67 == "Yes" Then
+    CheckBox14.Value = True
+  Else
+    CheckBox14.Value = False
+  Endif
+
+  Dim fakeidr As String = Trim(globalVars.gfakeidr)
+  If fakeidr == "Yes" Then
+    CheckBox27.Value = True
+  Else
+    CheckBox27.Value = False
+  Endif
+
+  Dim AutoLogin As String = Trim(globalVars.osAutologin)
+  If AutoLogin = "Yes" Then
+    CheckBox15.Value = True
+  Else
+    CheckBox15.Value = False
+  End If
+
+  Dim fontsShow7 As String = Trim(globalVars.fontsShow)
+  If fontsShow7 == "No" Then
+    CheckBox11.Value = True
+  Else
+    CheckBox11.Value = False
+  End If
+
+  Dim autFontadjust2 As String = Trim(globalVars.autoFontadjust)
+  If autFontadjust2 = "Yes" Then
+    CheckBox19.Value = True
+  Else
+    CheckBox19.Value = False
+  End If
+
+  Dim printerCups2 As String = Trim(globalVars.printerCups)
+  If printerCups2 == "Yes"
+    CheckBox18.Value = True
+  Else
+    CheckBox18.Value = False
+  End If
+
+  Dim screenFontSize7 As String = globalVars.screenFontSize
+  SpinBox2.value = Val(screenFontSize7)
+
+  If globalVars.Toriffystatus = "Yes" Then
+    checkBox22.Value = True
+  End If
+
+  If Trim(globalVars.TORonifVPNisoff) = "No" Then
+    RadioButton1.value = True
+  Else If Trim(globalVars.TORonifVPNisoff) = "Yes" Then
+    RadioButton2.value = True
+  End If
+
+  If Trim(globalVars.torblockCountries) == "0 countries"
+    RadioButton3.value = True
+  Else If Trim(globalVars.torblockCountries) == "14 countries"
+    RadioButton4.value = True
+  Else If Trim(globalVars.torblockCountries) == "9 countries"
+    RadioButton5.value = True
+  Else If
+    Trim(globalVars.torblockCountries) == "5 countries"
+    RadioButton6.value = True
+  End If
+
+  Dim ipDomaninSource0 As String = Trim(globalVars.ipDomaninSource)
+  Dim ipDomaninSource2 As String = Trim(globalVars.ipDomaninSource)
+  Dim ipDomaninSource1 As String = Trim(globalVars.ipDomaninSource)
+  If ipDomaninSource0 == "digi77" Then
+    RadioButton10.value = True
+  Else If ipDomaninSource2 == "other" Then
+    RadioButton8.value = True
+  Else If ipDomaninSource1 == "custom" Then
+    RadioButton11.value = True
+  Endif
+
+  Dim fwblockstatus As String
+  Dim fwcustombstatus As String
+  Shell "sudo timeout 2 ufw status verbose|grep 'deny (incoming), deny (outgoing)'" Wait To fwblockstatus
+  Shell "sudo timeout 2 ufw status verbose|grep 'Action'" Wait To fwcustombstatus
+  If fwblockstatus Then
+    If IsNull(fwcustombstatus) Then
+      CheckBox5.Value = True
+      PictureBox3.Visible = True
+      TrayIcon1.icon = Picture["images/kodachi16yellow.png"]
+    End If
+  Else
+    CheckBox5.Value = False
+    PictureBox3.Visible = False
+    TrayIcon1.icon = picture["images/kodachi16.png"]
+  Endif
+
+  Dim dnsAutoRecovery As String = globalVars.dnsAutoRecovery
+  If dnsAutoRecovery = "No" Then
+    CheckBox9.Value = False
+  Else
+    CheckBox9.Value = True
+  End If
+
+  ' End settings from json
+
+  If Not IsNull(Settings["fmainsettingscontrols/checkbox21"]) Then
+    CheckBox21.Value = Settings["fmainsettingscontrols/checkbox21"]
+  Else
+    CheckBox21.Value = False
+  End If
+
+  If Not IsNull(Settings["fmainsettingscontrols/togglevalue13"]) Then
+    toggleButton13.Value = Settings["fmainsettingscontrols/togglevalue13"]
+  Else
+    toggleButton13.Value = False
+  End If
+
+  If Not IsNull(Settings["fmainsettingscontrols/textbox6"]) Then
+    TextBox6.text = Settings["fmainsettingscontrols/textbox6"]
+  Else
+    TextBox6.text = ""
+  End If
+
+  If Not IsNull(Settings["fmainsettingscontrols/textbox7"]) Then
+    textbox7.text = Settings["fmainsettingscontrols/textbox7"]
+  Else
+    textbox7.text = ""
+  End If
+
+  If Not IsNull(Settings["fmainsettingscontrols/textbox9"]) Then
+    textbox9.text = Settings["fmainsettingscontrols/textbox9"]
+  Else
+    textbox9.text = ""
+  End If
+
+  If Not IsNull(Settings["fmainsettingscontrols/spinbox1"]) Then
+    Try Timer1.Delay = Val(Settings["fmainsettingsvpn/spinbox1"])
+    SpinBox1.value = Settings["fmainsettingscontrols/spinbox1"]
+  Else
+    SpinBox1.value = 5000
+    Timer1.Delay = SpinBox1.value
+  End If
+
+  If Not IsNull(Settings["fmainsettingscontrols/spinbox3"]) Then
+    SpinBox3.value = Settings["fmainsettingscontrols/spinbox3"]
+  Else
+    SpinBox3.value = 5
+  End If
+
+  If Not IsNull(Settings["fmainsettingscontrols/spinbox4"]) Then
+    SpinBox4.value = Settings["fmainsettingscontrols/spinbox4"]
+  Else
+    SpinBox4.value = 100
+  End If
+
+  ' get saved data main form size and position
+
+  If Not IsNull(Settings["fmainsettings/WindowTop"]) Then
+    Me.Top = Settings["fmainsettings/WindowTop"]
+  Else
+    Me.Center
+  End If
+
+  If Not IsNull(Settings["fmainsettings/WindowLeft"]) Then
+    Me.Left = Settings["fmainsettings/WindowLeft"]
+  Else
+    Me.Center
+  End If
+
+  If Not IsNull(Settings["fmainsettings/WindowHeight"]) Then
+    Me.Height = Settings["fmainsettings/WindowHeight"]
+  Else
+    Me.Height = 790
+  End If
+
+  If Not IsNull(Settings["fmainsettings/WindowWidth"]) Then
+    Me.Width = Settings["fmainsettings/WindowWidth"]
+  Else
+    Me.Width = 1170
+  End If
+
+  ' form about
+  If Not IsNull(Settings["fmainsettingsabout/textbox11"]) Then
+    TextBox11.text = Settings["fmainsettingsabout/textbox11"]
+  Else
+    TextBox11.text = User.home & "/backups"
+  End If
+
+  If Not IsNull(Settings["fmainsettingsabout/TextLabel5"]) Then
+    TextLabel5.Text = Settings["fmainsettingsabout/TextLabel5"]
+  Else
+    TextLabel5.Text = "Last backup on: none"
+  End If
+
+  If Not IsNull(Settings["fmainsettingsabout/Combobox1"]) Then
+    Combobox1.Text = Settings["fmainsettingsabout/Combobox1"]
+
+  Else
+    Combobox1.Text = "Pick your profile"
+  End If
+
+  ' tab selected
+  If Not IsNull(Settings["fmainsettingscontrols/tabindex"]) Then
+    TabStrip1.Index = Settings["fmainsettingscontrols/tabindex"]
+  Else
+    TabStrip1.Index = 0
+  End If
+
+  If Not IsNull(Settings["fmainsettingsabout/ToggleButton9"]) Then
+    toggleButton9.Value = Settings["fmainsettingsabout/ToggleButton9"]
+  Else
+    toggleButton9.Value = False
+  End If
+
+  If Not IsNull(Settings["fmainsettingscontrols/CheckBox28"]) Then
+    CheckBox28.Value = Settings["fmainsettingscontrols/CheckBox28"]
+  Else
+    CheckBox28.Value = False
+  End If
+
+  If Not IsNull(Settings["fmainsettingscontrols/CheckBox29"]) Then
+    CheckBox29.Value = Settings["fmainsettingscontrols/CheckBox29"]
+  Else
+    CheckBox29.Value = False
+  End If
+
+  If Not IsNull(Settings["fmainsettingscontrols/CheckBox30"]) Then
+    CheckBox30.Value = Settings["fmainsettingscontrols/CheckBox30"]
+  Else
+    CheckBox30.Value = False
+  End If
+
+  If Not IsNull(Settings["fmainsettingscontrols/CheckBox31"]) Then
+    CheckBox31.Value = Settings["fmainsettingscontrols/CheckBox31"]
+  Else
+    CheckBox31.Value = False
+  End If
+
+  If Not IsNull(Settings["fmainsettingscontrols/CheckBox32"]) Then
+    CheckBox32.Value = Settings["fmainsettingscontrols/CheckBox32"]
+  Else
+    CheckBox32.Value = False
+  End If
+
+  If Not IsNull(Settings["fmainsettingscontrols/CheckBox33"]) Then
+    CheckBox33.Value = Settings["fmainsettingscontrols/CheckBox33"]
+  Else
+    CheckBox33.Value = False
+  End If
+
+  If Not IsNull(Settings["fmainsettingscontrols/CheckBox34"]) Then
+    CheckBox34.Value = Settings["fmainsettingscontrols/CheckBox34"]
+  Else
+    CheckBox34.Value = False
+  End If
+
+  If Not IsNull(Settings["fmainsettingscontrols/CheckBox35"]) Then
+    CheckBox35.Value = Settings["fmainsettingscontrols/CheckBox35"]
+  Else
+    CheckBox35.Value = False
+  End If
+
+  If Not IsNull(Settings["fmainsettingscontrols/CheckBox35"]) Then
+    CheckBox35.Value = Settings["fmainsettingscontrols/CheckBox35"]
+  Else
+    CheckBox35.Value = False
+  End If
+  If Not IsNull(Settings["fmainsettingscontrols/CheckBox36"]) Then
+    CheckBox36.Value = Settings["fmainsettingscontrols/CheckBox36"]
+  Else
+    CheckBox36.Value = False
+  End If
+
+  If Not IsNull(Settings["fmainsettingsabout/Timer15"]) Then
+    Try Timer15.Delay = Val(Settings["fmainsettingsabout/Timer15"])
+    SpinBox5.Value = Settings["fmainsettingsabout/Timer15"]
+  Else
+    Timer15.Delay = "1800000"
+    SpinBox5.Value = "1800000"
+  End If
+
+  ' Dim systemInstalledStatus As String
+  ' Shell "sudo timeout 2 cat /proc/cmdline | grep casper > /dev/null" Wait To systemInstalledStatus
+  ' Print systemInstalledStatus
+  ' If systemInstalledStatus Then
+  '   CheckBox13.Enabled = False
+  '   CheckBox37.Enabled = False
+  ' Else
+  'swap encryption
+  Dim statusofEncSwap As String
+  ' or use sudo cryptsetup status /dev/mapper/cryptswap1
+  Shell "sudo blkid | grep swap" Wait To statusofEncSwap
+  If statusofEncSwap
+    CheckBox37.Value = True
+  Else
+    CheckBox37.Value = False
+  Endif
+  ' normal swap
+  'Dim SwapStatus7 As String = Trim(globalVars.SwapStatus)
+  Dim SwapStatus7 As String
+  Shell "sudo swapon -s|grep -v Filename|wc -l" Wait To SwapStatus7
+  If Val(SwapStatus7) > 0 Then
+    CheckBox13.Value = True
+    CheckBox37.Enabled = True
+  Else
+    CheckBox13.Value = False
+    CheckBox37.Enabled = False
+  Endif
+  'End If
+
+End
+
+Public Sub getPlainIP() As String
+
+  ipEnginex = New Ipengine
+  Wait 2
+  Dim result As String
+
+  result = Waitforipinput(10)
+  Return Trim(result)
+  'TextBox2.text = ipEnginex.value
+
+End
+
+Public Sub Waitforipinput(timeout As Integer) As String
+
+  Dim sfromtask As String
+  Dim count As Integer
+
+  Do                                ' poll the readinput task once a second
+    If ipEnginex.Value Then            ' the Readinput task returned some data via the return statement
+      sfromtask = ipEnginex.value
+
+      ipEnginex.Stop
+      Break
+    Else
+      count += 1
+      Try Wait 1
+    Endif
+    If count >= timeout Then        ' check timeout
+
+      ipEnginex.stop                ' stop the background task
+      Break
+    Endif
+  Loop
+  Return sfromtask                  ' return the input string(if any) to the main program
+
+End
+
+Public Sub vpnAction()
+
+  If treeview1[listviewSelectedKey].Key >= "0" Then
+    Select Case treeview1[listviewSelectedKey].Key
+      Case 0
+        VPNprofile = "Kodachi"
+        folderpath = "/sksjdfjh6327367sj"
+        filepath = ""
+        FileView1.Dir = folderpath
+        terminalCommand = "none"
+        profileScript = "none"
+
+      Case 1
+        VPNprofile = "Kodachi-Anonymous"
+        folderpath = "/sksjdfjh6327347sj"
+        filepath = ""
+        FileView1.Dir = folderpath
+        terminalCommand = "none"
+        profileScript = "none"
+
+      Case 2
+        VPNprofile = "Mullvad"
+        folderpath = globalVars.VPN_mullvad_ovpn_dir
+        FileView1.Dir = folderpath
+        filepath = globalVars.VPN_mullvad_ovpn_file
+        terminalCommand = "sudo bash " & globalVars.sfolder & "/mullvadvpspeedntest"
+        profileScript = "mullvadvpnupdate"
+      Case 3
+        VPNprofile = "Hideme"
+        folderpath = globalVars.VPN_hideme_ovpn_dir
+        FileView1.Dir = folderpath
+        filepath = globalVars.VPN_hideme_ovpn_file
+        terminalCommand = "sudo bash " & globalVars.sfolder & "/hidemevpspeedntest"
+        profileScript = "hidemevpnupdate"
+      Case 4
+        VPNprofile = "Nord"
+        folderpath = globalVars.VPN_nord_ovpn_dir
+        FileView1.Dir = folderpath
+        filepath = globalVars.VPN_nord_ovpn_file
+        terminalCommand = "sudo bash " & globalVars.sfolder & "/nordvpnspeedtest"
+        profileScript = "nordvpnupdate"
+      Case 5
+        VPNprofile = "Proton"
+        folderpath = globalVars.VPN_proton_ovpn_dir
+        FileView1.Dir = folderpath
+        filepath = globalVars.VPN_proton_ovpn_file
+        terminalCommand = "sudo bash " & globalVars.sfolder & "/protonvpnspeedtest"
+        profileScript = "protonvpnupdate"
+      Case 6
+        VPNprofile = "Rise"
+        folderpath = "/sksjdfjh6327367sj"
+        filepath = ""
+        FileView1.Dir = folderpath
+        terminalCommand = "none"
+        profileScript = "none"
+
+      Case 7
+        VPNprofile = "Gate"
+        folderpath = globalVars.VPN_gate_ovpn_dir
+        FileView1.Dir = folderpath
+        filepath = globalVars.VPN_gate_ovpn_file
+        terminalCommand = "sudo bash " & globalVars.sfolder & "/vpngatespeedtest"
+        profileScript = "vpngateupdate"
+      Case 8
+        VPNprofile = "Own"
+        folderpath = globalVars.VPN_configs_path
+        filepath = globalVars.VPN_own_ovpn_file
+        FileView1.Dir = folderpath
+        terminalCommand = "none"
+      Case Else
+        Print "Else selected"
+        folderpath = ""
+    End Select
+
+  End If
+
+End
+
+Public Sub Button1_Click()
+
+  Dim myform1 As New Logs
+
+  myform1.Show
+  TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & "Show system monitor"
+
+End
+
+Public Sub getData()
+
+  myEngine = New EngineX
+
+  Dim result As String
+
+  result = Waitforinput(10)         ' wait for input with timeout 10 seconds
+  ' Label11.text = result
+  'Print "You entered: "; result
+
+  Dim Elt As String[]
+
+  If myEngine.Value Then
+    Elt = Split(result, "^", "")
+    Try label11.text = Trim(Elt[0])
+    Try label12.text = Trim(Elt[1])
+    Try label13.text = Trim(Elt[2])
+    Try label14.text = Trim(Elt[3])
+    Try label15.text = Trim(Elt[4])
+    Try label16.text = Trim(Elt[5])
+    Try label17.text = Trim(Elt[6])
+    Try label18.text = Trim(Elt[7])
+    Try label19.text = Trim(Elt[8])
+    Try label20.text = Trim(Elt[9])
+    Try label12.tooltip = Trim(Elt[12])
+    Try label18.tooltip = Trim(Elt[10])
+    Try label20.tooltip = Trim(Elt[11])
+  Endif
+
+  Dim tooltipLengthl12 As Integer
+  Try tooltipLengthl12 = Len(label12.tooltip)
+  If tooltipLengthl12 = 0 Then
+    Try label12.tooltip = "No VPN connection yet"
+  Endif
+
+End
+
+Public Sub Timer1_Timer()
+
+  repeaterOps()
+
+End
+
+Public Sub repeaterOps()
+
+  Dim skipScore As Integer = 0
+
+  Dim theVersion As String
+  Dim theRemoveVersion As String
+
+  Try globalVars.getGlobalVars()
+
+  Try getData()
+
+  ' ufw firewall buttons
+  Dim fwblockstatus As String
+  Shell "sudo timeout 2 ufw status verbose|grep 'Status: active'" Wait To fwblockstatus
+
+  ' firewall buttons
+  Dim fwblockstatusipt As String
+  Shell "sudo timeout 2 iptables -L -n -v|grep 'DROP'" Wait To fwblockstatusipt
+  Print fwblockstatusipt
+  If fwblockstatusipt Or fwblockstatus Then
+    Button90.Enabled = True
+    Button66.Enabled = True
+  Else
+    Button90.Enabled = False
+    Button66.Enabled = False
+  Endif
+
+  Dim VPNstaus As String
+  Shell "timeout 2 ps ax | grep -v grep | grep openvpn" Wait To VPNstaus
+  VPNstaus = Trim(VPNstaus)
+
+  If VPNstaus Then
+    Try TabStrip1[0].Picture = Picture["images/kodachi16.png"]
+  Else
+    ' Try TabStrip1[0].Picture = Picture["icon:/16/grid"]
+    Try TabStrip1[0].Picture = Picture["images/kodachi16yellow.png"]
+  End If
+
+  Dim TORstaus As String
+  Shell "timeout 2 ps ax | grep -v grep | grep tor-service" Wait To TORstaus
+  TORstaus = Trim(TORstaus)
+  If TORstaus Then
+    Try TabStrip1[1].Picture = Picture["images/kodachi16.png"]
+
+  Else
+    'Try TabStrip1[1].Picture = Picture["icon:/16/grid"]
+    Try TabStrip1[1].Picture = Picture["images/kodachi16yellow.png"]
+  End If
+
+  If globalVars.getDNS() = True Then
+    Try TabStrip1[2].Picture = Picture["images/kodachi16.png"]
+  Else
+    'Try TabStrip1[2].Picture = Picture["icon:/16/grid"]
+    Try TabStrip1[2].Picture = Picture["images/kodachi16yellow.png"]
+  Endif
+  Try skipScore = Val(globalVars.securityScore)
+  If skipScore > 40 Then
+    Try TabStrip1[3].Picture = Picture["images/kodachi16.png"]
+  Else
+    Try TabStrip1[3].Picture = Picture["images/kodachi16yellow.png"]
+  Endif
+
+  theVersion = Trim(globalVars.theVersion)
+  theRemoveVersion = Trim(globalVars.theRemoteVersion)
+
+  If theVersion <> theRemoveVersion Then
+    Try TabStrip1[4].Picture = Picture["images/kodachi16red.png"]
+    If isupdating = False Then
+      Button77.enabled = True
+    End If
+    Label29.Text = globalVars.latestISO
+    Button87.Tooltip = "Verify the hash of Kodachi ISO file: " & globalVars.latestISO
+    Button88.Tooltip = "Get the latest Kodachi ISO file: " & globalVars.latestISO
+    Label29.Tooltip = globalVars.hashInfo
+    Label31.Text = globalVars.theRemoteVersion
+  Else
+    Try TabStrip1[4].Picture = Picture["images/kodachi16.png"]
+    Button77.enabled = False
+    Label29.Text = globalVars.latestISO
+    Button87.Tooltip = "Verify the hash of Kodachi ISO file: " & globalVars.latestISO
+    Button88.Tooltip = "Get the latest Kodachi ISO file: " & globalVars.latestISO
+    Label29.Tooltip = globalVars.hashInfo
+    Label31.Text = globalVars.theRemoteVersion
+  End If
+
+  Label5.Text = "Youtube video"
+  checkbox21.tooltip = "If your score is below 40 system will warn you<br> Your current score is " & globalVars.securityScore & "/100"
+ 
+End
+
+Public Sub Waitforinput(timeout As Integer) As String
+
+  Dim sfromtask As String
+  Dim count As Integer
+  'myEngine.wait
+  Do                                ' poll the readinput task once a second
+    If myEngine.Value Then            ' the Readinput task returned some data via the return statement
+      sfromtask = myEngine.value
+      ' myEngine.getData2("")
+
+      'test = myEngine.label11
+      'Print test
+
+      myEngine.Stop
+      Break
+    Else
+      count += 1
+      Try Wait 1
+    Endif
+    If count >= timeout Then        ' check timeout
+      'sfromtask = "nothing"      ' We got no value from the backround task, so we set it to "nothing"
+      myEngine.stop                ' stop the background task
+      Break
+    Endif
+    ' count += 1
+    'Wait 1                          ' we have nothing to do here, just wait
+  Loop
+
+  Return sfromtask                  ' return the input string(if any) to the main program
+
+End
+
+Public Sub Button7_Click()
+
+  Shell "sudo bash " & globalVars.sFolder & "/gambasexec randomhost"
+  Sleep 2
+  notifyMessage = "'Random host is set your new host is '" & globalVars.getHost()
+  globalVars.sendNotification(notifyMessage)
+  TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Random host is set your new host is " & globalVars.getHost()
+  textbox6.text = globalVars.getHost()
+
+End
+
+Public Sub Expander1_Hide()
+
+  Timer1.Enabled = False
+
+End
+
+Public Sub Expander1_Show()
+
+  Timer1.Enabled = True
+
+End
+
+Public Sub Label18_MouseMove()
+
+End
+
+Public Sub Timer2_Timer()
+
+  Shell "timeout 2 tail /var/log/syslog -n 46|grep -e 'tun0' -e 'openvpn'" Wait To vpnLog
+  vpnLog = Trim(vpnLog)
+  If vpnLog Then
+    If TextArea1.text <> vpnLog Then
+      TextArea1.text = vpnLog
+      TextArea1.Pos = TextArea1.Length
+      TextArea1.EnsureVisible
+    Endif
+  End If
+
+End
+
+Public Sub Button5_Click()
+
+  Shell "xtrlock"
+  TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & "Screen locked to unlock type your password on the screen and hit Enter"
+
+End
+
+Public Sub Button2_Click()
+
+  Shell "sudo " & globalVars.sFolder & "/" & "networkrestart"
+  TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & "Repairing network"
+
+End
+
+Public Sub Button4_Click()
+
+  Shell "sudo " & globalVars.sFolder & "/" & "repairgui"
+  TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & "Repairing the screen information"
+
+End
+
+Public Sub Button3_Click()
+
+  Shell "timeout 2 xfce4-panel -r"
+  TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & "XFCE panel restarted"
+
+End
+
+Public Sub TabStrip1_Click()
+
+End
+
+Public Sub TreeView1_Click()
+
+  listviewSelectedKey = TreeView1.Item.Key
+  vpnAction
+
+  ' If listviewSelectedKey == 0 Then
+  '   FileView1.Enabled = False
+  ' Else
+  '   FileView1.Enabled = True
+  ' End If
+
+End
+
+Public Sub TreeView1_Select()
+
+  listviewSelectedKey = TreeView1.Item.Key
+  vpnAction
+  Settings["fmainsettingsvpn/listviewitem"] = listviewSelectedKey
+
+End
+
+Public Sub TreeView1_LostFocus()
+
+  treeview1[listviewSelectedKey].Selected = True
+
+End
+
+Public Sub Button8_Click()
+
+  vpnConnect
+
+End
+
+Public Sub vpnConnect()
+
+  diconnectVPNSoftreconnect
+
+  If listviewSelectedKey == 0 Then
+    'diconnectVPN
+    Shell "bash " & globalVars.sFolder & "/" & "write_to_json " & VPNprofile & " VPNtype"
+    TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & VPNprofile & " VPN will start shortly"
+  Else If listviewSelectedKey == 1 Then
+    Button20_Click ' Disable TOR
+    'diconnectVPN
+    Shell "bash " & globalVars.sFolder & "/" & "write_to_json " & VPNprofile & " VPNtype"
+    TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & VPNprofile & " VPN will start shortly"
+  Else If listviewSelectedKey == 2 Then
+    'diconnectVPN
+    Shell "bash " & globalVars.sFolder & "/" & "write_to_json " & VPNprofile & " VPNtype"
+    TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & VPNprofile & " VPN will start shortly"
+  Else If listviewSelectedKey == 3 Then
+    'diconnectVPN
+    Shell "bash " & globalVars.sFolder & "/" & "write_to_json " & VPNprofile & " VPNtype"
+    TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & VPNprofile & " VPN will start shortly"
+  Else If listviewSelectedKey == 4 Then
+    'diconnectVPN
+    Shell "bash " & globalVars.sFolder & "/" & "write_to_json " & VPNprofile & " VPNtype"
+    TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & VPNprofile & " VPN will start shortly"
+  Else If listviewSelectedKey == 5 Then
+    'diconnectVPN
+    Shell "bash " & globalVars.sFolder & "/" & "write_to_json " & VPNprofile & " VPNtype"
+    TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & VPNprofile & " VPN will start shortly"
+  Else If listviewSelectedKey == 6 Then
+
+    Dim getipv6 As String
+
+    Shell "cat /proc/sys/net/ipv6/conf/all/disable_ipv6" Wait To getipv6
+    getipv6 = Trim(getipv6)
+    'Print globalVars.DNSprovider
+    If getipv6 == 1 Then
+      If Message.Question((VPNprofile & " requires IPv6 To be enabled do you wish To enable IPv6 now?" & gb.Lf & gb.Lf & "Note: You can not torify or use DNScrypt or TOR DNS while using Riseup VPN"), (" Yes "), (" No ")) = 1 Then
+        'diconnectVPN
+        'Shell "sudo bash " & globalVars.sFolder & "/" & "ipv6on"
+        CheckBox14.Value = True
+        'CheckBox14_Click
+        Button50_Click
+        Shell "bash " & globalVars.sFolder & "/" & "write_to_json " & VPNprofile & " VPNtype"
+        'Shell "sudo chown kodachi ~/.config/leap/* -R"
+        'Shell "sudo riseup-vpn"
+        TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & VPNprofile & " VPN will start shortly"
+        If globalVars.DNSprovider == "Dnscrypt" Or GlobalVars.DNSprovider == "TOR" Then
+          dnsEntry = "Quad9Un"
+          Shell "bash " & globalVars.sFolder & "/" & "write_to_json " & dnsEntry & " DNSprovider"
+          textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "DNS will be set to " & dnsEntry
+        Endif
+
+      Else
+        TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & VPNprofile & " won't work if ipv6 is disabled"
+      Endif
+
+    Else
+      If globalVars.DNSprovider == "Dnscrypt" Or GlobalVars.DNSprovider == "TOR" Then
+        dnsEntry = "Quad9Un"
+        Shell "bash " & globalVars.sFolder & "/" & "write_to_json " & dnsEntry & " DNSprovider"
+        textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "DNS will be set to " & dnsEntry
+      Endif
+      'diconnectVPN
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json " & VPNprofile & " VPNtype"
+      TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & VPNprofile & " VPN will start shortly"
+    End If
+  Else If listviewSelectedKey == 7 Then
+    'diconnectVPN
+    Shell "bash " & globalVars.sFolder & "/" & "write_to_json " & VPNprofile & " VPNtype"
+    TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & VPNprofile & " VPN will start shortly"
+  Else If listviewSelectedKey == 8 Then
+    'diconnectVPN
+    Shell "bash " & globalVars.sFolder & "/" & "write_to_json " & VPNprofile & " VPNtype"
+    TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & VPNprofile & " VPN will start shortly"
+  End If
+
+End
+
+Public Sub Button11_Click()
+
+  If Exist(filepath) = False Then
+    TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Error file: " & folderpath & " does not exist"
+  Else
+    Shell "xdg-open " & filepath
+  End If
+
+End
+
+Public Sub HBox12_MouseDown()
+
+End
+
+Public Sub Button9_Click()
+
+  diconnectVPN
+
+End
+
+Public Sub diconnectVPNSoftreconnect()
+
+  Dim VPNstaus As String
+
+  Shell "timeout 2 ps ax | grep -v grep | grep 'openvpn'" Wait To VPNstaus
+  VPNstaus = Trim(VPNstaus)
+
+  If VPNstaus Then
+    If globalVars.vpnType <> "Rise" Then
+      Shell "sudo timeout 2 killall -SIGINT openvpn"
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json - VPNIP"
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json - VPNCountry"
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json - SecurityStatus"
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json - vpnTime"
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json - VPNport"
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json - VPNprotocol"
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json - VPNprofile"
+
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json Novpn VPNtype"
+      Sleep 0.5
+    Else
+      Shell "sudo killall riseup-vpn"
+      Sleep 0.5
+      Shell "sudo riseup-vpn -start-vpn off"
+      Sleep 1
+      Shell "sudo killall riseup-vpn"
+      'Sleep 1
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json - VPNIP"
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json - VPNCountry"
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json - SecurityStatus"
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json - vpnTime"
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json - VPNport"
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json - VPNprotocol"
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json - VPNprofile"
+
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json Novpn VPNtype"
+      Sleep 0.5
+    End If
+  End If
+
+End
+
+Public Sub diconnectVPN()
+
+  Dim VPNstaus As String
+
+  Shell "timeout 2 ps ax | grep -v grep | grep 'openvpn'" Wait To VPNstaus
+  VPNstaus = Trim(VPNstaus)
+
+  If VPNstaus Then
+    If globalVars.vpnType <> "Rise" Then
+      Shell "sudo killall -SIGINT openvpn"
+      notifyMessage = globalVars.vpnType & "' VPN has shutdown'"
+      globalVars.sendNotification(notifyMessage)
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json - VPNIP"
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json - VPNCountry"
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json - SecurityStatus"
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json - vpnTime"
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json - VPNport"
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json - VPNprotocol"
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json - VPNprofile"
+
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json Novpn VPNtype"
+    Else
+      Shell "sudo killall riseup-vpn"
+      Sleep 0.5
+      Shell "sudo riseup-vpn -start-vpn off"
+      Sleep 1
+      Shell "sudo killall riseup-vpn"
+      'Sleep 0.5
+      notifyMessage = globalVars.vpnType & "' VPN has shutdown'"
+      globalVars.sendNotification(notifyMessage)
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json Novpn VPNtype"
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json - VPNIP"
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json - VPNCountry"
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json - SecurityStatus"
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json - vpnTime"
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json - VPNport"
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json - VPNprotocol"
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json - VPNprofile"
+
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json Novpn VPNtype"
+    End If
+    TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & globalVars.vpnType & " VPN has shutdown"
+  End If
+  ' Dim VPNstaus As String
+  '
+  ' Shell "ps ax | grep -v grep | grep 'openvpn --daemon --config'" Wait To VPNstaus
+  ' VPNstaus = Trim(VPNstaus)
+  '
+  ' If VPNstaus Then
+  '
+  '
+  '   Shell "bash " & globalVars.sFolder & "/" & "write_to_json Novpn VPNtype"
+  '
+  ' Else
+  '   Dim VPNstaus2 As String
+  '   Shell "ps ax | grep -v grep | grep 'openvpn --setenv'" Wait To VPNstaus2
+  '   VPNstaus2 = Trim(VPNstaus2)
+  '   If VPNstaus2 Then
+  '
+  '     Shell "bash " & globalVars.sFolder & "/" & "write_to_json Novpn VPNtype"
+  '
+  '   End If
+  '
+  ' Endif
+  '
+
+  ' If VPNprofile <> "Rise" Then
+  '   If VPNstaus Then
+  '     TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & "VPN will stop shortly"
+  '     Shell "bash " & globalVars.sFolder & "/" & "write_to_json Novpn VPNtype"
+  '     Shell "sudo killall -SIGINT openvpn"
+  '     'Shell "sudo killall riseup-vpn"
+  '     notifyMessage = "'VPN is shutting down'"
+  '     globalVars.sendNotification(notifyMessage)
+  '   Endif
+  ' Else
+  '   Dim VPNstaus2 As String
+  '   Shell "ps ax | grep -v grep | grep 'openvpn --setenv'" Wait To VPNstaus2
+  '   VPNstaus2 = Trim(VPNstaus2)
+  '
+  '   If VPNstaus2 Then
+  '     Shell "sudo killall riseup-vpn"
+  '     Sleep 3
+  '     Shell "sudo riseup-vpn -start-vpn off"
+  '     Sleep 3
+  '     Shell "sudo killall riseup-vpn"
+  '     notifyMessage = "'Rise VPN is shutting down'"
+  '   Endif
+  ' End If
+
+End
+
+Public Sub Button10_Click()
+
+  If Exist(folderpath) = False Then
+    TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Error folder: " & folderpath & " does not exist"
+  Else
+    File_Manager
+  End If
+
+End
+
+Public Sub File_Manager()
+
+  Dim FindStat As Stat
+  Dim siCount As Short
+  Dim sTerminalString As String = folderpath
+
+  sTerminalString = Replace(sTerminalString, "<b>", "")
+  sTerminalString = Replace(sTerminalString, "</b>", "")
+  Try FindStat = Stat(sTerminalString)
+
+  If FindStat.Type = "1" Then 'It's a file not a directory
+    For siCount = Len(sTerminalString) To 1 Step -1
+      If Mid(sTerminalString, siCount, 1) = "/" Then
+        sTerminalString = Mid(sTerminalString, 1, siCount - 1)
+        Break
+      End If
+    Next
+  End If
+
+  sTerminalString = Shell$(sTerminalString)
+  Shell "xdg-open " & sTerminalString
+
+End
+
+Public Sub FileView1_Click()
+
+End
+
+Public Sub FileView1_MouseMove()
+
+  If listviewSelectedKey == 0 Then
+    FileView1.Tooltip = ""
+  Else
+    FileView1.Tooltip = "Path: " & folderpath & "<br>" & "Files: " & FileView1.Count
+  Endif
+
+End
+
+Public Sub Button12_Click()
+
+  'Desktop.OpenTerminal(User.Home & "/Desktop")
+  Dim myTerm As New TermForm
+
+  If terminalCommand <> "none" Then
+    myTerm.Show
+    myTerm.runMe(terminalCommand)
+  Else
+    TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Speed test not available for " & treeview1[listviewSelectedKey].Text 'VPNprofile
+  End If
+
+End
+
+Public Sub Button13_Click()
+
+  If terminalCommand <> "none" Then
+    Spinner2.Visible = True
+    Spinner2.start
+    Shell "bash " & globalVars.sFolder & "/" & profileScript
+    Waitfordir(60)
+    FileView1.Reload
+    Spinner2.stop
+    Spinner2.Visible = False
+  Else
+    TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Profile update not available for " & treeview1[listviewSelectedKey].Text 'VPNprofile
+  End If
+
+End
+
+Public Sub Waitfordir(timeout As Integer)
+
+  Dim count As Integer
+
+  If Exist(folderpath) = True Then
+    Shell "rm -f -r " & folderpath Wait
+    Shell "mkdir -p " & folderpath Wait
+    Wait 0.5
+  End If
+
+  Do
+
+    Dim dirCount As String
+    Shell "timeout 2 ls " & folderpath & "|wc -l" Wait To dirCount
+    'Print "enter loop: " & dirCount
+
+    If Val(dirCount) > 10
+      count += 1
+      'Print "breaking " & folderpath & dirCount
+      Break
+    Else
+      'Print "waiting: " & folderpath & dirCount
+      count += 1
+      Wait 1
+    End If
+
+    If count >= timeout Then
+      Print "timeoutover"
+      Break
+    End If
+  Loop
+  'Print "loop over"
+
+End
+
+Public Sub FileView1_Menu()
+
+  If listviewSelectedKey == 0 Then
+    FileView1.Tooltip = ""
+  Else
+    Menu10.Popup
+  Endif
+
+End
+
+Public Sub Menu2_Click()
+
+  FileView1.Reload
+
+End
+
+Public Sub Menu3_Click()
+
+  Button10_Click
+
+End
+
+Public Sub Menu4_Click()
+
+  Dim theProfilePath As String
+
+  theProfilePath = folderpath & "/" & FileView1.Selection[0]
+  If Exist(theProfilePath) = False Then
+    TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Error file: " & theProfilePath & " does not exist"
+  Else
+    Shell "timeout 2 xdg-open " & theProfilePath Wait
+  End If
+
+End
+
+Public Sub Button14_Click()
+
+  TextBox2.text = getPlainIP()
+  TextBox2.SetFocus
+  Settings["fmainsettingsvpn/textbox2"] = textbox2.text
+
+End
+
+Public Sub Menu5_Click()
+
+  Dim theProfilePath As String
+
+  theProfilePath = folderpath & "/" & FileView1.Selection[0]
+  If Exist(theProfilePath) = False Then
+    TextBox1.text = Format$(Now, " d / m / yy h: nn ") & " " & "Error file: " & theProfilePath & " does Not exist " ""
+  Else
+
+    Shell "timeout 2 rm -f " & theProfilePath Wait
+    TextBox1.text = theProfilePath & " deleted"
+    FileView1.Refresh
+    FileView1.Reload
+  End If
+
+End
+
+Public Sub Menu6_Click()
+
+  Dim theProfilePath As String
+
+  theProfilePath = folderpath & "/" & FileView1.Selection[0]
+  If Exist(theProfilePath) = False Then
+    TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Error file: " & theProfilePath & " does not exist"
+  Else
+    TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "md5: " & md5file.checkmd5(theProfilePath)
+  End If
+
+End
+
+Public Sub Menu7_Click()
+
+  Dim theProfilePath As String
+
+  theProfilePath = folderpath & "/" & FileView1.Selection[0]
+  If Exist(theProfilePath) = False Then
+    TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Error file: " & theProfilePath & " does not exist"
+  Else
+    TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "md5: " & md5file.checksha256(theProfilePath)
+  End If
+
+End
+
+Public Sub Menu8_Click()
+  'Open_in_Terminal()
+
+  Dim theProfilePath As String
+
+  theProfilePath = folderpath & "/" & FileView1.Selection[0]
+  If Exist(theProfilePath) = False Then
+    TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Error file: " & theProfilePath & " does not exist"
+  Else
+    Desktop.OpenTerminal(folderpath)
+  End If
+
+End
+
+Public Sub Menu9_Click()
+
+  FileView1.Refresh
+  FileView1.Reload
+
+End
+
+Public Sub CheckBox1_Click()
+
+  blockonVPNDown()
+
+End
+
+Public Sub blockonVPNDown()
+
+  Dim VPNstaus As String
+
+  Shell "timeout 2 ps ax | grep -v grep | grep openvpn" Wait To VPNstaus
+  VPNstaus = Trim(VPNstaus)
+
+  If CheckBox1.Value = True Then
+    If VPNstaus Then
+      Timer3.Enabled = True
+      TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Traffic will be blocked if VPN is down"
+    Else
+      TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Please start VPN first"
+      CheckBox1.Tooltip = "Please start VPN first"
+      CheckBox1.Value = False
+    End If
+  Else
+    Dim fwStatus As String
+    Shell "sudo timeout 2 ufw status|grep -v inactive" Wait To fwStatus
+    fwStatus = Trim(fwStatus)
+    If fwStatus Then
+      Timer3.enabled = False
+      Shell "sudo ufw --force reset;sudo rm -f /etc/ufw/before.rules.*;sudo rm -f /etc/ufw/before6.rules.*;sudo rm -f /etc/ufw/after.rules.*;sudo rm -f /etc/ufw/after6.rules.*;sudo rm -f /etc/ufw/user.rules.*;sudo rm -f /etc/ufw/user6.rules.*;yes|sudo ufw reset;sudo ufw disable;"
+      notifyMessage = "'All traffic will be allowed'"
+      globalVars.sendNotification(notifyMessage)
+      textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "All traffic will be allowed"
+      CheckBox1.Tooltip = "If enabled traffic will be blocked if VPN process drops"
+    End If
+    PictureBox1.Visible = False
+    TrayIcon1.icon = picture["images/kodachi16.png"]
+  Endif
+  Settings["fmainsettingsvpn/checkbox1"] = CheckBox1.Value
+
+End
+
+Public Sub Timer3_Timer()
+
+  If checkbox1.value = True Then
+    Dim VPNstaus As String
+    Shell "timeout 2 ps ax | grep -v grep | grep openvpn" Wait To VPNstaus
+    VPNstaus = Trim(VPNstaus)
+    If Not VPNstaus Then
+      Shell "sudo ufw --force reset;sudo ufw Default deny incoming;sudo ufw Default deny outgoing;sudo ufw enable;"
+      PictureBox1.Visible = True
+      TrayIcon1.icon = Picture["images/kodachi16yellow.png"]
+      Timer3.Enabled = False
+      notifyMessage = "'VPN process is down all traffic will be blocked'"
+      globalVars.sendNotification(notifyMessage)
+      textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "VPN process is down all traffic will be blocked"
+      If soundToggle == True Then
+        Music.Load(globalVars.sFolder & "/vpnwarn.mp3")
+        Music.Play()
+      Endif
+    Endif
+  End If
+
+End
+
+Public Sub CheckBox5_Click()
+
+  If startingTime = False Then
+    If CheckBox5.value = True Then
+      Shell "sudo ufw --force reset;sudo ufw Default deny incoming;sudo ufw Default deny outgoing;sudo ufw enable;"
+      notifyMessage = "'All traffic will be blocked'"
+      globalVars.sendNotification(notifyMessage)
+      textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "All traffic will be blocked"
+      PictureBox3.Visible = True
+      TrayIcon1.icon = Picture["images/kodachi16yellow.png"]
+    Else
+      Dim fwStatus As String
+      Shell "sudo ufw status|grep -v inactive" Wait To fwStatus
+      fwStatus = Trim(fwStatus)
+      If fwStatus Then
+        Shell "sudo ufw --force reset;sudo rm -f /etc/ufw/before.rules.*;sudo rm -f /etc/ufw/before6.rules.*;sudo rm -f /etc/ufw/after.rules.*;sudo rm -f /etc/ufw/after6.rules.*;sudo rm -f /etc/ufw/user.rules.*;sudo rm -f /etc/ufw/user6.rules.*;yes|sudo ufw reset;sudo ufw disable;"
+        notifyMessage = "'All traffic will be allowed'"
+        globalVars.sendNotification(notifyMessage)
+        textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "All traffic will be allowed"
+        PictureBox3.Visible = False
+        TrayIcon1.icon = picture["images/kodachi16.png"]
+      End If
+    Endif
+  End If
+
+End
+
+Public Sub Timer4_Timer()
+
+  'Print "t4 enabled"
+  Dim currentIP As String
+
+  currentIP = getPlainIP()
+  If ipTowatch <> currentIP Then
+    Shell "sudo ufw --force reset;sudo ufw Default deny incoming;sudo ufw Default deny outgoing;sudo ufw enable;"
+    textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "IP address changed All traffic will be blocked"
+    notifyMessage = "'IP has changed all traffic will be blocked'"
+    globalVars.sendNotification(notifyMessage)
+    PictureBox2.Visible = True
+    TrayIcon1.icon = Picture["images/kodachi16yellow.png"]
+    Timer4.enabled = False
+    If soundToggle == True Then
+      Music.Load(globalVars.sFolder & "/vpnwarn.mp3")
+      Music.Play()
+    Endif
+  Endif
+
+End
+
+Public Sub CheckBox2_Click()
+
+  blockIFIPChanged
+
+End
+
+Public Sub blockIFIPChanged()
+
+  Dim isIpValid As String
+
+  Shell "bash " & globalVars.sFolder & "/gambasexec validateip " & TextBox2.text Wait To isIpValid
+
+  isIpValid = Trim(isIpValid)
+
+  If checkbox2.value = True Then
+    If Val(isIpValid) == 1 Then
+      Timer4.enabled = True
+      TextBox2.Enabled = False
+      Button14.Enabled = False
+      ipTowatch = Trim(TextBox2.text)
+      TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Traffic will be blocked if watched IP changes"
+    Else
+      Timer4.enabled = False
+      textbox1.text = Format$(Now, " d / m / yy h: nn ") & " " & "Invalid IP address please click On the update button Or insert it manually " ""
+      checkbox2.value = False
+      TextBox2.SetFocus
+    End If
+  Else
+
+    Dim fwStatus As String
+    Shell "sudo timeout 2 ufw status|grep -v inactive" Wait To fwStatus
+    fwStatus = Trim(fwStatus)
+    If fwStatus Then
+
+      Shell "sudo ufw --force reset;sudo rm -f /etc/ufw/before.rules.*;sudo rm -f /etc/ufw/before6.rules.*;sudo rm -f /etc/ufw/after.rules.*;sudo rm -f /etc/ufw/after6.rules.*;sudo rm -f /etc/ufw/user.rules.*;sudo rm -f /etc/ufw/user6.rules.*;yes|sudo ufw reset;sudo ufw disable;"
+      notifyMessage = "'All traffic will be allowed'"
+      globalVars.sendNotification(notifyMessage)
+      textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "All traffic will be allowed"
+    End If
+    TextBox2.Enabled = True
+    Button14.Enabled = True
+    PictureBox2.Visible = False
+    TrayIcon1.icon = picture["images/kodachi16.png"]
+    Timer4.Enabled = False
+  End If
+  Settings["fmainsettingsvpn/checkbox2"] = CheckBox2.Value
+  Settings["fmainsettingsvpn/textbox2"] = textbox2.text
+
+End
+
+Public Sub CheckBox3_Click()
+
+  If startingTime = False Then
+    Dim isIpValid As String
+
+    Shell "bash " & globalVars.sFolder & "/gambasexec validateip " & TextBox2.text Wait To isIpValid
+
+    isIpValid = Trim(isIpValid)
+    If Val(isIpValid) == 1 Then
+      If CheckBox3.value = True Then
+
+        'Desktop.OpenTerminal(User.Home & "/Desktop")
+        Dim myTerm As New TermForm
+        terminalCommand = "sudo bash " & globalVars.sfolder & "/forcevpntraffic " & textbox2.text
+        myTerm.Show
+        myTerm.runMe(terminalCommand)
+        textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Traffic will be blocked if ip changes based on Iptables"
+      Else
+        Dim fwStatus As String
+        Shell "sudo timeout 2 ufw status|grep -v inactive" Wait To fwStatus
+        fwStatus = Trim(fwStatus)
+        If fwStatus Then
+
+          Shell "sudo ufw --force reset;sudo rm -f /etc/ufw/before.rules.*;sudo rm -f /etc/ufw/before6.rules.*;sudo rm -f /etc/ufw/after.rules.*;sudo rm -f /etc/ufw/after6.rules.*;sudo rm -f /etc/ufw/user.rules.*;sudo rm -f /etc/ufw/user6.rules.*;yes|sudo ufw reset;sudo ufw disable;"
+          notifyMessage = "'All traffic will be allowed'"
+          globalVars.sendNotification(notifyMessage)
+          textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "All traffic will be allowed"
+        End If
+      Endif
+
+    Else
+
+      textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Invalid IP address please click on the update button or insert it manually"
+      checkbox3.value = False
+      TextBox2.SetFocus
+    End If
+    'Settings["fmainsettingsvpn/checkbox3"] = CheckBox3.Value
+    'Settings["fmainsettingsvpn/textbox2"] = textbox2.text
+  End If
+
+End
+
+Public Sub CheckBox4_Click()
+
+  If startingTime = False Then
+    Dim isIpValid As String
+
+    Shell "bash " & globalVars.sFolder & "/gambasexec validateip " & TextBox2.text Wait To isIpValid
+
+    isIpValid = Trim(isIpValid)
+    If Val(isIpValid) == 1 Then
+      If CheckBox4.value = True Then
+
+        'Desktop.OpenTerminal(User.Home & "/Desktop")
+        Dim myTerm As New TermForm
+        terminalCommand = "sudo bash " & globalVars.sfolder & "/forcevpntrafficall " & textbox2.text
+        myTerm.Show
+        myTerm.runMe(terminalCommand)
+        textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Traffic will be blocked if ip/port/protcol changes based on Iptables"
+      Else
+        Dim fwStatus As String
+        Shell "sudo timeout 2 ufw status|grep -v inactive" Wait To fwStatus
+        fwStatus = Trim(fwStatus)
+        If fwStatus Then
+
+          Shell "sudo ufw --force reset;sudo rm -f /etc/ufw/before.rules.*;sudo rm -f /etc/ufw/before6.rules.*;sudo rm -f /etc/ufw/after.rules.*;sudo rm -f /etc/ufw/after6.rules.*;sudo rm -f /etc/ufw/user.rules.*;sudo rm -f /etc/ufw/user6.rules.*;yes|sudo ufw reset;sudo ufw disable;"
+          notifyMessage = "'All traffic will be allowed'"
+          globalVars.sendNotification(notifyMessage)
+          textbox1.text = Format$(Now, " d / m / yy h: nn ") & " " & "All traffic will be allowed " ""
+        End If
+      Endif
+
+    Else
+
+      textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Invalid IP address please click on the update button or insert it manually"
+      checkbox4.value = False
+      TextBox2.SetFocus
+    End If
+  End If
+
+End
+
+Public Sub Button15_Click()
+
+  manualTextIpUpdatefromVPN
+
+End
+
+Public Sub manualTextIpUpdatefromVPN()
+
+  Shell "timeout 2 cat " & globalVars.jsonFileName Wait To localJson
+  collJson = JSON.Decode(localJson, True)
+  Dim theVPNIP As String
+  theVPNIP = Trim(collJson["VPNprofileip"])
+  textbox2.text = theVPNIP
+  TextBox2.SetFocus
+  Settings["fmainsettingsvpn/textbox2"] = textbox2.text
+
+End
+
+Public Sub Button16_Click()
+
+  Desktop.Open(globalVars.kodachikitWebUrl)
+
+End
+
+Public Sub ToggleButton1_Click()
+
+  soundToggle = Not soundToggle
+  Settings["fmainsettingsvpn/togglevalue1"] = toggleButton1.Value
+
+End
+
+Public Sub Timer5_Timer()
+
+  If ipautoupdateToggle = False Then
+    If textbox2.text == "" Then
+      Try TextBox2.text = getPlainIP()
+
+      Timer5.stop
+      Timer5.Enabled = False
+    End If
+  Else
+    Try TextBox2.text = getPlainIP()
+  End If
+  Settings["fmainsettingsvpn/textbox2"] = textbox2.text
+
+End
+
+Public Sub Button17_Click()
+
+  Shell "sudo bash " & globalVars.sFolder & "/gambasexec killme " & TextBox12.text
+  textbox1.text = Format$(Now, " d / m / yy h: nn ") & " " & TextBox12.text & " Process killed " ""
+
+End
+
+Public Sub SpinBox1_Change()
+
+  Timer1.Delay = SpinBox1.value
+  Settings["fmainsettingsvpn/timer1value"] = Timer1.Delay
+  Settings["fmainsettingscontrols/spinbox1"] = spinbox1.Value
+
+End
+
+Public Sub Button18_Click()
+
+  textbox12.Clear
+
+End
+
+Public Sub Button19_Click()
+
+  startTor
+
+End
+
+Public Sub startTor()
+
+  If RadioButton1.Value = True Then
+    If globalVars.TORonifVPNisoff = "Yes" Or globalVars.TORonifVPNisoff = "-" Then
+      Shell "bash " & globalVars.sFolder & "/torwithvpn"
+    End If
+  Endif
+
+  If RadioButton2.Value = True Then
+    If globalVars.TORonifVPNisoff = "No" Or globalVars.TORonifVPNisoff = "-" Then
+      Shell "bash " & globalVars.sFolder & "/torwithoutvpn"
+    End If
+  Endif
+
+End
+
+Public Sub TreeView2_Click()
+
+  listviewSelectedKeyTor = Trim(TreeView2.Item.Key)
+  Dim TORstaus As String
+
+  Shell "timeout 2 ps ax | grep -v grep | grep tor-service" Wait To TORstaus
+  TORstaus = Trim(TORstaus)
+  If TORstaus Then
+    TorAction()
+    RadioButton3.Value = True
+  Else
+    textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "TOR is not running"
+  End If
+
+End
+
+Public Sub TorAction()
+
+  If treeview2[listviewSelectedKeytor].Key >= "0" Then
+    Select Case treeview2[listviewSelectedKeytor].Key
+      Case 0
+        TorProfile = "ch"
+        torCountry = "Switzerland"
+      Case 1
+        TorProfile = "at"
+        torCountry = "Austria"
+      Case 2
+        TorProfile = "lu"
+        torCountry = "Luxembourg"
+      Case 3
+        TorProfile = "ro"
+        torCountry = "Romania"
+      Case 4
+        TorProfile = "sc"
+        torCountry = "Seychelles"
+      Case 5
+        TorProfile = "pl"
+        torCountry = "Poland"
+      Case 6
+        TorProfile = "cz"
+        torCountry = "Czech"
+      Case 7
+        TorProfile = "za"
+        torCountry = "S-Africa"
+      Case 8
+        TorProfile = "kr"
+        torCountry = "S-Korea"
+      Case 9
+        TorProfile = "jp"
+        torCountry = "Japan"
+      Case 10
+        TorProfile = "th"
+        torCountry = "Thailand"
+      Case 11
+        TorProfile = "br"
+        torCountry = "Brazil"
+      Case 12
+        TorProfile = "is"
+        torCountry = "Iceland"
+      Case 13
+        TorProfile = "ru"
+        torCountry = "Russian"
+      Case 14
+        TorProfile = "ua"
+        torCountry = "Ukraine"
+      Case 15
+        TorProfile = "md"
+        torCountry = "Moldava"
+      Case 16
+        TorProfile = "bz"
+        torCountry = "Belize"
+      Case 17
+        TorProfile = "hu"
+        torCountry = "Hungary"
+      Case 18
+        TorProfile = "bg"
+        torCountry = "Bulgaria"
+      Case 19
+        TorProfile = "sg"
+        torCountry = "Singapore"
+      Case 20
+        TorProfile = "fi"
+        torCountry = "Finland"
+      Case 21
+        TorProfile = "tr"
+        torCountry = "Turkey"
+      Case 22
+        TorProfile = "lt"
+        torCountry = "Lithuania"
+      Case 23
+        TorProfile = "se"
+        torCountry = "Sweden"
+      Case 24
+        TorProfile = "it"
+        torCountry = "Italy"
+      Case 25
+        TorProfile = "es"
+        torCountry = "Spain"
+      Case 26
+        TorProfile = "be"
+        torCountry = "Belgium"
+      Case 27
+        TorProfile = "de"
+        torCountry = "Germany"
+      Case 28
+        TorProfile = "no"
+        torCountry = "Norway"
+      Case 29
+        TorProfile = "nl"
+        torCountry = "Netherlands"
+      Case 30
+        TorProfile = "fr"
+        torCountry = "France"
+      Case 31
+        TorProfile = "dk"
+        torCountry = "Denmark"
+      Case 32
+        TorProfile = "au"
+        torCountry = "Australia"
+      Case 33
+        TorProfile = "ca"
+        torCountry = "Canada"
+      Case 34
+        TorProfile = "gb"
+        torCountry = "UK"
+      Case 35
+        TorProfile = "us"
+        torCountry = "USA"
+      Case Else
+        Print "Else selected"
+    End Select
+    Shell "bash " & globalVars.sFolder & "/gambasexec TorExit " & TorProfile & " " & torCountry
+    textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "TOR country will be set to " & treeview2[listviewSelectedKeyTor].Text
+  End If
+
+End
+
+Public Sub DNSAction()
+
+  If treeview3[listviewSelectedKeyDNS].Key >= "0" Then
+    Select Case treeview3[listviewSelectedKeyDNS].Key
+      Case 0
+        dnsEntry = "Dnscrypt"
+      Case 1
+        dnsEntry = "TOR"
+      Case 2
+        dnsEntry = "Mullvad"
+      Case 3
+        dnsEntry = "Freedns"
+      Case 4
+        dnsEntry = "Nord"
+      Case 5
+        dnsEntry = "Dnswatch"
+      Case 6
+        dnsEntry = "Level3"
+      Case 7
+        dnsEntry = "Verisign"
+      Case 8
+        dnsEntry = "Comodo"
+      Case 9
+        dnsEntry = "FDN"
+      Case 10
+        dnsEntry = "Next"
+      Case 11
+        dnsEntry = "Yandex"
+      Case 12
+        dnsEntry = "CensSurfri"
+      Case 13
+        dnsEntry = "Quad9"
+      Case 14
+        dnsEntry = "Quad9Un"
+      Case 15
+        dnsEntry = "Adguard"
+      Case 16
+        dnsEntry = "Opennic"
+      Case 17
+        dnsEntry = "CloudFlare"
+      Case 18
+        dnsEntry = "neustar"
+      Case 19
+        dnsEntry = "CloudFlare-M"
+      Case 20
+        dnsEntry = "CloudFlare-MA"
+      Case 21
+        dnsEntry = "neustar-M"
+      Case 22
+        dnsEntry = "neustar-MA"
+      Case Else
+        Print "Else selected"
+    End Select
+
+    Shell "bash " & globalVars.sFolder & "/" & "write_to_json " & dnsEntry & " DNSprovider"
+
+    textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "DNS will be set to " & treeview3[listviewSelectedKeyDNS].Text
+  End If
+
+End
+
+Public Sub TreeView2_Select()
+
+  listviewSelectedKeyTor = TreeView2.Item.Key
+  'TorAction()
+  Settings["fmainsettingstor/listviewitemtor"] = listviewSelectedKeyTor
+
+End
+
+Public Sub TreeView2_LostFocus()
+
+  treeview2[listviewSelectedKeytor].Selected = True
+
+End
+
+Public Sub Button20_Click()
+
+  DisableTor
+
+End
+
+Public Sub DisableTor()
+
+  Shell "bash " & globalVars.sFolder & "/" & "write_to_json - TORIP"
+  Shell "bash " & globalVars.sFolder & "/" & "write_to_json - TORCountry"
+  Shell "bash " & globalVars.sFolder & "/" & "write_to_json - TORRIFYIP"
+  Shell "bash " & globalVars.sFolder & "/" & "write_to_json - TORRIFYCountry"
+  Shell "sudo bash " & globalVars.sFolder & "/stoptor"
+  CheckBox22.Value = False
+
+End
+
+Public Sub Button21_Click()
+
+  Shell "bash " & globalVars.sFolder & "/torifiedshell"
+
+End
+
+Public Sub Button22_Click()
+
+  Shell "sudo gedit /etc/tor/torrc"
+
+End
+
+Public Sub RadioButton3_Click()
+
+  If Trim(globalVars.torblockCountries) <> "0 countries"
+    Shell "sudo bash " & globalVars.sFolder & "/torforce setoff"
+  End If
+
+End
+
+Public Sub RadioButton6_Click()
+
+  If Trim(globalVars.torblockCountries) <> "5 countries"
+    Shell "sudo bash " & globalVars.sFolder & "/torforce 5"
+  End If
+
+End
+
+Public Sub RadioButton5_Click()
+
+  If Trim(globalVars.torblockCountries) <> "9 countries"
+    Shell "sudo bash " & globalVars.sFolder & "/torforce 9"
+  End If
+
+End
+
+Public Sub RadioButton4_Click()
+
+  If Trim(globalVars.torblockCountries) <> "14 countries"
+    Shell "sudo bash " & globalVars.sFolder & "/torforce 14"
+  End If
+
+End
+
+Public Sub CheckBox6_Click()
+
+  blocktrafficonTordown
+
+End
+
+Public Sub blocktrafficonTordown()
+
+  Dim TORstaus As String
+
+  Shell "timeout 2 ps ax | grep -v grep | grep tor-service" Wait To TORstaus
+  TORstaus = Trim(TORstaus)
+
+  If CheckBox6.Value = True Then
+    If TORstaus Then
+      Timer6.Enabled = True
+      TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Traffic will be blocked if TOR is down"
+    Else
+      TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Please start TOR first"
+      CheckBox1.Tooltip = "Please start VPN first"
+      CheckBox6.Value = False
+    End If
+  Else
+    Dim fwStatus As String
+    Shell "sudo timeout 2 ufw status|grep -v inactive" Wait To fwStatus
+    fwStatus = Trim(fwStatus)
+    If fwStatus Then
+      Timer6.enabled = False
+      Shell "sudo ufw --force reset;sudo rm -f /etc/ufw/before.rules.*;sudo rm -f /etc/ufw/before6.rules.*;sudo rm -f /etc/ufw/after.rules.*;sudo rm -f /etc/ufw/after6.rules.*;sudo rm -f /etc/ufw/user.rules.*;sudo rm -f /etc/ufw/user6.rules.*;yes|sudo ufw reset;sudo ufw disable;"
+      notifyMessage = "'All traffic will be allowed'"
+      globalVars.sendNotification(notifyMessage)
+      textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "All traffic will be allowed"
+      CheckBox6.Tooltip = "If enabled traffic will be blocked if TOR process drops"
+    End If
+    PictureBox4.Visible = False
+    TrayIcon1.icon = picture["images/kodachi16.png"]
+
+  Endif
+  Settings["fmainsettingstor/checkbox6"] = CheckBox6.Value
+
+End
+
+Public Sub Timer6_Timer()
+
+  If checkbox6.value = True Then
+    Dim TORstaus As String
+    Shell "timeout 2 ps ax | grep -v grep | grep tor-service" Wait To TORstaus
+    TORstaus = Trim(TORstaus)
+    If Not TORstaus Then
+      Shell "sudo ufw --force reset;sudo ufw Default deny incoming;sudo ufw Default deny outgoing;sudo ufw enable;"
+      PictureBox4.Visible = True
+      TrayIcon1.icon = Picture["images/kodachi16yellow.png"]
+      Timer6.Enabled = False
+      notifyMessage = "'TOR process is down all traffic will be blocked'"
+      globalVars.sendNotification(notifyMessage)
+      textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "TOR process is down all traffic will be blocked"
+      If soundToggletor == True Then
+        Music.Load(globalVars.sFolder & "/vpnwarn.mp3")
+        Music.Play()
+      Endif
+    Endif
+  End If
+
+End
+
+Public Sub ToggleButton2_Click()
+
+  soundToggletor = Not soundToggletor
+  Settings["fmainsettingstor/togglevalue2"] = ToggleButton2.Value
+
+End
+
+Public Sub CheckBox7_Click()
+
+  killToronVPNDown
+
+End
+
+Public Sub killToronVPNDown()
+
+  Dim TORstaus As String
+
+  Shell "timeout 2 ps ax | grep -v grep | grep tor-service" Wait To TORstaus
+  TORstaus = Trim(TORstaus)
+  Dim VPNstaus As String
+
+  Shell "timeout 2 ps ax | grep -v grep | grep openvpn" Wait To VPNstaus
+  VPNstaus = Trim(VPNstaus)
+
+  If VPNstaus Then
+    If CheckBox7.Value = True Then
+      If TORstaus Then
+        Timer7.Enabled = True
+        TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "TOR will be stopped if VPN is down"
+      Else
+
+        'CheckBox1.Tooltip = "Please start TOR first"
+        CheckBox7.Value = False
+        TextBox1.text = Format$(Now, " d / m / yy h: nn ") & " " & "Please start TOR first " ""
+      End If
+    Else
+      'Dim fwStatus As String
+      ' Shell "sudo ufw status|grep -v inactive" Wait To fwStatus
+      'fwStatus = Trim(fwStatus)
+      ' If fwStatus Then
+
+      'Shell "sudo ufw --force reset;sudo rm -f /etc/ufw/before.rules.*;sudo rm -f /etc/ufw/before6.rules.*;sudo rm -f /etc/ufw/after.rules.*;sudo rm -f /etc/ufw/after6.rules.*;sudo rm -f /etc/ufw/user.rules.*;sudo rm -f /etc/ufw/user6.rules.*;yes|sudo ufw reset;sudo ufw disable;"
+      'notifyMessage = "'VPN is down TOR is shutdown'"
+      'globalVars.sendNotification(notifyMessage)
+      ' textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "All traffic will be allowed"
+      'CheckBox7.Tooltip = "If enabled TOR will be stopped if VPN process drops"
+      'End If
+      Timer7.enabled = False
+      PictureBox5.Visible = False
+      TrayIcon1.icon = picture["images/kodachi16.png"]
+      TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "TOR will not be stopped if VPN is down"
+    Endif
+  Else
+    TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Please start VPN first"
+    'CheckBox1.Tooltip = "Please start VPN first"
+    'CheckBox1.Value = False
+  End If
+  Settings["fmainsettingstor/checkbox7"] = CheckBox7.Value
+
+End
+
+Public Sub Timer7_Timer()
+
+  If checkbox7.value = True Then
+    Dim VPNstaus As String
+    Shell "timeout 2 ps ax | grep -v grep | grep openvpn" Wait To VPNstaus
+    VPNstaus = Trim(VPNstaus)
+    If Not VPNstaus Then
+      Shell "sudo bash " & globalVars.sFolder & "/stoptor"
+      PictureBox5.Visible = True
+      TrayIcon1.icon = Picture["images/kodachi16yellow.png"]
+      Timer7.Enabled = False
+      notifyMessage = "'VPN is down TOR is shutdown'"
+      globalVars.sendNotification(notifyMessage)
+      textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "VPN is down TOR is shutdown"
+      If soundToggletor == True Then
+        Music.Load(globalVars.sFolder & "/vpnwarn.mp3")
+        Music.Play()
+      Endif
+    Endif
+  End If
+
+End
+
+Public Sub CheckBox8_Click()
+
+  TimezonePro
+
+End
+
+Public Sub TimezonePro()
+
+  If CheckBox8.value = True Then
+    Timer8.Enabled = True
+    textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Auto timezone change enabled"
+  Else
+    Timer8.Enabled = False
+    textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Auto timezone disabled"
+  End If
+  Settings["fmainsettingsvpn/checkbox8"] = CheckBox8.Value
+
+End
+
+Public Sub Timer8_Timer()
+
+  '   echo - e "\n";
+  ' print_good "Your current time zone is:";
+  ' timedatectl status | grep "Time zone"|xargs;
+  ' randomdomain = $(cat $Jason_web_file_name | jq -r '.ServerFeed2[].kodachiipcheck'|xargs);
+  ' ISP_IP = $(sudo curl - s - m 30 $randomdomain |xargs);
+  ' print_good "Your current ip address is: $ISP_IP";
+  Dim theIP As String
+
+  Try theIP = getPlainIP()
+  'Print theIP & "|" & currentnetIP
+  If currentnetIP <> theIP Then
+    Dim newTZ As String
+    Shell "sudo timeout 2 bash " & globalVars.sFolder & "/gambasexec changetimezon" Wait To newTZ
+    'Shell "timedatectl status | grep 'Time zone'" Wait To newTZ
+    Try textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Timezone changed to: " & Trim(newTZ)
+    currentnetIP = theIP
+  End If
+
+End
+
+Public Sub Timer9_Timer()
+
+  Shell "timeout 2 tail /var/log/syslog -n 46|grep -e 'tor' -e 'TOR' -e 'Anonymizing'" Wait To torLog
+  'Shell "tail /var/log/tor/notices.log -n 46" Wait To torLog
+
+  torLog = Trim(torLog)
+  If torLog Then
+    If TextArea2.text <> torLog Then
+      TextArea2.text = torLog
+      TextArea2.Pos = TextArea2.Length
+      TextArea2.EnsureVisible
+    Endif
+  End If
+
+End
+
+Public Sub Button23_Click()
+
+  Desktop.Open(globalVars.kodachiWebUrl)
+
+End
+
+Public Sub Button25_Click()
+
+  TextBox2.text = ""
+  'Settings.Clear("fmainsettingsvpn/textbox2")
+  Settings["fmainsettingsvpn/textbox2"] = textbox2.text
+  Settings.Save
+
+End
+
+Public Sub TreeView3_Click()
+
+  listviewSelectedKeyDNS = Trim(TreeView3.Item.Key)
+  DNSAction
+  Settings["fmainsettingsdns/listviewitemddns"] = listviewSelectedKeyDNS
+
+End
+
+Public Sub TreeView3_Select()
+
+  listviewSelectedKeyDNS = Trim(TreeView3.Item.Key)
+
+End
+
+Public Sub TreeView3_LostFocus()
+
+  treeview3[listviewSelectedKeyDNS].Selected = True
+
+End
+
+Public Sub CheckBox10_Click()
+
+  If CheckBox10.value = True Then
+    Timer10.Enabled = True
+    dnsFileHash = Trim(md5file.checkmd5("/etc/resolv.conf"))
+  Else
+    Timer10.enabled = False
+    PictureBox6.Visible = False
+    TrayIcon1.icon = picture["images/kodachi16.png"]
+    Shell "sudo ufw --force reset;sudo rm -f /etc/ufw/before.rules.*;sudo rm -f /etc/ufw/before6.rules.*;sudo rm -f /etc/ufw/after.rules.*;sudo rm -f /etc/ufw/after6.rules.*;sudo rm -f /etc/ufw/user.rules.*;sudo rm -f /etc/ufw/user6.rules.*;yes|sudo ufw reset;sudo ufw disable;"
+    notifyMessage = "'All traffic will be allowed'"
+    globalVars.sendNotification(notifyMessage)
+    textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "All traffic will be allowed"
+  End If
+  Settings["fmainsettingsdns/checkbox10"] = CheckBox10.Value
+
+End
+
+Public Sub Timer10_Timer()
+
+  If CheckBox10.value = True Then
+    Dim dnsFileHash2 As String
+    dnsFileHash2 = Trim(md5file.checkmd5("/etc/resolv.conf"))
+    If dnsFileHash <> dnsFileHash2 Then
+
+      Shell "sudo ufw --force reset;sudo ufw Default deny incoming;sudo ufw Default deny outgoing;sudo ufw enable;"
+      PictureBox6.Visible = True
+      TrayIcon1.icon = Picture["images/kodachi16yellow.png"]
+      Timer10.Enabled = False
+      notifyMessage = "'DNS file has changed all traffic will be blocked'"
+      globalVars.sendNotification(notifyMessage)
+      textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "DNS file has changed all traffic will be blocked"
+      If soundToggledns == True Then
+        Music.Load(globalVars.sFolder & "/vpnwarn.mp3")
+        Music.Play()
+      Endif
+
+    Endif
+  Else
+    Timer10.enable = False
+    PictureBox6.Visible = False
+
+  End If
+
+End
+
+Public Sub ToggleButton3_Click()
+
+  soundToggledns = Not soundToggledns
+  Settings["fmainsettingsdns/togglevalue3"] = ToggleButton3.Value
+
+End
+
+Public Sub Button26_Click()
+  'Allow write to DNS
+
+  Shell "bash " & globalVars.sFolder & "/" & "write_to_json Manual DNSprovider"
+  Timer14.Enabled = True
+  Shell "sudo chattr -i /etc/resolv.conf" Wait
+  'Sleep 1
+  Shell "sudo gedit /etc/resolv.conf"
+  Settings["fmainsettingsdns/textbox3"] = TextBox3.text
+  Settings["fmainsettingsdns/textbox4"] = TextBox4.text
+
+End
+
+Public Sub Button27_Click()
+
+  setManualDNS
+
+End
+
+Public Sub setManualDNS()
+
+  Dim isIpValid1 As String
+  Dim isIpValid2 As String
+
+  Shell "bash " & globalVars.sFolder & "/gambasexec validateip " & TextBox3.text Wait To isIpValid1
+  Shell "bash " & globalVars.sFolder & "/gambasexec validateip " & TextBox4.text Wait To isIpValid2
+
+  isIpValid1 = Trim(isIpValid1)
+  isIpValid2 = Trim(isIpValid2)
+  If Val(isIpValid1) == 1 Then
+
+    If Val(isIpValid2) == 1 Then
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json " & TextBox3.text & " CustomServer1"
+      Sleep 0.5
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json " & TextBox4.text & " CustomServer2"
+      Sleep 0.5
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json custom DNSprovider"
+      textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "DNS set to custom: " & TextBox3.text & " / " & TextBox4.text
+    Else
+      textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Invalid IP address on DNS#2 please correct it"
+      TextBox4.SetFocus
+    End If
+
+  Else
+
+    textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Invalid IP address on DNS#1 please correct it"
+    TextBox3.SetFocus
+  End If
+  Settings["fmainsettingsdns/textbox3"] = TextBox3.text
+  Settings["fmainsettingsdns/textbox4"] = TextBox4.text
+
+End
+
+Public Sub Button29_Click()
+
+  'Desktop.OpenTerminal(User.Home & "/Desktop")
+  Dim myTerm As New TermForm
+
+  terminalCommand = "sudo bash " & globalVars.sfolder & "/dnsleak"
+  myTerm.Show
+  myTerm.runMe(terminalCommand)
+
+End
+
+Public Sub Button30_Click()
+
+  Dim dns1 As String
+  Dim dns2 As String
+  Dim DNS1Check As String
+  Dim DNS2Check As String
+  Dim isIpValid3 As String
+  Dim isIpValid4 As String
+  Dim ip1Status As String
+  Dim ip2Status As String
+  Dim domanCheck As String
+  Dim dnsProvider As String
+
+  domanCheck = globalVars.domainCheck1
+  dnsProvider = globalVars.DNSprovider
+
+  '
+  Shell "timeout 2 cat /etc/resolv.conf |grep nameserver|cut -d r -f 3| awk 'NR==1'|xargs" Wait To dns1
+  dns1 = Trim(dns1)
+  Shell "timeout 2 cat /etc/resolv.conf |grep nameserver|cut -d r -f 3| awk 'NR==2'|xargs" Wait To dns2
+  dns2 = Trim(dns2)
+
+  Shell "bash " & globalVars.sFolder & "/gambasexec validateip " & dns1 Wait To isIpValid3
+  Shell "bash " & globalVars.sFolder & "/gambasexec validateip " & dns1 Wait To isIpValid4
+  isIpValid3 = Trim(isIpValid3)
+  isIpValid4 = Trim(isIpValid4)
+
+  If Val(isIpValid3) == 1 And Val(isIpValid4) == 1 Then
+    Shell "timeout 3 dig +short @" & dns1 & " " & domanCheck & " A|head -n 1" Wait To DNS1Check
+    Shell "timeout 5 dig +short @" & dns2 & " " & domanCheck & " A|head -n 1" Wait To DNS2Check
+    DNS1Check = Trim(DNS1Check)
+    DNS2Check = Trim(DNS2Check)
+
+    Shell "bash " & globalVars.sFolder & "/gambasexec validateip " & DNS1Check Wait To isIpValid3
+    isIpValid3 = Trim(isIpValid3)
+
+    If Val(isIpValid3) == 1 Then
+      ip1Status = "valid"
+    Else
+      ip1Status = "NOT valid"
+    End If
+
+    Shell "bash " & globalVars.sFolder & "/gambasexec validateip " & DNS2Check Wait To isIpValid4
+    isIpValid4 = Trim(isIpValid4)
+    If Val(isIpValid4) == 1 Then
+      ip2Status = "valid"
+    Else
+      ip2Status = "NOT valid"
+    End If
+
+    textbox1.text = dns1 & " status is: " & ip1Status & "     " & dns2 & " status is: " & ip2Status
+    '
+  Else
+    textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "DNS IPS are not valid"
+  End If
+
+End
+
+Public Sub Button31_Click()
+
+  Dim dns1 As String
+  Dim dns2 As String
+
+  Shell "timeout 2 cat /etc/resolv.conf |grep nameserver|cut -d r -f 3| awk 'NR==1'|xargs" Wait To dns1
+  TextBox3.text = Trim(dns1)
+  Shell "timeout 2 cat /etc/resolv.conf |grep nameserver|cut -d r -f 3| awk 'NR==2'|xargs" Wait To dns2
+  TextBox4.text = Trim(dns2)
+
+End
+
+Public Sub CheckBox9_Click()
+
+  Dim dnsAutoRecovery As String = globalVars.dnsAutoRecovery
+
+  If CheckBox9.Value = True Then
+    If dnsAutoRecovery = "No" Then
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json Yes Forcetempdns"
+      notifyMessage = "'DNS recovery on: If Internet is lost temp DNS will be forced'"
+      globalVars.sendNotification(notifyMessage)
+    End If
+  Else
+    If dnsAutoRecovery = "Yes" Then
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json No Forcetempdns"
+      notifyMessage = "'DNS recovery off: If Internet is lost DNS will not be changed'"
+      globalVars.sendNotification(notifyMessage)
+    End If
+  Endif
+
+End
+
+Public Sub ToggleButton4_Click()
+
+  If ToggleButton4.Value = True Then
+    PictureBox7.Visible = True
+    TextArea2.Visible = False
+    ToggleButton6.Visible = False
+  Else
+    PictureBox7.Visible = False
+    TextArea2.Visible = True
+    ToggleButton6.Visible = True
+  Endif
+
+End
+
+Public Sub Button28_Click()
+
+  Dim ipDomainUrl As String = globalVars.ipDomainUrl
+
+  RadioButton11.value = True
+  Dim theIP As String
+  Dim isIpValid7 As String
+  Dim nakedDomain As String
+
+  If textbox5.Length > 2 Then
+    Shell "echo " & Trim(TextBox5.Text) & "| sed -e 's|^[^/]*//||' -e 's|/.*$||'" Wait To nakedDomain
+    If Trim(ipDomainUrl) <> Trim(nakedDomain) Then
+      Shell "sudo timeout 5 curl --silent --fail -m 5 " & Trim(textbox5.text) Wait To theIP
+      Shell "bash " & globalVars.sFolder & "/gambasexec validateip " & Trim(theIp) Wait To isIpValid7
+      isIpValid7 = Trim(isIpValid7)
+
+      If Val(isIpValid7) == 1 Then
+
+        Shell "bash " & globalVars.sFolder & "/" & "write_to_json custom Ipdomainsource"
+        Shell "sudo chown " & globalVars.loggedUser & "." & globalVars.loggedUser & " " & globalVars.sFolder & "/workingdomain.txt"
+        Shell "echo '" & Trim(textbox5.text) & "' > " & globalVars.sFolder & "/workingdomain.txt"
+        Shell "sudo chown " & globalVars.loggedUser & "." & globalVars.loggedUser & " " & globalVars.sFolder & "/workingdomain.txt"
+        Shell "echo " & Trim(TextBox5.Text) & "| sed -e 's|^[^/]*//||' -e 's|/.*$||'" Wait To nakedDomain
+        textbox1.text = Trim(nakedDomain) & " will be used  to check IP information"
+
+      Else
+
+        textbox1.text = Trim(nakedDomain) & " domain is not valid to check IP information submission declined"
+      End If
+    End If
+  Else
+    textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Domain input is empty please select a domain from list or enter one manually"
+    textbox5.SetFocus
+  End If
+  Settings["fmainsettingsdns/textbox5"] = TextBox5.text
+
+End
+
+Public Sub Frame16_MouseDown()
+
+End
+
+Public Sub TreeView4_Click()
+
+  listviewSelectedKeyDomain = Trim(TreeView4.Item.Key)
+  textbox5.text = treeView4[listviewSelectedKeyDomain].text
+
+End
+
+Public Sub TreeView4_Select()
+
+  listviewSelectedKeyDomain = Trim(TreeView4.Item.Key)
+  textbox5.text = treeView4[listviewSelectedKeyDomain].text
+
+End
+
+Public Sub TreeView4_LostFocus()
+
+  treeview4[listviewSelectedKeyDomain].Selected = True
+
+End
+
+Public Sub Button32_Click()
+
+  Dim nakedDomain As String
+
+  Shell "echo " & Trim(TextBox5.Text) & "| sed -e 's|^[^/]*//||' -e 's|/.*$||'" Wait To nakedDomain
+  Dim myOutput As String
+  Shell "timeout 5 whois " & Trim(nakedDomain) Wait To myOutput
+  myOutput = Trim(myOutput)
+  TextArea3.text = myOutput
+
+End
+
+Public Sub ToggleButton5_Click()
+
+  If ToggleButton5.value = True Then
+    TextArea3.Hide
+  Else
+    TextArea3.show
+  End If
+  Settings["fmainsettingsdns/togglevalue5"] = ToggleButton5.Value
+
+End
+
+Public Sub Button33_Click()
+
+  SpinBox5.Value = 1800000
+  Settings.Clear("logssettings")
+  Settings.Clear
+  Settings.Save
+  TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "All settings cleared"
+
+End
+
+Public Sub ToggleButton6_Click()
+
+  If ToggleButton6.value = True Then
+    TextArea2.Clear
+    Timer9.Stop
+    Timer9.Enabled = False
+  Else
+    Timer9.Enabled = True
+  End If
+  Settings["fmainsettingstor/togglevalue6"] = ToggleButton6.Value
+
+End
+
+Public Sub ToggleButton7_Click()
+
+  If ToggleButton7.value = True Then
+    TextArea1.Clear
+    Timer2.Stop
+    Timer2.Enabled = False
+  Else
+    Timer2.Enabled = True
+  End If
+  Settings["fmainsettingsvpn/togglevalue7"] = toggleButton7.Value
+
+End
+
+Public Sub RadioButton8_Click()
+
+  Dim ipDomaninSource As String = globalVars.ipDomaninSource
+
+  If ipDomaninSource <> "other"
+    Shell "bash " & globalVars.sFolder & "/" & "write_to_json other Ipdomainsource"
+    Shell "sudo bash " & globalVars.sFolder & "/" & "ipcheck -a other"
+    notifyMessage = "'IP will be retrieved randomly (decentralized)'"
+    globalVars.sendNotification(notifyMessage)
+  End If
+
+End
+
+Public Sub RadioButton9_Click()
+
+End
+
+Public Sub RadioButton10_Click()
+
+  Dim ipDomaninSource As String = globalVars.ipDomaninSource
+
+  If ipDomaninSource <> "digi77"
+    Shell "bash " & globalVars.sFolder & "/" & "write_to_json digi77 Ipdomainsource"
+    Shell "sudo bash " & globalVars.sFolder & "/" & "ipcheck -a digi77"
+    'Print "sudo bash " & globalVars.sFolder & "/" & "ipcheck -a digi77"
+    notifyMessage = "'IP will be retrieved via digi77.com (centralized)'"
+    globalVars.sendNotification(notifyMessage)
+  End If
+
+End
+
+Public Sub RadioButton11_Click()
+
+  textbox5.SetFocus
+
+End
+
+Public Sub mainwindowDimSaver()
+
+  Settings["fmainsettings/WindowTop"] = Me.Top
+  Settings["fmainsettings/WindowLeft"] = Me.Left
+  Settings["fmainsettings/WindowHeight"] = Me.Height
+  Settings["fmainsettings/WindowWidth"] = Me.Width
+
+End
+
+Public Sub CheckBox11_Click()
+
+  screenfonter()
+
+End
+
+Public Sub screenfonter()
+
+  'Dim fontsShow As String = globalVars.fontsShow
+  If startingTime = False Then
+    If checkbox11.Value = False Then
+      'If fontsShow = "No" Then
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json Yes showconky"
+      notifyMessage = "'Screen information will be visible'"
+      globalVars.sendNotification(notifyMessage)
+      ' End If
+    Else
+      ' If fontsShow = "Yes" Then
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json No showconky"
+      Shell "sudo killall conky" Wait
+      notifyMessage = "'Screen information will be hidden'"
+      globalVars.sendNotification(notifyMessage)
+      'End If
+    Endif
+  End If
+
+End
+
+Public Sub CheckBox12_Click()
+
+  networkSwitch()
+
+End
+
+Public Sub networkSwitch()
+
+  If startingTime = False Then
+    Dim loopBack As String
+
+    Shell "timeout 2 ifconfig |grep lo:" Wait To loopBack
+    loopBack = Trim(loopBack)
+
+    If CheckBox12.Value = False Then
+      If IsNull(loopBack) = True Then
+        Shell "sudo " & globalVars.sFolder & "/" & "enablenetwork"
+      End If
+    Else
+      If IsNull(loopBack) = False Then
+        Shell "sudo " & globalVars.sFolder & "/" & "disablenetwork"
+      End If
+    Endif
+  End If
+
+End
+
+Public Sub CheckBox13_Click()
+
+  swapper()
+
+End
+
+Public Sub swapper()
+
+  'Dim SwapStatus As String = globalVars.SwapStatus
+  If startingTime = False Then
+    If CheckBox13.Value = True Then
+      ' If SwapStatus = "No" Then
+      Shell "sudo " & globalVars.sFolder & "/" & "swapactivation on"
+      CheckBox37.Enabled = True
+      ' End If
+    Else
+      'If SwapStatus = "Yes" Then
+      Shell "sudo " & globalVars.sFolder & "/" & "swapactivation off"
+      CheckBox37.Enabled = False
+      'End If
+    Endif
+  End If
+
+End
+
+Public Sub CheckBox14_Click()
+
+  ip6()
+
+End
+
+Public Sub ip6()
+
+  If startingTime = False Then
+    'Dim ipV6 As String
+
+    'Try globalVars.getGlobalVars()
+    'ipV6 = globalVars.ipV6
+    If startingTime = False Then
+      If CheckBox14.Value = True Then
+        'If ipV6 = "No" Then
+        Shell "sudo " & globalVars.sFolder & "/" & "ipv6on"
+        ' End If
+      Else
+        'If CheckBox14.Value = False Then
+        'If ipV6 = "Yes" Then
+        Shell "sudo " & globalVars.sFolder & "/" & "ipv6off"
+        ' End If
+        'End If
+      Endif
+    End If
+  End If
+
+End
+
+Public Sub CheckBox15_Click()
+
+  loginControl2()
+
+End
+
+Public Sub loginControl2()
+
+  'Dim osAutologin As String = globalVars.osAutologin
+  If startingTime = False Then
+    If CheckBox15.Value = True Then
+      'If osAutologin = "No" Then
+      Shell "sudo " & globalVars.sFolder & "/" & "autologinon"
+      ' End If
+    Else
+      'If osAutologin = "Yes" Then
+      Shell "sudo " & globalVars.sFolder & "/" & "autologinoff"
+      'End If
+    End If
+  End If
+
+End
+
+Public Sub CheckBox18_Click()
+
+  'Dim printerCups As String = globalVars.printerCups
+  If startingTime = False Then
+    If CheckBox18.Value = True Then
+      ' If printerCups = "No" Then
+      Shell "sudo " & globalVars.sFolder & "/" & "cupson"
+      'End If
+    Else
+      ' If printerCups = "Yes" Then
+      Shell "sudo systemctl stop cups;sudo systemctl disable cups;sudo systemctl mask cups;"
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json No printcapsstatus"
+      notifyMessage = "'Printer cups service disabled'"
+      globalVars.sendNotification(notifyMessage)
+      ' End If
+    Endif
+  End If
+
+End
+
+Public Sub CheckBox19_Click()
+
+  Dim autFontadjust As String = globalVars.autoFontadjust
+
+  If CheckBox19.Value = True Then
+    If autFontadjust = "No" Then
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json Yes Forcefonts"
+      notifyMessage = "'Auto font correction is set to On'"
+      globalVars.sendNotification(notifyMessage)
+    End If
+  Else
+    If autFontadjust = "Yes" Then
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json No Forcefonts"
+      notifyMessage = "'Auto font correction is set to Off'"
+      globalVars.sendNotification(notifyMessage)
+    End If
+  Endif
+
+End
+
+Public Sub Button6_Click()
+
+  Shell "sudo bash " & globalVars.sFolder & "/gambasexec wipesystem"
+  notifyMessage = "'Wiping all logs this will take time'"
+  globalVars.sendNotification(notifyMessage)
+  TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Wiping all logs this will take time"
+  textbox6.text = globalVars.getHost()
+
+End
+
+Public Sub Frame3_MouseDown()
+
+End
+
+Public Sub Frame3_MouseMove()
+
+End
+
+Public Sub Button35_Click()
+
+  Shell "sudo bash " & globalVars.sFolder & "/gambasexec defaulthost"
+  Sleep 2
+  notifyMessage = "'Random host is set your new host is: '" & globalVars.getHost()
+  globalVars.sendNotification(notifyMessage)
+  TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Host is set to default your host is: " & globalVars.getHost()
+  textbox6.text = globalVars.getHost()
+
+End
+
+Public Sub Button37_Click()
+
+  textbox6.text = globalVars.getHost()
+  textbox6.SetFocus
+
+End
+
+Public Sub Button36_Click()
+
+  Shell "sudo bash " & globalVars.sFolder & "/gambasexec manualhost " & textbox6.text
+  Sleep 2
+  notifyMessage = "'Random host is set your new host is '" & globalVars.getHost()
+  globalVars.sendNotification(notifyMessage)
+  TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Random host is set your new host is " & globalVars.getHost()
+  textbox6.text = globalVars.getHost()
+  settings["fmainsettingscontrols/textbox6"] = TextBox6.text
+
+End
+
+Public Sub Button38_Click()
+
+  Shell "sudo bash " & globalVars.sFolder & "/gambasexec md5checksum"
+  TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "MD5 checksum of files generated"
+  TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & "Show MD5 checksum"
+
+End
+
+Public Sub Button39_Click()
+
+  Shell "sudo bash " & globalVars.sFolder & "/gambasexec md5verify"
+  TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "MD5 verification completed"
+  TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & "Show MD5 verifier"
+
+End
+
+Public Sub Button40_Click()
+
+  Dim myTerm As New TermForm
+
+  terminalCommand = "echo ' Please wait this will take a while to finish...'; echo ' '; sudo aide -c /etc/aide/aide.conf --limit " & globalVars.sFolder & " --check"
+  myTerm.Show
+  myTerm.runMe(terminalCommand)
+  TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & "Show Aide scan"
+
+End
+
+Public Sub Button41_Click()
+
+  Dim myTerm As New TermForm
+
+  terminalCommand = "echo ' Please wait this will take a while to finish...'; echo ' '; sudo aide -c /etc/aide/aide.conf -C"
+  myTerm.Show
+  myTerm.runMe(terminalCommand)
+  TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & "Show Aide scan"
+
+End
+
+Public Sub Button42_Click()
+
+  Dim myTerm As New TermForm
+
+  terminalCommand = "echo ' Please wait this will take a while to finish...'; echo ' '; sudo bash " & globalVars.sFolder & "/gambasexec intaidehome"
+  myTerm.Show
+  myTerm.runMe(terminalCommand)
+  TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & "Show Aide scan"
+
+End
+
+Public Sub Button43_Click()
+
+  Dim myTerm As New TermForm
+
+  terminalCommand = "echo ' Please wait this will take a while to finish...'; echo ' '; sudo bash " & globalVars.sFolder & "/gambasexec intaidesystem"
+  myTerm.Show
+  myTerm.runMe(terminalCommand)
+  TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & "Show Aide scan"
+
+End
+
+Public Sub Button44_Click()
+
+  Dim myTerm As New TermForm
+
+  terminalCommand = "sudo bash " & globalVars.sFolder & "/newmac;"
+  myTerm.Show
+  myTerm.runMe(terminalCommand)
+  TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Show MAC control"
+
+End
+
+Public Sub Button45_Click()
+
+  Dim myTerm As New TermForm
+
+  terminalCommand = "sudo bash " & globalVars.sFolder & "/usbguardtools;"
+  myTerm.Show
+  myTerm.runMe(terminalCommand)
+  TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & "Show USB control"
+
+End
+
+Public Sub Button46_Click()
+
+  Dim myTerm As New TermForm
+
+  terminalCommand = "sudo bash " & globalVars.sFolder & "/getdrivers;"
+  myTerm.Show
+  myTerm.runMe(terminalCommand)
+  TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & "Show driveres install"
+
+End
+
+Public Sub Button47_Click()
+
+  Dim myTerm As New TermForm
+
+  terminalCommand = "sudo rkhunter --check"
+  myTerm.Show
+  myTerm.runMe(terminalCommand)
+  TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & "Show Rootkit scan"
+
+End
+
+Public Sub SpinBox2_Change()
+
+  Dim screenFontSize2 As String = globalVars.screenFontSize
+
+  If SpinBox2.Value > 2 And SpinBox2.Value < 20 Then
+    If SpinBox2.Value < screenFontSize Then
+      If screenFontSize2 <> SpinBox2.Value Then
+        Shell "sudo bash " & globalVars.sFolder & "/decfont " & SpinBox2.Value
+      End If
+    Else
+      If screenFontSize2 <> SpinBox2.Value Then
+        Shell "sudo bash " & globalVars.sFolder & "/incfont " & SpinBox2.Value
+      End If
+    End If
+    If screenFontSize2 <> SpinBox2.Value Then
+      textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Screen font size will be set to: " & SpinBox2.Value
+    End If
+  Else
+    If screenFontSize2 <> SpinBox2.Value Then
+      textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Screen font value should be between 3 and 19"
+    End If
+  End If
+
+End
+
+Public Sub Frame20_MouseDown()
+
+End
+
+Public Sub CheckBox17_Click()
+
+  wifiControl()
+
+End
+
+Public Sub wifiControl()
+
+  If startingTime = False Then
+    Dim wifistatus As String
+
+    Shell "timeout 2 nmcli radio wifi" Wait To wifistatus 'sending wifi status to the wifistat variable for later use
+
+    If CheckBox17.value = True Then
+      If wifistatus = "enabled\n" Then
+        Shell "sudo timeout 2 nmcli radio wifi off"  'this will execute the Wi-Fi OFF command
+        Shell "sudo timeout 2 ip link set wlan0 down"
+        notifyMessage = "'Wifi set off'"
+        globalVars.sendNotification(notifyMessage)
+      End If
+    Else
+      If wifistatus = "disabled\n" Then
+        Shell "sudo timeout 2 nmcli radio wifi on"   'this will execute the wifi ON/ENABLED command
+        Shell "sudo timeout 2 ip link set wlan0 up"
+        notifyMessage = "'Wifi set on'"
+        globalVars.sendNotification(notifyMessage)
+      End If
+    End If
+  End If
+
+End
+
+Public Sub CheckBox16_Click()
+
+  bluetoothControl
+
+End
+
+Public Sub bluetoothControl()
+
+  If startingTime = False Then
+    Dim bluetoothstatus As String
+
+    Shell "sudo timeout 2 systemctl is-enabled bluetooth" Wait To bluetoothstatus 'sending bluetooth status to the bluetoothstatus variable for later use
+
+    If CheckBox16.value = True Then
+      If bluetoothstatus = "enabled\n" Then
+        Shell "sudo pkexec systemctl disable bluetooth"
+        notifyMessage = "'Bluetooth set off'"
+        globalVars.sendNotification(notifyMessage)
+      End If
+    Else
+      If bluetoothstatus = "disabled\n" Then
+        Shell "sudo pkexec systemctl enable bluetooth"
+        notifyMessage = "'Bluetooth set on'"
+        globalVars.sendNotification(notifyMessage)
+      End If
+    End If
+  End If
+
+End
+
+Public Sub CheckBox20_Click()
+
+  rfControl()
+
+End
+
+Public Sub rfControl()
+
+  If startingTime = False Then
+    Dim rfkillStatus As String
+
+    Shell "sudo rfkill list all|grep Soft |cut -d':' -f2" Wait To rfkillStatus
+    rfkillStatus = Trim(rfkillStatus)
+    If CheckBox20.value = True Then
+      If rfkillStatus = "no" Then
+        Shell "sudo pkexec rfkill block all"  'this will execute the airplane ON/ENABLED command
+        notifyMessage = "'airplane on RF blocked'"
+        globalVars.sendNotification(notifyMessage)
+
+      End If
+      If rfkillStatus = Null Then
+        notifyMessage = "'No RF devices found'"
+        globalVars.sendNotification(notifyMessage)
+      Endif
+    Else
+      If rfkillStatus = "yes" Then
+        Shell "sudo pkexec rfkill unblock all" 'this will execute the airplane OFF command
+        notifyMessage = "'airplane off RF unbloacked'"
+        globalVars.sendNotification(notifyMessage)
+      End If
+    End If
+  End If
+
+End
+
+Public Sub Button48_Click()
+
+  Dim myTerm As New TermForm
+
+  terminalCommand = "sudo bash " & globalVars.sFolder & "/securityleval;"
+  myTerm.Show
+  myTerm.runMe(terminalCommand)
+  TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & "Show security evaluation"
+  Settings["fmainsettingscontrols/textbox7"] = TextBox7.text
+
+End
+
+Public Sub Button52_Click()
+
+  If InStr(textbox7.text, ".") > 0 Then
+    Dim theURL As String
+    Dim theFingerprint As String
+    Shell "echo " & Trim(textbox7.Text) & "| sed -e 's|^[^/]*//||' -e 's|/.*$||'" Wait To theURL
+    'Sleep 1
+    'Shell "sudo openssl s_client -connect " & Trim(theURL) & ":443 |& openssl x509 -fingerprint -noout" Wait To theFingerprint
+    'Print "echo | openssl s_client -connect " & Trim(theURL) & ":443 |& openssl x509 -fingerprint -noout"
+    Shell "sudo bash " & globalVars.sFolder & "/gambasexec fingerprint " & Trim(theURL) Wait To theFingerprint
+    textbox8.text = Trim(theFingerprint)
+    textbox8.SetFocus
+    textbox1.text = ""
+  Else
+    textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Invalid URL"
+    TextBox7.SetFocus
+  End If
+
+End
+
+Public Sub Button53_Click()
+
+  Clipboard.Copy(textbox8.text)
+
+End
+
+Public Sub Button54_Click()
+
+  textbox8.Clear
+
+End
+
+Public Sub Button55_Click()
+
+  textbox7.Clear
+  Settings["fmainsettingscontrols/textbox7"] = TextBox7.text
+
+End
+
+Public Sub Button56_Click()
+
+  textbox6.Clear
+  settings["fmainsettingscontrols/textbox6"] = TextBox6.text
+
+End
+
+Public Sub Button57_Click()
+
+  Clipboard.Copy(textbox6.text)
+
+End
+
+Public Sub Button49_Click()
+
+  ' Dim myTerm As New TermForm
+  '
+  ' terminalCommand = "sudo bash " & globalVars.sFolder & "/killkodachi;"
+  ' myTerm.Show
+  ' myTerm.runMe(terminalCommand)
+  Shell "sudo bash " & globalVars.sFolder & "/gambasexec killkodachi"
+  TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & "Show destroy system"
+
+End
+
+' Refrences
+
+' Public Sub speedtest(speed As String)
+'
+'   If j = 1 Then
+'      Exec ["xterm", "-hold", "-e", "wget", "--no-check-certificate", "/dev/null", speed]
+'   Endif
+'   If j = 2 Then
+'      Exec ["xterm", "-hold", "-e", "wget", "--no-check-certificate", "/dev/null", speed, speed]
+'   Endif
+'   If j = 3 Then
+'      Exec ["xterm", "-hold", "-e", "wget", "--no-check-certificate", "/dev/null", speed, speed, speed]
+'   Endif
+'     If j = 4 Then
+'        Exec ["xterm", "-hold", "-e", "wget", "--no-check-certificate", "/dev/null", speed, speed, speed, speed]
+'     Endif
+'     If j = 5 Then
+'        Exec ["xterm", "-hold", "-e", "wget", "--no-check-certificate", "/dev/null", speed, speed, speed, speed, speed]
+'     Endif
+'end
+
+' Public Sub ToggleButton8_Click()
+'
+'   If ToggleButton8.value = True Then
+'     Dim myterminal As TerminalView
+'
+'      myterminal = New TerminalView(TerminalView1) As "sTerminal"
+'     With myterminal
+'     .Clear
+'     '.Blink = False
+'     .Background = &H0
+'     .Foreground = &HFFFFFF
+'     .Border = False
+'     .Expand = True
+'     .Limit = 0
+'     .ShowScrollBar = True
+'     .ReadOnly = True
+'     .AutoResize = True
+'   End With
+'
+'   Try myterminal.shell(Trim("sudo iftop -n"))
+'    Sleep 1
+'
+'    Frame23.hide
+'    Frame2.Show
+'   Else
+'      'myterminal.Kill
+'      Frame23.Show
+'      Frame2.hide
+'      End If
+'
+' End
+
+Public Sub Button64_Click()
+
+  TextBox9.Clear
+  TextBox10.Clear
+  Settings["fmainsettingscontrols/textbox9"] = TextBox9.text
+
+End
+
+Public Sub Button63_Click()
+
+  Dim theAdress As Integer = Len(TextBox9.text)
+  Dim isAlphNum As Boolean = IsAlnum(TextBox9.text)
+
+  If theAdress > 20 And isAlphNum == True Then
+    Dim theBalance As String
+    Shell "sudo bash " & globalVars.sFolder & "/gambasexec  btcbalance " & Trim(TextBox9.text) Wait To theBalance
+    TextBox10.text = Trim(theBalance)
+    textbox1.text = ""
+    TextBox10.SetFocus
+  Else
+    textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Invalid Bitcoin address"
+    textbox9.SetFocus
+  End If
+  Settings["fmainsettingscontrols/textbox9"] = TextBox9.text
+
+End
+
+Public Sub Button65_Click()
+
+  Dim myTerm As New TermForm
+
+  terminalCommand = "sudo bash " & globalVars.sFolder & "/memorytools;"
+  myTerm.Show
+  myTerm.runMe(terminalCommand)
+  TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & "Show memory control"
+
+End
+
+Public Sub PictureBox9_MouseDown()
+
+End
+
+Public Sub PictureBox9_DblClick()
+
+  Clipboard.Copy("19pufEJUkQGPJYXCfA1b7GaKSUNeYEsApU")
+  textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Bitcoin address:19pufEJUkQGPJYXCfA1b7GaKSUNeYEsApU copied to clipboard"
+
+End
+
+Public Sub PictureBox10_DblClick()
+
+  Desktop.Open(globalVars.paypalDonations)
+
+End
+
+Public Sub PictureBox8_DblClick()
+
+  Desktop.Open(globalVars.kodachiWebUrl)
+
+End
+
+Public Sub Button66_Click()
+
+  startingTime = True
+  CheckBox3.Value = False
+  CheckBox4.Value = False
+  CheckBox5.Value = False
+  Shell "sudo ufw --force reset;sudo rm -f /etc/ufw/before.rules.*;sudo rm -f /etc/ufw/before6.rules.*;sudo rm -f /etc/ufw/after.rules.*;sudo rm -f /etc/ufw/after6.rules.*;sudo rm -f /etc/ufw/user.rules.*;sudo rm -f /etc/ufw/user6.rules.*;yes|sudo ufw reset;sudo ufw disable;sudo iptables -F;"
+  notifyMessage = "'All traffic will be allowed iptables firewall flushed'"
+  TrayIcon1.icon = picture["images/kodachi16.png"]
+  globalVars.sendNotification(notifyMessage)
+  textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "All traffic will be allowed iptables firewall flushed"
+  startingTime = False
+
+End
+
+Public Sub ToggleButton8_Click()
+
+  If ToggleButton8.value = True Then
+    Dim myTerm As New TermForm
+
+    terminalCommand = "sudo sdmem -v;"
+    myTerm.Show
+    myTerm.runMe(terminalCommand)
+
+    ' Shell "sudo sdmem -v;"
+    textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Wiping the Ram"
+  Else
+    Shell "sudo killall sdmem"
+    textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Wiping the Ram stopped"
+  Endif
+
+End
+
+Public Sub Button67_Click()
+
+  Shell "sudo bash " & globalVars.sFolder & "/gambasexec fastmemclean"
+  textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Cleaning the RAM"
+
+End
+
+Public Sub ToggleButton10_Click()
+
+  If ToggleButton10.value = True Then
+
+    Dim myTerm As New TermForm
+    terminalCommand = "sudo sfill -v /"
+    myTerm.Show
+    myTerm.runMe(terminalCommand)
+    textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Wiping free disk space"
+  Else
+    Shell "sudo timeout 2 kill -9 `ps -ef | grep sfill | grep -v grep | awk '{print $2}'`"
+    Shell "sudo rm -f /*.ooo"
+    textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Wiping free disk spac stopped"
+  Endif
+
+End
+
+Public Sub ToggleButton12_Click()
+
+  If ToggleButton12.value = True Then
+    Shell "sudo bash " & globalVars.sFolder & "/gambasexec blockusb"
+    textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "All USB devices will be blocked"
+
+  Else
+    Shell "sudo bash " & globalVars.sFolder & "/gambasexec allowusb"
+    Shell "sudo service usbguard stop;"
+    textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "All USB devices will be allowed"
+  Endif
+
+End
+
+Public Sub Button68_Click()
+
+  Shell "sudo shutdown -h now"
+
+  TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & "Shutting down the system"
+
+End
+
+Public Sub Button51_Click()
+
+  'Settings.Clear("fmainsettingscontrols")
+  ' Settings.Save
+  'TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "All settings cleared"
+  Combobox1.Text = "Pick your profile"
+  Settings["fmainsettingsabout/Combobox1"] = ComboBox1.text
+
+End
+
+Public Sub Button50_Click()
+
+  Print Spinner1.Foreground
+  Spinner1.Foreground = 16711680
+  Wait 0.3
+  If CheckBox28.Value = True Then
+    ToggleButton8.value = False
+    ToggleButton8.value = True
+  End If
+
+  If CheckBox29.Value = True Then
+    ToggleButton10.value = False
+    ToggleButton10.value = True
+  End If
+  If CheckBox30.Value = True Then
+    Button6_Click
+  End If
+  If CheckBox31.Value = True Then
+    Button72_Click
+  End If
+  If CheckBox32.Value = True Then
+    Button70_Click
+  End If
+  If CheckBox33.Value = True Then
+    Button5_Click
+  End If
+  If CheckBox34.Value = True Then
+    Shell "sudo wipe -f -r " & User.Home & "/Documents/*"
+    Shell "sudo wipe -f -r " & User.Home & "/Documents/.[a-zA-Z_-]*"
+
+  End If
+  If CheckBox35.Value = True Then
+    Shell "sudo wipe -f -r " & User.Home & "/Downloads/*"
+    Shell "sudo wipe -f -r " & User.Home & "/Downloads/.[a-zA-Z_-]*"
+  End If
+  If CheckBox36.Value = True Then
+    Shell "sudo wipe -f -r " & User.Home & "/Desktop/*"
+    Shell "sudo wipe -f -r " & User.Home & "/Desktop/.[a-zA-Z_-]*"
+  End If
+
+  Settings["fmainsettingscontrols/CheckBox28"] = CheckBox28.Value
+  Settings["fmainsettingscontrols/CheckBox29"] = CheckBox29.Value
+  Settings["fmainsettingscontrols/CheckBox30"] = CheckBox30.Value
+  Settings["fmainsettingscontrols/CheckBox31"] = CheckBox31.Value
+  Settings["fmainsettingscontrols/CheckBox32"] = CheckBox32.Value
+  Settings["fmainsettingscontrols/CheckBox33"] = CheckBox33.Value
+  Settings["fmainsettingscontrols/CheckBox34"] = CheckBox34.Value
+  Settings["fmainsettingscontrols/CheckBox35"] = CheckBox35.Value
+  Settings["fmainsettingscontrols/CheckBox36"] = CheckBox36.Value
+  Spinner1.Foreground = "0"
+
+End
+
+Public Sub Timer11_Timer()
+
+  If Val(globalVars.securityScore) < 40 Then
+
+    If soundToggleScore == True Then
+      Music.Load(globalVars.sFolder & "/vpnwarn.mp3")
+      Music.Play()
+    Endif
+    Timer11.Enabled = False
+    PictureBox11.Show
+    TrayIcon1.icon = Picture["images/kodachi16yellow.png"]
+    textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Warning your security score is low: " & globalVars.securityScore & "/100"
+  Endif
+
+End
+
+Public Sub CheckBox21_Click()
+
+  If startingTime = False Then
+    If CheckBox21.value = True Then
+      Timer11.Enabled = True
+    Else
+      Timer11.Enabled = False
+      PictureBox11.hide
+      TrayIcon1.icon = picture["images/kodachi16.png"]
+
+    Endif
+  End If
+  Settings["fmainsettingscontrols/checkbox21"] = CheckBox21.Value
+
+End
+
+Public Sub ToggleButton13_Click()
+
+  soundToggleScore = Not soundToggleScore
+  Settings["fmainsettingscontrols/togglevalue13"] = ToggleButton13.Value
+
+End
+
+Public Sub PictureBox8_MouseDown()
+
+End
+
+Public Sub PictureBox7_DblClick()
+
+  Desktop.Open("https://en.wikipedia.org/wiki/Five_Eyes")
+
+End
+
+Public Sub Form_Close()
+
+  endDashboard
+
+End
+
+Public Sub Menu13_Click()
+
+  Button8_Click
+
+End
+
+Public Sub Menu14_Click()
+
+  Button9_Click
+
+End
+
+Public Sub Menu48_Click()
+
+  FMain.Minimized = False
+
+  Me.SkipTaskbar = False
+  Me.show
+
+End
+
+Public Sub Menu1_Click()
+
+  Button1_click
+
+End
+
+Public Sub Menu16_Click()
+
+  Button19_click
+
+End
+
+Public Sub Menu17_Click()
+
+  Button20_click
+
+End
+
+Public Sub Menu19_Click()
+
+  dnsEntry = "Dnscrypt"
+  Shell "bash " & globalVars.sFolder & "/" & "write_to_json " & dnsEntry & " DNSprovider"
+
+End
+
+Public Sub Menu20_Click()
+
+  dnsEntry = "TOR"
+  Shell "bash " & globalVars.sFolder & "/" & "write_to_json " & dnsEntry & " DNSprovider"
+
+End
+
+Public Sub Menu25_Click()
+
+  RadioButton8_Click
+
+End
+
+Public Sub Menu24_Click()
+
+  RadioButton10_Click
+
+End
+
+Public Sub Menu22_Click()
+
+  CheckBox5.value = Not CheckBox5.value
+
+End
+
+Public Sub Menu26_Click()
+
+  CheckBox11.value = Not CheckBox11.value
+
+End
+
+Public Sub Menu27_Click()
+
+  CheckBox12.value = Not CheckBox12.value
+
+End
+
+Public Sub Menu28_Click()
+
+  CheckBox17.value = Not CheckBox17.value
+
+End
+
+Public Sub Menu29_Click()
+
+  CheckBox16.value = Not CheckBox16.value
+
+End
+
+Public Sub Menu30_Click()
+
+  CheckBox20.value = Not CheckBox20.value
+
+End
+
+Public Sub Menu31_Click()
+
+  Button70_Click
+
+End
+
+Public Sub Menu32_Click()
+
+  Button67_Click
+
+End
+
+Public Sub Menu33_Click()
+
+  ToggleButton8.value = Not ToggleButton8.value
+  ToggleButton8_Click
+
+End
+
+Public Sub Menu34_Click()
+
+  ToggleButton12.value = Not ToggleButton12.value
+  ToggleButton12_Click
+
+End
+
+Public Sub Menu35_Click()
+
+  Button6_Click
+
+End
+
+Public Sub Menu36_Click()
+
+  Button5_Click
+
+End
+
+Public Sub Menu37_Click()
+
+  Button68_Click
+
+End
+
+Public Sub Menu38_Click()
+
+  Button49_Click
+
+End
+
+Public Sub Menu39_Click()
+
+  Button4_Click
+
+End
+
+Public Sub Menu40_Click()
+
+  Button2_Click
+
+End
+
+Public Sub Menu42_Click()
+
+  Button39_Click
+
+End
+
+Public Sub Menu43_Click()
+
+  Button40_Click
+
+End
+
+Public Sub Menu45_Click()
+
+  PictureBox8_DblClick
+
+End
+
+Public Sub Menu46_Click()
+
+  Button81_Click
+
+End
+
+Public Sub Menu47_Click()
+
+  endDashboard
+
+End
+
+Public Sub endDashboard()
+
+  Settings["fmainsettingscontrols/tabindex"] = TabStrip1.Index
+  Settings["fmainsettingscontrols/CheckBox28"] = CheckBox28.Value
+  Settings["fmainsettingscontrols/CheckBox29"] = CheckBox29.Value
+  Settings["fmainsettingscontrols/CheckBox30"] = CheckBox30.Value
+  Settings["fmainsettingscontrols/CheckBox31"] = CheckBox31.Value
+  Settings["fmainsettingscontrols/CheckBox32"] = CheckBox32.Value
+  Settings["fmainsettingscontrols/CheckBox33"] = CheckBox33.Value
+  Settings["fmainsettingscontrols/CheckBox34"] = CheckBox34.Value
+  Settings["fmainsettingscontrols/CheckBox35"] = CheckBox35.Value
+  Settings["fmainsettingscontrols/CheckBox36"] = CheckBox36.Value
+  Settings["fmainsettingsabout/Timer15"] = SpinBox5.Value
+
+  mainwindowDimSaver
+  Settings.Save
+  ' Stop Event
+  'Me.hide
+  ' Me.Minimized = True
+
+  'logs.TerminalView1.Kill
+  logs.Close
+  Status.Close
+  'termForm.TerminalView1.Kill
+  TermForm.close
+  Me.close
+  Shell "sudo timeout 2 bash " & globalVars.sFolder & "/gambasexec killme " & Application.name Wait
+  Quit
+
+End
+
+Public Sub Form_Resize()
+
+End
+
+Public Sub Form_State()
+
+  If FMain.Minimized = True Then
+    'Protect write to DNS
+    Timer14.Enabled = False
+    ' Me.hide
+    ' Me.SkipTaskbar = True
+    TrayIcon1.show
+    Me.hide
+  Endif
+
+End
+
+Public Sub Form_Show()
+
+  TrayIcon1.hide
+
+End
+
+Public Sub Button69_Click()
+
+  If Exist(TextBox11.text) = False Then
+
+    Dim sPath As String
+
+    Dialog.Title = ("Select the path for backup/export")
+    Dialog.Filter = ["*.*", "Directory"]
+    Dialog.Path = User.Home & "/backups"
+    If Dialog.SelectDirectory() Then
+      Me.Close
+      Return
+      textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Invaid path"
+    End If
+    sPath = Dialog.Path
+  Else
+
+    sPath = textbox11.text
+  End If
+  If Exist(sPath) = False Then
+    Shell "timeout 2 mkdir -p " & sPath
+  End If
+  If sPath.Len > 1 Then
+
+    ' save all settings
+    ' Settings.Save
+
+    Shell "cp -f ~/.kbase/kodachi.json " & sPath & "; cp - f ~/.config/gambas3/Kodachi-Dashboard.conf " & sPath
+    textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Backup process completed saved in: " & sPath
+    TextLabel5.Text = "Last backup on: " & Format$(Now, "d/m/yy h:nn")
+    textbox11.text = sPath
+  Else
+    textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Invaid path"
+  End If
+  Settings["fmainsettingsabout/textbox11"] = textbox11.text
+  Settings["fmainsettingsabout/TextLabel5"] = TextLabel5.Text
+
+End
+
+Public Sub TrayIcon1_MiddleClick()
+
+  FMain.Minimized = False
+
+  Me.SkipTaskbar = False
+  Me.show
+
+End
+
+Public Sub Menu49_Click()
+
+  Button33_Click
+
+End
+
+Public Sub Button70_Click()
+
+  Shell "sudo bash " & globalVars.sFolder & "/gambasexec changeallmac"
+  textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Spoof all MAC addresses"
+  notifyMessage = "'MAC operation completed'"
+  globalVars.sendNotification(notifyMessage)
+
+End
+
+Public Sub Frame10_MouseDown()
+
+End
+
+Public Sub Menu12_Click()
+
+  Button13_Click
+
+End
+
+Public Sub CheckBox22_Click()
+
+  torrifiytheSystem
+
+End
+
+Public Sub torrifiytheSystem()
+
+  If CheckBox22.value = True
+    Dim VPNstaus As String
+    Dim TORstaus As String
+
+    If globalVars.Toriffystatus = "No" Then
+
+      Shell "timeout 2 ps ax | grep -v grep | grep tor-service" Wait To TORstaus
+      TORstaus = Trim(TORstaus)
+      If TORstaus Then
+        Shell "sudo timeout 2 killall tor"
+      End If
+
+      If RadioButton3.value = True Then
+        'Shell "sudo touch /etc/tor/torrc.custom"  ' No need anonying
+        Shell "sudo bash " & globalVars.sFolder & "/torforce setoff"
+
+      Endif
+
+      If RadioButton4.value = True Then
+        Shell "sudo bash " & globalVars.sFolder & "/torforce 14"
+
+      Endif
+
+      If RadioButton5.value = True Then
+
+        Shell "sudo bash " & globalVars.sFolder & "/torforce 9"
+
+      Endif
+
+      If RadioButton6.value = True Then
+        Shell "sudo bash " & globalVars.sFolder & "/torforce 5"
+
+      Endif
+
+      Shell "sudo timeout 30 bash " & globalVars.sFolder & "/torifysystem"
+    End If
+
+    Shell "timeout 2 ps ax | grep -v grep | grep openvpn" Wait To VPNstaus
+    VPNstaus = Trim(VPNstaus)
+
+    If VPNstaus Then
+      ' Do nothing
+    Else
+      RadioButton2.Value = True
+    End If
+  Else
+    Button20_Click()
+  End If
+
+End
+
+Public Sub ToggleButton14_Click()
+
+End
+
+Public Sub Button71_Click()
+
+  Shell "sudo bash " & globalVars.sFolder & "/gambasexec restormac"
+  textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "All MAC addresses restored"
+
+End
+
+Public Sub Timer12_Timer()
+
+  If CheckBox24.Value = True Then
+
+    Dim theIP2 As String
+
+    Try theIP2 = getPlainIP()
+    ' Print theIP & "|" & currentnetIP
+    If currentnetIP2 <> theIP2 Then
+      Shell "sudo service ntp Stop;sudo service ntp start;sudo ntpq -p;"
+      currentnetIP2 = theIP2
+    End If
+  Endif
+
+End
+
+Public Sub CheckBox24_Click()
+
+  timeChanger
+
+End
+
+Public Sub timeChanger()
+
+  If CheckBox24.Value = True Then
+    Timer12.enabled = True
+    textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Auto timezone synce enabled"
+  Else
+    Timer12.enabled = False
+    textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Auto timezone synce disabled"
+  Endif
+  Settings["fmainsettingsvpn/checkbox24"] = CheckBox24.Value
+
+End
+
+Public Sub CheckBox23_Click()
+
+  Dim autospoofmac As String = globalVars.autoSpoofMac
+
+  If CheckBox23.value = True Then
+    If autospoofmac = "No" Then
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json Yes autospoofmac"
+      textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Spoof all MAC addresses enabled"
+      notifyMessage = "'MAC operation completed'"
+      globalVars.sendNotification(notifyMessage)
+    End If
+  Else
+    If autospoofmac = "Yes" Then
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json No autospoofmac"
+      textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Spoof all MAC addresses disabled"
+      notifyMessage = "'MAC operation completed'"
+      globalVars.sendNotification(notifyMessage)
+    End If
+  Endif
+
+End
+
+Public Sub Menu50_Click()
+
+  Button59_Click
+
+End
+
+Public Sub Menu51_Click()
+
+  CheckBox22.Value = True
+  CheckBox22_Click
+
+End
+
+Public Sub ToggleButton11_Click()
+
+  ipautoupdateToggle = Not ipautoupdateToggle
+  If ipautoupdateToggle = True Then
+    Timer5.Enabled = True
+  Else
+    Timer5.Enabled = False
+  End If
+  Settings["fmainsettingsvpn/togglevalue11"] = toggleButton11.Value
+
+End
+
+Public Sub Button72_Click()
+
+  Shell "sudo bash " & globalVars.sFolder & "/gambasexec tornewcirc"
+  notifyMessage = "'TOR circuit will get updated'"
+  globalVars.sendNotification(notifyMessage)
+  textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "TOR circuit will get updated"
+
+End
+
+Public Sub Button76_Click()
+
+  Desktop.Open(globalVars.keystrockcheckurl)
+
+End
+
+Public Sub Button73_Click()
+
+  Dim myTerm As New TermForm
+  Dim kloakstatus As String
+  ' Event tester
+  Shell "sudo timeout 2 systemctl status kloak.service" Wait To kloakstatus
+  'Shell "sudo kill -9 `ps -ef | grep eventcap | grep -v grep | awk '{print $2}'`" Wait
+  If InStr(kloakstatus, "inactive") > 0 Then
+    Shell "sudo systemctl start kloak.service"
+    Sleep 1
+
+    terminalCommand = "sudo timeout 2 eventcap /dev/input/event" & SpinBox3.Value
+    myTerm.Show
+    myTerm.runMe(terminalCommand)
+    TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & "Testing input event " & SpinBox3.Value
+  Else
+
+    terminalCommand = "sudo eventcap /dev/input/event" & SpinBox3.Value
+    myTerm.Show
+    myTerm.runMe(terminalCommand)
+    TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & "Testing input event " & SpinBox3.Value
+  End If
+  '
+  ' Shell "sudo killall kloak" Wait
+  ' Shell "sudo systemctl stop kloak.service;sudo systemctl start kloak.service;" Wait
+
+  Button75.Enabled = True
+  Settings["fmainsettingscontrols/spinbox3"] = spinbox3.Value
+  Settings["fmainsettingscontrols/spinbox4"] = SpinBox4.value
+
+End
+
+Public Sub Button74_Click()
+  'Start kloak
+
+  Dim myTerm As New TermForm
+  Dim kloakstatus As String
+  ' Event tester
+  Shell "sudo timeout 2 systemctl status kloak.service" Wait To kloakstatus
+  'Shell "sudo kill -9 `ps -ef | grep eventcap | grep -v grep | awk '{print $2}'`" Wait
+  If InStr(kloakstatus, "inactive") > 0 Then
+    Shell "sudo systemctl start kloak.service"
+    Sleep 1
+
+    terminalCommand = "sudo kloak -r /dev/input/event" & SpinBox3.Value & " -w /dev/uinput -d " & SpinBox4.Value
+    myTerm.Show
+    myTerm.runMe(terminalCommand)
+    TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & "Kloak started on event no: " & SpinBox3.Value
+  Else
+    terminalCommand = "sudo kloak -r /dev/input/event" & SpinBox3.Value & " -w /dev/uinput -d " & SpinBox4.Value
+    myTerm.Show
+    myTerm.runMe(terminalCommand)
+    TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & "Kloak started on event no: " & SpinBox3.Value
+  End If
+  Button73.Enabled = False
+  Button75.Enabled = True
+  Settings["fmainsettingscontrols/spinbox3"] = spinbox3.Value
+  Settings["fmainsettingscontrols/spinbox4"] = SpinBox4.value
+
+End
+
+Public Sub Button75_Click()
+
+  ' Stop Kloak
+  'Shell "sudo kill -9 `ps -ef | grep eventcap | grep -v grep | awk '{print $2}'`" Wait
+  'Shell "sudo killall kloak" Wait
+  Shell "sudo systemctl stop kloak.service;"
+  TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & "Kloak disabled"
+  Button75.Enabled = False
+  Button73.Enabled = True
+
+End
+
+Public Sub Timer13_Timer()
+  'Form load dealy make form load faster
+
+  getSavedData
+
+  FileView1.Dir = globalVars.VPN_configs_path
+  'textbox6.text = globalVars.hostName
+  TrayIcon1.icon = Picture["images/kodachi16.png"]
+  Try getData
+  startingTime = False
+  Timer13.Stop
+  Timer13.Enabled = False
+
+End
+
+Public Sub Button77_Click()
+
+  Button77.enabled = False
+  isupdating = True
+
+  ' Dim myTerm As New TermForm
+  ' terminalCommand = "sudo bash " & globalVars.sFolder & "/systemupdate21"
+  ' myTerm.Show
+  ' myTerm.runMe(terminalCommand)
+  Shell "sudo bash " & globalVars.sFolder & "/gambasexec systemUpdate"
+  TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & "Update will start now"
+
+End
+
+Public Sub PictureBox12_DblClick()
+
+  Clipboard.Copy("44SFJtdWqp85xnRRA8vRs6PimuZXzq36ZHW8fYHFjCk98jpYxNWeJQ7DxwQmWxzeuPQWfp7uqpq9gMQxpdQq3C3dV1taKDE")
+  textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "XMR address:44SFJtdWqp85xnRRA8vRs6PimuZXzq36ZHW8fYHFjCk98jpYxNWeJQ7DxwQmWxzeuPQWfp7uqpq9gMQxpdQq3C3dV1taKDE copied to clipboard"
+
+End
+
+Public Sub TextArea2_Drop()
+
+End
+
+Public Sub Label29_DblClick()
+
+  Clipboard.Copy(Label29.tooltip)
+
+End
+
+Public Sub Button78_Click()
+
+  Dim myTerm As New TermForm
+
+  terminalCommand = "echo ' Please wait this will take a while to finish...'; echo ' '; cd /usr/lib/lynis;  sudo ./lynis audit system"
+
+  myTerm.Show
+  myTerm.runMe(terminalCommand)
+  TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "System hardening and compliance testing started"
+
+End
+
+Public Sub Timer14_Timer()
+
+  Dim dnsWriteStatus As String
+
+  Shell "timeout 5 lsattr /etc/resolv.conf |grep 'i-'" Wait To dnsWriteStatus
+  dnsWriteStatus = Trim(dnsWriteStatus)
+
+  If dnsWriteStatus Then
+    Shell "sudo chattr -i /etc/resolv.conf"
+  Endif
+
+End
+
+Public Sub Button79_Click()
+
+  Dim myTerm As New TermForm
+
+  terminalCommand = "sudo bash " & globalVars.sFolder & "/gambasexec wifiscan"
+  myTerm.Show
+  myTerm.runMe(terminalCommand)
+  textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Scanning wifi"
+
+End
+
+Public Sub Button81_Click()
+
+  Desktop.Open(globalVars.discordURL)
+
+End
+
+Public Sub Button58_Click()
+
+  Dim myform2 As New Password
+
+  myform2.Show
+  TextBox1.text = Format$(Now, "d/m/yy h:n") & "   " & "Show password manager"
+
+End
+
+Public Sub Button59_Click()
+
+  status.Show
+
+End
+
+Public Sub Button60_Click()
+
+  Shell globalVars.sFolder & "/Locator.gambas"
+
+End
+
+Public Sub Button61_Click()
+
+  'Desktop.OpenTerminal(User.Home & "/Desktop")
+  Dim myTerm As New TermForm
+
+  terminalCommand = "sudo bash " & globalVars.sfolder & "/ipverify"
+  myTerm.Show
+  myTerm.runMe(terminalCommand)
+
+End
+
+Public Sub Button62_Click()
+
+  blockUDP
+
+End
+
+Public Sub blockUDP()
+
+  Shell "sudo iptables -A OUTPUT -p udp --dport 53 -j ACCEPT;sudo iptables -A OUTPUT -p udp --sport 53 -j ACCEPT;sudo iptables -A INPUT -p udp --dport 53 -j ACCEPT;sudo iptables -A INPUT -p udp --sport 53 -j ACCEPT;sudo iptables -A INPUT -p udp -j DROP;sudo iptables -A OUTPUT -p udp -j DROP;"
+  notifyMessage = "'All UDP traffic will be blocked except for DNS on port 53'"
+  globalVars.sendNotification(notifyMessage)
+  TrayIcon1.icon = Picture["images/kodachi16yellow.png"]
+  textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "All UDP traffic will be blocked except for DNS on port 53"
+
+End
+
+Public Sub TrayIcon1_Click()
+
+  FMain.Minimized = False
+  Me.SkipTaskbar = False
+  Me.show
+
+End
+
+Public Sub CheckBox25_Click()
+
+  logControl()
+
+End
+
+Public Sub logControl()
+
+  If startingTime = False Then
+    Dim syslogStatus As String
+
+    Shell "sudo timeout 2 service rsyslog status|grep dead" Wait To syslogStatus
+    syslogStatus = Trim(syslogStatus)
+    If CheckBox25.Value = True Then
+
+      If syslogStatus Then
+        Shell "sudo systemctl enable rsyslog;sudo systemctl start rsyslog;"
+        textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "System logs enabled"
+        notifyMessage = "'System logs enabled'"
+        globalVars.sendNotification(notifyMessage)
+      End If
+    Else
+      Shell "sudo systemctl stop rsyslog;sudo systemctl disable rsyslog;sudo systemctl stop rsyslog;"
+      textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "System logs disabled"
+      notifyMessage = "'System logs disabled'"
+      globalVars.sendNotification(notifyMessage)
+    Endif
+  End If
+
+End
+
+Public Sub Button82_Click()
+
+  If Exist(TextBox11.text) = False Then
+
+    Dim sPath As String
+
+    Dialog.Title = ("Select the path for backup/export")
+    Dialog.Filter = ["*.*", "Directory"]
+    Dialog.Path = User.Home & "/backups"
+    If Dialog.SelectDirectory() Then
+      Me.Close
+      Return
+      textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Invaid path"
+    End If
+    sPath = Dialog.Path
+  Else
+
+    sPath = textbox11.text
+  End If
+  textbox11.text = sPath
+
+  If Exist(textbox11.text) = False Then
+    textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Invalid path for backups"
+  Else
+    If Exist(textbox11.text & "/kodachi.json") = False And Exist(textbox11.text & "/Kodachi-Dashboard.conf") = False Then
+      textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "No backups files found to restore"
+    Else
+      Shell "cp -f " & textbox11.text & "/kodachi.json " & User.home & "/.kbase/;cp -f " & textbox11.text & "/Kodachi-Dashboard.conf " & User.home & "/.config/gambas3/;"
+      textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Restore process completed"
+
+    End If
+  End If
+
+  Settings["fmainsettingsabout/textbox11"] = textbox11.text
+  Settings["fmainsettingsabout/TextLabel5"] = TextLabel5.Text
+
+End
+
+Public Sub CheckBox26_Click()
+
+  If startingTime = False Then
+    Dim comhistStatus As String
+
+    Shell "timeout 2 cat ~/.bashrc |grep '#HISTSIZE=0'" Wait To comhistStatus
+    comhistStatus = Trim(comhistStatus)
+
+    If CheckBox26.Value = True Then
+
+      If Len(comhistStatus) < 1 Then
+        Shell "sudo bash " & globalVars.sFolder & "/gambasexec enablecmdhist"
+        textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Terminal history enabled"
+        notifyMessage = "'Terminal history enabled'"
+        globalVars.sendNotification(notifyMessage)
+      End If
+    Else
+      If Len(comhistStatus) > 1 Then
+        Shell "sudo bash " & globalVars.sFolder & "/gambasexec disablecmdhist"
+        textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Terminal history disabled"
+        notifyMessage = "'Terminal history disabled'"
+        globalVars.sendNotification(notifyMessage)
+      End If
+    Endif
+  End If
+
+End
+
+Public Sub Button84_Click()
+
+  Clipboard.Copy(textbox11.text)
+
+End
+
+Public Sub Button83_Click()
+
+  textbox11.Clear
+
+End
+
+Public Sub Button85_Click()
+
+  Settings.Save
+
+End
+
+Public Sub Button86_Click()
+
+  Shell "sudo bash " & globalVars.sFolder & "/gambasexec fullrestore"
+  notifyMessage = "'Restoring all '" & globalVars.osname & "' files from server this will take a while...'"
+  globalVars.sendNotification(notifyMessage)
+  textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Restoring all " & globalVars.osname & " files from server this will take a while..."
+
+End
+
+Public Sub Label31_MouseDown()
+
+End
+
+Public Sub Label5_DblClick()
+
+  Desktop.Open(globalVars.theRemoteVGuide)
+
+End
+
+Public Sub Label31_DblClick()
+
+  Desktop.Open(globalVars.kodachiWebUrl)
+
+End
+
+Public Sub Button87_Click()
+
+  Dim sPath As String
+  Dim sha512iso As String
+
+  Dialog.Title = ("Select the path for Kodachi ISO file")
+  Dialog.Filter = ["*.iso", "ISO files only"]
+  If Dialog.OpenFile() Then
+
+    textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "verify failed no iso file selected"
+  Else
+
+    sPath = Dialog.Path
+    Shell "timeout 10 sha512sum " & sPath & "|cut -d ' ' -f 1" Wait To sha512iso
+    'Print Trim(sha512iso)
+    'Print Trim(globalVars.isosha512)
+    If Trim(sha512iso) <> Trim(globalVars.isosha512) Then
+      textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Verification via sha512 for version " & globalVars.latestISO & " failed wrong ISO hash it's dangerous to use it !"
+      notifyMessage = "'Verification via sha512 for version " & globalVars.latestISO & " failed wrong ISO hash it is dangerous to use it !'"
+      globalVars.sendNotification(notifyMessage)
+    Else
+      textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Verification via sha512 for version " & globalVars.latestISO & " passed it's safe to use it"
+      notifyMessage = "'Verification via sha512 for version " & globalVars.latestISO & " passed it is safe to use it'"
+      globalVars.sendNotification(notifyMessage)
+    End If
+
+  End If
+
+End
+
+Public Sub Label5_MouseDown()
+
+End
+
+Public Sub Button88_Click()
+
+  Desktop.Open(globalVars.isowebpath)
+
+End
+
+Public Sub HBox13_MouseDown()
+
+End
+
+Public Sub ToggleButton9_Click()
+
+  If ToggleButton9.Value = True Then
+    Timer15.Delay = SpinBox5.Value
+    Timer15.Enabled = True
+    Spinner1.Visible = True
+    Spinner1.Start
+    Settings["fmainsettingsabout/ToggleButton9"] = ToggleButton9.Value
+  Else
+    Timer15.Enabled = False
+    Spinner1.Stop
+    Spinner1.Visible = False
+    Settings["fmainsettingsabout/ToggleButton9"] = ToggleButton9.Value
+  End If
+
+End
+
+Public Sub Button89_Click()
+
+  Dim thevpnphpip As String
+  Dim thevpntorphpip As String
+
+  Shell "timeout 2 curl -q " & globalVars.kodachivpnip Wait To thevpnphpip
+  Shell "timeout 2 curl -q " & globalVars.kodachivpntorip Wait To thevpntorphpip
+  notifyMessage = "'Next Kodachi client side TOR VPN IP: '" & Trim(thevpnphpip)
+  globalVars.sendNotification(notifyMessage)
+  notifyMessage = "'Next Kodachi server side TOR VPN IP: '" & Trim(thevpntorphpip)
+  globalVars.sendNotification(notifyMessage)
+  textbox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Next Kodachi client side TOR VPN IP: " & Trim(thevpnphpip) & " Next Kodachi server side TOR VPN IP: " & Trim(thevpntorphpip)
+
+End
+
+Public Sub Label33_DblClick()
+
+  Desktop.Open("https://www.digi77.com/software/kodachi/Linux_Format_UK_Issue_267_September_2020.pdf")
+
+End
+
+Public Sub Label34_DblClick()
+
+  Desktop.Open("https://www.digi77.com/software/kodachi/APC-Magazine--496-August-2021-Australia.pdf")
+
+End
+
+Public Sub Label35_DblClick()
+
+  Desktop.Open("https://www.techradar.com/news/best-linux-distro-privacy-security")
+
+End
+
+Public Sub Label36_DblClick()
+
+  Desktop.Open("https://www.techradar.com/best/best-linux-distros")
+
+End
+
+Public Sub Label37_DblClick()
+
+  Desktop.Open("https://linuxhint.com/most-secure-linux-distros-personal-use/")
+
+End
+
+Public Sub CheckBox27_Click()
+
+  randomer()
+
+End
+
+Public Sub randomer()
+
+  'Dim fakeid As String = globalVars.gfakeidr
+  If startingTime = False Then
+    If CheckBox27.Value = True Then
+      'If fakeid = "No" Then
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json Yes jfakeidr"
+      notifyMessage = "'Fake ID enabled'"
+      globalVars.sendNotification(notifyMessage)
+      TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Fake ID enabled"
+      'End If
+    Else
+      ' If fakeid = "Yes" Then
+      Shell "bash " & globalVars.sFolder & "/" & "write_to_json No jfakeidr"
+      notifyMessage = "'Fake ID disabled'"
+      globalVars.sendNotification(notifyMessage)
+      TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Fake ID disabled"
+      ' End If
+    Endif
+  End If
+
+End
+
+Public Sub RadioButton1_Click()
+
+End
+
+Public Sub ColorButton1_Click()
+
+  Label12.Foreground = ColorButton1.Color
+  Label18.Foreground = ColorButton1.Color
+  Label20.Foreground = ColorButton1.Color
+  Label14.Foreground = ColorButton1.Color
+  Label16.Foreground = ColorButton1.Color
+
+  Label29.Foreground = ColorButton1.Color
+  Label31.Foreground = ColorButton1.Color
+  Label34.Foreground = ColorButton1.Color
+  Label35.Foreground = ColorButton1.Color
+  Label36.Foreground = ColorButton1.Color
+  Label37.Foreground = ColorButton1.Color
+  Label5.Foreground = ColorButton1.Color
+  Label33.Foreground = ColorButton1.Color
+  Settings["fmainsettingsabout/colorbox"] = ColorButton1.Color
+
+End
+
+Public Sub Button90_Click()
+
+  Dim myTerm As New TermForm
+  ' For at stuff only      sudo iptables -t nat -L
+  terminalCommand = "sudo ufw status verbose;sudo timeout 2 iptables -L -v -n"
+  myTerm.Show
+  myTerm.runMe(terminalCommand)
+
+End
+
+Public Sub Button34_Click()
+
+  If CheckBox5.Value = False Then
+    CheckBox5.Value = True
+
+    'blocktrafficall
+  Endif
+
+End
+
+Public Sub ComboBox1_Click()
+
+  Settings["fmainsettingsabout/Combobox1"] = ComboBox1.text
+
+End
+
+Public Sub TextBox2_KeyPress()
+
+End
+
+Public Sub Timer15_Timer()
+
+  Button50_Click
+
+End
+
+Public Sub CheckBox33_Click()
+
+End
+
+Public Sub SpinBox5_Change()
+
+  Timer15.Delay = SpinBox5.value
+  Settings["fmainsettingsabout/Timer15"] = SpinBox5.Value
+
+End
+
+Public Sub Spinner1_MouseDown()
+
+End
+
+Public Sub CheckBox37_Click()
+
+  encswap
+
+End
+
+Public Sub encswap()
+
+  If startingTime = False Then
+    Dim numberOfSwaps As String
+    Dim statusofEncSwap As String
+
+    Shell "sudo swapon -s|grep -v Filename|wc -l" Wait To numberOfSwaps
+    If CheckBox37.Value = True Then
+      If Val(numberOfSwaps) > 0 Then
+        TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Swap encryption on progress please wait for popup confirmation"
+        Shell "bash " & User.Home & "/.kbase/gambasexec encrswap"
+        Wait 3
+        TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & " "
+      Else
+        Shell "sudo cat /etc/crypttab|grep cryptswap|wc -l" Wait To statusofEncSwap
+        If Val(statusofEncSwap) > 0 Then
+          TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Swap is already encrypted"
+        Else
+          TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Swap is not activated yet"
+        Endif
+
+      End If
+    Else
+      Shell "bash " & User.Home & "/.kbase/gambasexec encrswapOff"
+      notifyMessage = "'Swap encryption disabled you may need to reboot the system'"
+      globalVars.sendNotification(notifyMessage)
+      TextBox1.text = Format$(Now, "d/m/yy h:nn") & "   " & "Swap encryption is disabled you may need to reboot the system to take effect"
+
+    End If
+  End If
+
+End
+
+Public Sub Button80_Click()
+
+  Me.Minimized = True
+  Me.hide
+
+End

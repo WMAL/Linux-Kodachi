@@ -1,0 +1,20 @@
+#---- Gambas files to ignore (v7)
+*.gambas
+.lock
+*~
+core
+core.*
+vgcore
+vgcore.*
+.kdbg*
+.*.prof
+.lang/*.pot
+.gambas/*
+.settings
+.startup
+.list
+.info
+.fuse_hidden*
+.profile/*
+.desc/*
+#----

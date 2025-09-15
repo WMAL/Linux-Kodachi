@@ -1,0 +1,222 @@
+' Gambas module file
+
+' #Script written by Warith Al Maawali
+' #(c)2021 Founder Of Eagle Eye Digital Solutions
+' #Discord channel https: / / discord.gg / KEFErEx
+' #Twitter http: / / twitter.com / warith2020
+' #Linkedin http: / / www.linkedin.com / In / warith1977
+' #http: / / www.digi77.com
+' #http: / / www.om77.net
+' #Kodachi OS / Software / Code are strictly protected by LICENSE terms at / home / kodachi / LICENSE
+' #
+' #
+' # globalVars.module - Module to manage global variables and configurations for Kodachi Dashboard
+' # This module initializes and retrieves global variables from JSON configuration files.
+' # It provides functions to send notifications and retrieve system status information.
+
+' Inherits from Task to enable multi-threading
+Inherits Task
+
+' Public variables to store various global settings and paths
+Public notifyIcon As String
+Public sFolder As String
+Public jsonFileName As String
+Public jsonwebFileName As String
+Public osname As String
+Public theVersion As String
+Public theRemoteVersion As String
+Public VPN_gate_ovpn_dir As String
+Public VPN_nord_ovpn_dir As String
+Public VPN_kern_ovpn_dir As String
+Public VPN_hideme_ovpn_dir As String
+Public VPN_proton_ovpn_dir As String
+Public VPN_mullvad_ovpn_dir As String
+Public VPN_configs_path As String
+Public VPN_gate_ovpn_file As String
+Public VPN_nord_ovpn_file As String
+Public VPN_hideme_ovpn_file As String
+Public VPN_proton_ovpn_file As String
+Public VPN_mullvad_ovpn_file As String
+Public VPN_own_ovpn_file As String
+Public remoteJson As String
+Public collJson As Collection
+Public localJson As String
+Public theIPURL As String
+Public collJsonRemote As Collection
+Public timezoneURL As String
+Public domainCheck1 As String
+Public DNSprovider As String
+Public ipDomanValiadtor As String[]
+Public loggedUser As String
+Public hostName As String
+Public kodachiWebUrl As String
+Public kodachikitWebUrl As String
+Public paypalDonations As String
+Public discordURL As String
+Public fontsShow As String
+Public SwapStatus As String
+Public ipV6 As String
+Public osAutologin As String
+Public printerCups As String
+Public autoFontadjust As String
+Public screenFontSize As String
+Public dnsAutoRecovery As String
+Public ipDomaninSource As String
+Public ipDomainUrl As String
+Public torblockCountries As String
+Public Toriffystatus As String
+Public TORonifVPNisoff As String
+Public securityScore As String
+Public kodachiStatus As String
+Public kodachiStatusc As String
+Public internetStatus As String
+Public autoSpoofMac As String
+Public keystrockcheckurl As String
+Public latestISO As String
+Public hashInfo As String
+Public vpnType As String
+Public theRemoteVGuide As String
+Public isosha512 As String
+Public isowebpath As String
+Public kodachivpnip As String
+Public kodachivpntorip As String
+Public gfakeidr As String
+Public scriptStatus As String
+Public isOsLive As String
+
+' Function to initialize global variables from JSON configuration
+Public Sub getGlobalVars()
+
+  ' Example of how to use source
+  ' System.Shell = "/bin/bash"
+  ' Dim temp1 As String
+  ' Shell "source .kbase/Globalconfig;echo $Mykodachi_path"
+  ' Print "start 1 " & Time
+
+  ' Retrieve JSON file name from configuration
+  Shell "bash " & user.home & "/.kbase/Globalconfig Jason_file_name" Wait To jsonFileName
+  jsonFileName = Trim(jsonFileName)
+  'Print jsonFileName
+
+  ' Read local JSON configuration
+  Shell "timeout 2 cat " & globalVars.jsonFileName Wait To localJson
+  collJson = JSON.Decode(localJson, True)
+
+  ' Assign values from JSON to global variables
+  sFolder = Trim(collJson["Mykodachi_path"])
+  notifyIcon = Trim(collJson["notifyIcon"])
+  osname = Trim(collJson["OS_name"])
+  theVersion = Trim(collJson["Kodachi_version"])
+  VPN_gate_ovpn_dir = Trim(collJson["VPN_gate_ovpn_dir"])
+  VPN_nord_ovpn_dir = Trim(collJson["VPN_nord_ovpn_dir"])
+  VPN_kern_ovpn_dir = Trim(collJson["VPN_kern_ovpn_dir"])
+  VPN_mullvad_ovpn_dir = Trim(collJson["VPN_mullvad_ovpn_dir"])
+  VPN_hideme_ovpn_dir = Trim(collJson["VPN_hideme_ovpn_dir"])
+  VPN_proton_ovpn_dir = Trim(collJson["VPN_proton_ovpn_dir"])
+  VPN_configs_path = Trim(collJson["VPN_configs_path"])
+  VPN_gate_ovpn_file = Trim(collJson["VPN_gate_ovpn_file"])
+  VPN_nord_ovpn_file = Trim(collJson["VPN_nord_ovpn_file"])
+  VPN_hideme_ovpn_file = Trim(collJson["VPN_hideme_ovpn_file"])
+  VPN_proton_ovpn_file = Trim(collJson["VPN_proton_ovpn_file"])
+  VPN_mullvad_ovpn_file = Trim(collJson["VPN_mullvad_ovpn_file"])
+  VPN_own_ovpn_file = Trim(collJson["VPN_own_ovpn_file"])
+  DNSprovider = Trim(collJson["DNSprovider"])
+  loggedUser = Trim(collJson["LOGED_USER"])
+  fontsShow = Trim(collJson["showconky"])
+  SwapStatus = Trim(collJson["swapstatus"])
+  ipV6 = Trim(collJson["ipv6status"])
+  osAutologin = Trim(collJson["autologinstatus"])
+  printerCups = Trim(collJson["printcapsstatus"])
+  autoFontadjust = Trim(collJson["Forcefonts"])
+  screenFontSize = Trim(collJson["Screenfontsize"])
+  dnsAutoRecovery = Trim(collJson["Forcetempdns"])
+  ipDomaninSource = Trim(collJson["Ipdomainsource"])
+  ipDomainUrl = Trim(collJson["Ipdomainsshorturl"])
+  torblockCountries = Trim(collJson["torblock"])
+  Toriffystatus = Trim(collJson["Toriffystatus"])
+  TORonifVPNisoff = Trim(collJson["TORonifVPNisoff"])
+  securityScore = Trim(collJson["securityscore"])
+  autoSpoofMac = Trim(collJson["autospoofmac"])
+  vpnType = Trim(collJson["VPNtype"])
+  gfakeidr = Trim(collJson["jfakeidr"])
+  scriptStatus = Trim(collJson["systemupdating"])
+  isOsLive = Trim(collJson["livemode"])
+
+  ' Retrieve remote JSON file name from configuration
+  Shell "bash " & user.home & "/.kbase/Globalconfig Jason_web_file_name" Wait To jsonwebFileName
+  jsonwebFileName = Trim(jsonwebFileName)
+
+  ' Read remote JSON configuration
+  Shell "timeout 2 cat " & globalVars.jsonwebFileName Wait To remoteJson
+  collJsonRemote = Json.decode(remoteJson, True)
+
+  ' Assign values from remote JSON to global variables
+  theIPURL = Trim(collJsonRemote["ServerFeed2"]["RemoteURLstatus"]["kodachiipcheck"])
+  timezoneURL = Trim(collJsonRemote["ServerFeed2"]["RemoteURLstatus"]["timzezoneurl"])
+  domainCheck1 = Trim(collJsonRemote["ServerFeed6"]["genaricVars"]["Netcheckdomain1"])
+  ipDomanValiadtor = collJsonRemote["ServerFeed3"]["netStatusDomains"] ' do not add trim for arrays
+  kodachiWebUrl = Trim(collJsonRemote["ServerFeed2"]["RemoteURLstatus"]["kodachiurl"])
+  kodachikitWebUrl = Trim(collJsonRemote["ServerFeed2"]["RemoteURLstatus"]["kodachikiturl"])
+  paypalDonations = Trim(collJsonRemote["ServerFeed2"]["RemoteURLstatus"]["paypaldonationsurl"])
+  discordURL = Trim(collJsonRemote["ServerFeed2"]["RemoteURLstatus"]["discordurl"])
+  keystrockcheckurl = Trim(collJsonRemote["ServerFeed2"]["RemoteURLstatus"]["keystrockurl"])
+  theRemoteVGuide = Trim(collJsonRemote["ServerFeed2"]["RemoteURLstatus"]["vguideurl"])
+  kodachivpnip = Trim(collJsonRemote["ServerFeed2"]["RemoteURLstatus"]["kodachivpnipurl"])
+  kodachivpntorip = Trim(collJsonRemote["ServerFeed2"]["RemoteURLstatus"]["kodachivpntoripurl"])
+  latestISO = Trim(collJsonRemote["ServerFeed2"]["RemoteURLstatus"]["availableiso"])
+  hashInfo = "URL: " & Trim(collJsonRemote["ServerFeed2"]["RemoteURLstatus"]["kodachimainisopath"]) & Chr$(10) & "MD5: " & Trim(collJsonRemote["ServerFeed2"]["RemoteURLstatus"]["kodachimainisomd5"]) & Chr$(10) & "SHA256: " & Trim(collJsonRemote["ServerFeed2"]["RemoteURLstatus"]["kodachimainisosha256"]) & Chr$(10) & "SHA384: " & Trim(collJsonRemote["ServerFeed2"]["RemoteURLstatus"]["kodachimainisosha384"]) & Chr$(10) & "SHA512: " & Trim(collJsonRemote["ServerFeed2"]["RemoteURLstatus"]["kodachimainisosha512"]) & Chr$(10) & Chr$(10) & "Double click to copy the above information"
+  isosha512 = Trim(collJsonRemote["ServerFeed2"]["RemoteURLstatus"]["kodachimainisosha512"])
+  isowebpath = Trim(collJsonRemote["ServerFeed2"]["RemoteURLstatus"]["kodachimainisopath"])
+  kodachiStatus = Trim(collJsonRemote["isactive"])
+  kodachiStatusc = Trim(collJsonRemote["isactivec"])
+  theRemoteVersion = Trim(collJsonRemote["version"])
+
+  ' normal shell calls
+
+End
+
+' Function to send a notification with a specified message
+Public Sub sendNotification(mystring As String)
+
+  ' Use notify-send command to display a notification
+  Shell "notify-send -i " & notifyIcon & " " & mystring
+
+End
+
+' Function to retrieve the hostname of the system
+Public Sub getHost() As String
+
+  ' Read the hostname from /etc/hostname
+  Shell "timeout 2 cat /etc/hostname" Wait To hostName
+  hostname = Trim(hostname)
+  Return hostname
+
+End
+
+' Function to check the DNS provider status
+Public Sub getDNS() As Boolean
+
+  ' Attempt to read local JSON configuration
+  Try Shell "timeout 2 cat " & globalVars.jsonFileName Wait To localJson
+  Try collJson = JSON.Decode(localJson, True)
+
+  Dim theDNS As String
+  Try theDNS = Trim(collJson["DNSprovider"])
+
+  ' Check if the DNS provider is Dnscrypt or TOR
+  If theDNS = "Dnscrypt" Or theDNS = "TOR" Then
+    Return True
+  Else
+    Return False
+  End If
+
+End
+
+' Function to retrieve the internet status
+Public Sub getInternetStatus() As String
+
+  ' Attempt to retrieve the internet status from JSON
+  Try InternetStatus = Trim(collJson["InternetStatus"])
+  Return InternetStatus
+
+End

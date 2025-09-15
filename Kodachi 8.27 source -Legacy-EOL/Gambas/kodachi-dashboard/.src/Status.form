@@ -1,0 +1,190 @@
+# Gambas Form File 3.0
+
+{ Form Form
+  MoveScaled(0,0,66,61)
+  Font = Font["9"]
+  Text = ("Kodachi Health Check")
+  Icon = Picture["images/kodachi32.png"]
+  Arrangement = Arrange.Horizontal
+  Centered = True
+  { Frame1 Frame
+    MoveScaled(0,1,35,59)
+    Font = Font["9"]
+    Foreground = Color.Gray
+    Expand = True
+    AutoResize = True
+    Text = ("Scripts health information - checking") & "..."
+    { Label1 Label
+      MoveScaled(2,7,18,4)
+      Font = Font["9"]
+      AutoResize = True
+      Text = ("Digi77.com reachable:")
+    }
+    { Label3 Label
+      MoveScaled(2,11,18,4)
+      Font = Font["9"]
+      Text = ("Health script running:")
+    }
+    { Label4 Label
+      MoveScaled(2,15,17,4)
+      Font = Font["9"]
+      Text = ("DNS script running:")
+    }
+    { Label5 Label
+      MoveScaled(2,47,22,4)
+      Font = Font["9"]
+      Text = ("Resolution script running:")
+    }
+    { Label6 Label
+      MoveScaled(2,19,17,4)
+      Font = Font["9"]
+      Text = ("UX1 script running:")
+    }
+    { Label7 Label
+      MoveScaled(2,23,17,4)
+      Font = Font["9"]
+      Text = ("UX2 script running:")
+    }
+    { Label8 Label
+      MoveScaled(2,27,19,4)
+      Font = Font["9"]
+      Text = ("Sudo script running:")
+    }
+    { PictureBox1 PictureBox
+      MoveScaled(27,8,2.2857,2.2857)
+      Font = Font["9"]
+      Picture = Picture.Load("images/kodachi16red.png")
+    }
+    { PictureBox2 PictureBox
+      MoveScaled(27,12,2.2857,2.2857)
+      Font = Font["9"]
+      Picture = Picture.Load("images/kodachi16red.png")
+    }
+    { PictureBox3 PictureBox
+      MoveScaled(27,16,2.2857,2.2857)
+      Font = Font["9"]
+      Picture = Picture.Load("images/kodachi16red.png")
+    }
+    { PictureBox4 PictureBox
+      MoveScaled(27,20,2.2857,2.2857)
+      Font = Font["9"]
+      Picture = Picture.Load("images/kodachi16red.png")
+    }
+    { PictureBox5 PictureBox
+      MoveScaled(27,24,2.2857,2.2857)
+      Font = Font["9"]
+      Picture = Picture.Load("images/kodachi16red.png")
+    }
+    { PictureBox6 PictureBox
+      MoveScaled(27,28,2.2857,2.2857)
+      Font = Font["9"]
+      Picture = Picture.Load("images/kodachi16red.png")
+    }
+    { PictureBox7 PictureBox
+      MoveScaled(27,48,2.2857,2.2857)
+      Font = Font["9"]
+      Picture = Picture.Load("images/kodachi16red.png")
+    }
+    { Label9 Label
+      MoveScaled(2,3,18,4)
+      Font = Font["9"]
+      Text = ("System is online:")
+    }
+    { PictureBox9 PictureBox
+      MoveScaled(27,4,2.2857,2.2857)
+      Font = Font["9"]
+      Picture = Picture.Load("images/kodachi16red.png")
+    }
+    { Label2 Label
+      MoveScaled(2,31,22,4)
+      Font = Font["9"]
+      Text = ("Conky0 script running:")
+    }
+    { PictureBox8 PictureBox
+      MoveScaled(27,32,2.2857,2.2857)
+      Font = Font["9"]
+      Picture = Picture.Load("images/kodachi16red.png")
+    }
+    { Label10 Label
+      MoveScaled(2,43,22,4)
+      Font = Font["9"]
+      Text = ("Conky3 script running:")
+    }
+    { Label11 Label
+      MoveScaled(2,39,22,4)
+      Font = Font["9"]
+      Text = ("Conky2 script running:")
+    }
+    { Label12 Label
+      MoveScaled(2,35,22,4)
+      Font = Font["9"]
+      Text = ("Conky1 script running:")
+    }
+    { PictureBox10 PictureBox
+      MoveScaled(27,36,2.2857,2.2857)
+      Font = Font["9"]
+      Picture = Picture.Load("images/kodachi16red.png")
+    }
+    { PictureBox11 PictureBox
+      MoveScaled(27,40,2.2857,2.2857)
+      Font = Font["9"]
+      Picture = Picture.Load("images/kodachi16red.png")
+    }
+    { PictureBox12 PictureBox
+      MoveScaled(27,44,2.2857,2.2857)
+      Font = Font["9"]
+      Picture = Picture.Load("images/kodachi16red.png")
+    }
+    { ToggleButton1 ToggleButton
+      MoveScaled(4,52,25,5)
+      Font = Font["9"]
+      ToolTip = ("This will kill or start again all Kodachi scripts")
+      Text = ("Start/Stop all Kodachi scripts")
+    }
+  }
+  { Frame2 Frame
+    MoveScaled(36,1,29,24)
+    Font = Font["9"]
+    Foreground = Color.Gray
+    Text = ("Explanation")
+    { Label13 Label
+      MoveScaled(1,3,23,4)
+      Font = Font["9"]
+      Text = ("Service is online or working")
+    }
+    { PictureBox13 PictureBox
+      MoveScaled(25,4,2.2857,2.2857)
+      Font = Font["9"]
+      Picture = Picture.Load("images/kodachi16.png")
+    }
+    { Label14 Label
+      MoveScaled(1,7,23,4)
+      Font = Font["9"]
+      Text = ("Service is offline or has issues")
+    }
+    { PictureBox14 PictureBox
+      MoveScaled(25,8,2.2857,2.2857)
+      Font = Font["9"]
+      Picture = Picture.Load("images/kodachi16yellow.png")
+    }
+    { Label15 Label
+      MoveScaled(1,11,23,4)
+      Font = Font["9"]
+      Text = ("Waiting for updates")
+    }
+    { PictureBox15 PictureBox
+      MoveScaled(25,12,2.2857,2.2857)
+      Font = Font["9"]
+      Picture = Picture.Load("images/kodachi16red.png")
+    }
+    { Spinner1 Spinner
+      MoveScaled(10,16,6,8)
+      Visible = False
+      Foreground = Color.SoftCyan
+    }
+  }
+  { Timer1 #Timer
+    #MoveScaled(59,44)
+    Delay = 10000
+  }
+}
