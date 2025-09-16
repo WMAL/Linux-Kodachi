@@ -7,7 +7,7 @@ This roadmap provides an overview of the current status of key components in the
 | **Kodachi Workers VPS**                                      | ✅ Completed      | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **Kodachi Master VPS**                                       | ✅ Completed      | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **[Kodachi Anonymity Verifier](https://www.kodachi.cloud/)** | ✅ Completed      | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
-| **Kodachi Client-Side Scripts**                              | ⚙️ In Development | ![85%](https://img.shields.io/badge/Progress-85%25-blue?style=flat-square)          |
+| **Kodachi Client-Side Scripts**                              | ✅ Completed      | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **Kodachi Dashboard GUI**                                    | ⚙️ In Development | ![65%](https://img.shields.io/badge/Progress-65%25-orange?style=flat-square)        |
 
 ---
@@ -31,7 +31,7 @@ This roadmap provides an overview of the current status of key components in the
 | **DNS Manager**          | ✅ Done           | ⏳ Pending | Backend fully implemented; GUI frontend under development (Task #7, Sep 1).                                            |
 | **Card System**          | ✅ Done           | ✅ Done    | Decryption and patching completed (Task #1, Aug 15).                                                                   |
 | **Secure Connectivity**  | ✅ Done           | ✅ Done    | VPN and secure connection management fully implemented.                                                                |
-| **Project Connector**    | ⏳ In Progress    | ⏳ Pending | Rust implementation in progress (Task #2, Aug 17).                                                                     |
+| **Project Connector**    | ✅ Done           | ✅ Done    | Backend Rust implementation completed (Task #2, Aug 17).                                                               |
 | **Blender System**       | ❌ Cancelled      | ⏳ Pending | Backend cancelled; GUI with scoring planned (Task #8, Sep 5).                                                         |
 | **Settings Manager**     | ✅ Done           | ⏳ Pending | Core settings logic ready; GUI still under development.                                                                |
 | **CLI-Core Library**     | ✅ Done           | N/A        | Unified command-line interface foundation for all services.                                                            |
@@ -62,10 +62,10 @@ This roadmap provides an overview of the current status of key components in the
 |  #  | Task                             | Status | Completion Date | Notes |
 | :-: | :------------------------------- | :----: | :-------------: | ----- |
 |  1  | Card System (Decryption & Patch) | ✅ Done | Aug 15, 2025 | Decryption and patching completed |
-|  2  | Project Connector in Rust        | ⏳ In Progress | Aug 17, 2025 | Rust implementation of project connector |
+|  2  | Project Connector in Rust        | ✅ Done | Aug 17, 2025 | Backend Rust implementation completed |
 |  3  | Blender in Rust                  | ❌ Cancelled | - | Not needed |
-|  4  | Test all binaries                | ⏳ Pending | Aug 23, 2025 | Test compiled binaries across environments |
-|  5  | Recheck 8.27 features            | ⏳ Pending | Aug 26, 2025 | Verify all Kodachi 8.27 features |
+|  4  | Test all binaries                | ✅ Done | Sep 16, 2025 | Compiled binaries tested across all environments |
+|  5  | Recheck 8.27 features            | ✅ Done | Aug 25, 2025 | All Kodachi 8.27 features verified |
 |  6  | Tor Manager IP Login GUI fix     | ⏳ Pending | Aug 28, 2025 | Fix IP login functionality |
 |  7  | DNS GUI                          | ⏳ Pending | Sep 1, 2025 | Complete GUI for DNS management |
 |  8  | Blender GUI + scoring            | ⏳ Pending | Sep 5, 2025 | Traffic mixing and obfuscation UI |
