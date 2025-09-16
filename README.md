@@ -33,7 +33,7 @@
 
 **Kodachi 9** is currently under development and will be based on **<span style="color:blue;">Debian</span>**. The project is approximately **<span style="color:green;">90% complete</span>** (as of August 12, 2025). Every script has been rewritten from scratch to enhance performance and functionality. This effort has taken time, but the result will significantly improve the Kodachi experience.
 
-Stay tuned for more updates! 🚀 Check out the [R&D progress]([https://github.com/WMAL/Linux-Kodachi/tree/main/v9-behind-scenes-progress](https://github.com/WMAL/Linux-Kodachi/tree/main/Kodachi9) for Kodachi 9.
+Stay tuned for more updates! 🚀 Check out the [R&D progress](https://github.com/WMAL/Linux-Kodachi/tree/main/Kodachi%209) for Kodachi 9.
 
 ---
 
