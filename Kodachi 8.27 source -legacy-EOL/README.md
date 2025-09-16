@@ -12,16 +12,10 @@ z-resources/
     │   ├── Kodachi-Log.txt      # Version 8.27 changelog
     │   ├── Kodachi-hash.txt     # File integrity hashes
     │   └── LICENSE              # License information
-    ├── clients-config/          # Client VPN configurations
-    │   ├── High-Anonymous-Tor.ovpn  # Tor-based VPN configuration
-    │   └── private.ovpn         # Private VPN configuration
     ├── gambas/                  # Legacy Gambas applications
     │   ├── kodachi-dashboard/   # Dashboard application with assets
-    │   └── your_location/       # Location utility
-    ├── old-vps-configs/         # Legacy VPS server configurations
-    │   ├── auto-install/        # Automated installation scripts
-    │   └── vps-nodes-setup-original.sh  # Original VPS setup
-    └── kodachi 9 - Debian - AMD - 64 - Debian.md  # Version 9 notes
+    │   └── your_location/       # Location utility    
+    └── kodachi 9 on the way
 ```
 
 ## Legacy Components
