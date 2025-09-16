@@ -1,329 +1,200 @@
-# Kodachi Dashboard (Historical - v8.27)
+## Overview
 
-Main graphical user interface for Kodachi OS version 8.27, providing comprehensive system control and monitoring capabilities through a Gambas 3 application.
+# Linux Kodachi - Kodachi 9 soon 🚀
 
-## Purpose
+**Linux Kodachi** is a **security-focused operating system** designed for users who value **privacy, anonymity,** and a **secure computing experience**. Developed by **Warith Al Maawali**, Kodachi provides all the tools necessary for anonymous online activities while maintaining ease of use. The current stable version is built on top of **Xubuntu 18.04.6** and further customized for enhanced privacy and security, while the upcoming **Kodachi 9** is being rebuilt from the ground up on a **Debian base** for enhanced performance and security. Kodachi serves as a **live system** that leaves **no trace** on the host machine.
 
-The Kodachi Dashboard serves as the central control hub for Kodachi OS 8.27, enabling users to manage VPN connections, Tor routing, DNS settings, IP monitoring, and system security through an intuitive graphical interface.
+## Features at a Glance
 
-## Main Features
+- 🔒 **Secure by Default:** Kodachi ensures that from the moment you boot up, you're protected. With a **pre-configured VPN**, **Tor network**, and **DNSCrypt** service, your internet traffic is encrypted and anonymized without requiring any configuration.
+- 🛡️ **Privacy Focused:** All your online connections are routed through a multi-layered protection stack, including **VPN** and **Tor**, making your identity extremely difficult to trace.
+- 🖥️ **Live System:** Kodachi operates directly from **RAM**, ensuring that no data is written to your hard disk unless explicitly saved. Once the session is over, all traces of your activity are erased.
+- 🌐 **User-Friendly:** Kodachi is designed for users of all levels. Whether you're an experienced Linux user or a beginner, you can enjoy the benefits of Kodachi with minimal setup.
+- 🔑 **Cryptographic Tools:** Built-in tools for **file encryption**, **secure email communication**, and **instant messaging** help you maintain control over your data and communications.
+- 🕵️‍♂️ **Anti-Forensic Features:** Includes measures to thwart forensic analysis, ensuring your activities remain private even if your system is physically compromised.
+- 📊 **System Monitoring:** Real-time monitoring tools provide insights into your **network connections**, **system performance**, and **security status**.
 
-- **VPN Profile Management**: Selection and management of VPN configurations from multiple providers
-- **Tor Network Control**: Configuration and management of Tor routing and exit nodes
-- **DNS Server Switching**: Dynamic DNS server selection and leak prevention
-- **IP Address Monitoring**: Real-time IP address tracking and geolocation display
-- **System Health Monitoring**: Comprehensive system status and security monitoring
-- **Log File Management**: Centralized log viewing and analysis
-- **Sound Notifications**: Audio alerts for network and security events
-- **Multi-language Support**: Internationalization with translation support
+<div align="center">
 
-## Architecture
+# 🛡️ Linux Kodachi 9
 
-```
-kodachi-dashboard/
-├── .project                    # Gambas project configuration
-├── .startup                    # Application startup configuration
-├── .version                    # Version information
-├── .settings                   # Application settings
-├── .src/                      # Source code directory
-│   ├── FMain.class            # Main form and application controller
-│   ├── FMain.form             # Main form UI definition
-│   ├── engineX.class          # System engine and backend operations
-│   ├── ipengine.class         # IP address and geolocation management
-│   ├── globalVars.module      # Global variables and configuration
-│   ├── Status.class           # System status monitoring
-│   ├── Status.form            # Status display UI
-│   ├── logs.class             # Log file management
-│   ├── logs.form              # Log viewer UI
-│   ├── password.class         # Authentication management
-│   ├── password.form          # Password input UI
-│   ├── termForm.class         # Terminal interface
-│   ├── termForm.form          # Terminal UI
-│   ├── md5filecheck.class     # File integrity verification
-│   └── pcinfo.module          # System information module
-├── .gambas/                   # Compiled Gambas bytecode
-├── .lang/                     # Translation files and language support
-├── images/                    # Application icons and graphics
-└── .hidden/                   # Development reference materials
-```
+<img src="https://www.digi77.com/wp-content/uploads/2024/07/kodachi-green-128.png" alt="Kodachi Logo" width="200">
 
-## Key Components
+[![Version](https://img.shields.io/badge/Version-9.0--beta-brightgreen?style=for-the-badge)](https://github.com/WMAL/Linux-Kodachi)
+[![Based on](https://img.shields.io/badge/Based%20on-Debian-red?style=for-the-badge&logo=debian)](https://www.debian.org)
+[![Privacy](https://img.shields.io/badge/Privacy-Focused-blue?style=for-the-badge&logo=tor)](https://www.kodachi.cloud)
+[![License](https://img.shields.io/badge/License-Proprietary-yellow?style=for-the-badge)](https://github.com/WMAL/Linux-Kodachi/blob/main/LICENSE)
 
-### **FMain.class** - Main Application Controller
+**🚀 A New Era of Privacy-Focused Computing**
 
-**Core Functionality:**
-- **Application Initialization**: Sets up engines, UI components, and system monitoring
-- **Instance Management**: Prevents multiple dashboard instances
-- **Event Coordination**: Manages user interactions and system responses
-- **State Management**: Tracks VPN profiles, Tor settings, DNS configurations
+</div>
 
-**Key Variables:**
-- `myEngine`: Instance of EngineX for system operations
-- `ipEnginex`: Instance of Ipengine for IP-related operations  
-- `VPNprofile`: Currently selected VPN configuration
-- `TorProfile`: Active Tor routing configuration
-- `dnsEntry`: Selected DNS server configuration
-- `currentnetIP`: Current network IP address for monitoring
+### 🚀 **Kodachi 9: A New Era is Coming!** 🚀
 
-**Features:**
-- Live OS detection and feature limiting
-- Automatic UI centering and sizing (1170x790 pixels)
-- JSON configuration management
-- Sound notification controls
-- Real-time IP monitoring toggles
+**Kodachi 9** is currently under development and will be based on **<span style="color:blue;">Debian</span>**. The project is approximately **<span style="color:green;">90% complete</span>** (as of August 12, 2025). Every script has been rewritten from scratch to enhance performance and functionality. This effort has taken time, but the result will significantly improve the Kodachi experience.
 
-### **EngineX.class** - System Engine
-
-**Purpose**: Backend system operations and script execution interface.
-
-**Responsibilities:**
-- Execute system scripts and commands
-- Manage VPN connections and profiles
-- Control Tor network routing
-- Handle DNS server switching
-- Monitor system processes and services
-
-### **IPEngine.class** - IP and Geolocation Management
-
-**Purpose**: Handles IP address detection, monitoring, and geolocation services.
-
-**Capabilities:**
-- Real-time IP address fetching from multiple providers
-- Geolocation data retrieval and processing
-- IP change detection and notification
-- Provider failover and redundancy
-- JSON data processing for location information
-
-### **GlobalVars.module** - Global Configuration
-
-**Purpose**: Centralized configuration management and system variables.
-
-**Functions:**
-- `getGlobalVars()`: Loads system configuration
-- OS type detection (live/installed)
-- Path management for user directories
-- System-wide setting coordination
-
-### **Status.class** - System Status Monitoring
-
-**Purpose**: Real-time system status display and monitoring.
-
-**Features:**
-- Network connectivity status
-- VPN connection monitoring
-- Tor routing verification
-- DNS leak detection status
-- System health indicators
-
-### **Logs.class** - Log Management System
-
-**Purpose**: Centralized log file viewing and management.
-
-**Capabilities:**
-- Multi-log file support
-- Real-time log monitoring
-- Log filtering and search
-- Export and archive functionality
-
-### **Security Components**
-
-#### **Password.class** - Authentication Management
-- User authentication for sensitive operations
-- Password verification and validation
-- Security prompt handling
-
-#### **MD5FileCheck.class** - File Integrity Verification
-- File hash calculation and verification
-- System integrity monitoring
-- Tamper detection capabilities
-
-## User Interface Design
-
-### **Main Window Layout**
-- **Dimensions**: 1170x790 pixels, centered on screen
-- **Component Organization**: Tabbed interface with logical grouping
-- **Status Indicators**: Visual feedback for system states
-- **Control Panels**: Organized sections for different system aspects
-
-### **Key UI Features**
-- **VPN Selection**: Dropdown menus for provider and server selection
-- **Tor Controls**: Toggle switches and configuration options
-- **DNS Management**: Server selection and leak testing controls
-- **IP Display**: Real-time IP address and location information
-- **Status Monitoring**: Health indicators and connection status
-- **Sound Controls**: Audio notification preferences
-
-## Integration with Kodachi System
-
-### **Script Integration**
-The dashboard integrates with Kodachi system scripts through:
-- **Direct Execution**: Shell commands to system scripts
-- **JSON Communication**: Configuration exchange via JSON files
-- **File Monitoring**: Watching configuration and status files
-- **Process Management**: Starting and stopping system services
-
-### **Configuration Management**
-- **Global Config**: Integration with `Globalconfig` system script
-- **JSON Storage**: User preferences in `kodachi.json` and `kodachiweb.json`
-- **Backup System**: Automatic configuration backups
-- **Profile Management**: VPN and system profile storage
-
-### **System Monitoring**
-- **Real-time Updates**: Continuous monitoring of system status
-- **Event Notifications**: Sound and visual alerts for state changes
-- **Health Checking**: Integration with system health monitoring
-- **Log Aggregation**: Centralized log collection and display
-
-## Dependencies
-
-### **Gambas 3 Components**
-- **gb.image**: Image processing and display
-- **gb.gui**: GUI framework and controls
-- **gb.form**: Form management and dialogs
-- **gb.dbus**: D-Bus system integration
-- **gb.desktop**: Desktop environment integration
-- **gb.form.dialog**: Dialog boxes and user prompts
-- **gb.settings**: Configuration management
-- **gb.term**: Terminal integration
-- **gb.form.terminal**: Terminal widget support
-- **gb.gui.trayicon**: System tray integration
-- **gb.sdl2.audio**: Audio notification support
-- **gb.util.web**: Web utilities for IP services
-- **gb.web**: Web service integration
-
-### **System Dependencies**
-- **Kodachi Scripts**: Core system scripts in `~/.kbase/`
-- **Network Tools**: VPN clients, Tor, DNS utilities
-- **Configuration Files**: JSON configuration storage
-- **Audio System**: Sound notification support
-
-## Usage Instructions
-
-### **Application Launch**
-```bash
-# From desktop
-./Kodachi_Dashboard.desktop
-
-# Direct execution
-cd gambas/kodachi-dashboard
-gbx3
-```
-
-### **Primary Operations**
-
-#### **VPN Management**
-1. Select VPN provider from dropdown
-2. Choose server location
-3. Click connect/disconnect controls
-4. Monitor connection status
-
-#### **Tor Configuration**
-1. Enable/disable Tor routing
-2. Select exit node preferences
-3. Configure Tor-over-VPN settings
-4. Monitor Tor circuit status
-
-#### **DNS Management**
-1. Select DNS server provider
-2. Configure leak protection
-3. Test for DNS leaks
-4. Monitor DNS performance
-
-#### **IP Monitoring**
-1. Enable automatic IP checking
-2. Set monitoring intervals
-3. Configure change notifications
-4. View geolocation information
-
-## Historical Context
-
-### **Version Information**
-- **Application Version**: 0.0.220
-- **Kodachi OS Version**: 8.27
-- **Development Era**: 2021-2022
-- **Architecture**: Gambas 3 GUI application
-
-### **Evolution to Modern Kodachi**
-This dashboard represents the foundation that evolved into the current Kodachi 9.0.1 architecture:
-
-**Preserved Concepts:**
-- Centralized system control
-- Multi-provider VPN support
-- Tor integration and routing
-- DNS leak prevention
-- Real-time monitoring
-- User-friendly GUI interface
-
-**Architectural Evolution:**
-- **Script Backend**: Evolved into Rust service architecture
-- **JSON Configuration**: Enhanced with structured configuration management
-- **Monitoring System**: Improved with dedicated health services
-- **Security Features**: Enhanced with cryptographic signing and verification
-
-## Development Features
-
-### **Internationalization**
-- **Translation Support**: `.pot` files for multiple languages
-- **Language Framework**: Gambas native translation system
-- **User Locale**: Automatic locale detection and application
-
-### **Development Tools**
-- **Profiling**: Performance profiling with `.prof` files
-- **Documentation**: Automatic documentation generation
-- **Version Control**: Git integration with `.gitignore`
-- **Build System**: Gambas native compilation
-
-### **Testing and Debugging**
-- **Debug Integration**: Built-in debugging support
-- **Error Handling**: Comprehensive error management
-- **Logging**: Detailed application logging
-- **State Monitoring**: Real-time state tracking
-
-## Security Considerations
-
-### **Authentication**
-- Password protection for sensitive operations
-- User session management
-- Privilege escalation controls
-
-### **Data Protection**
-- Configuration file security
-- Sensitive data obfuscation
-- Secure temporary file handling
-
-### **System Integration**
-- Safe script execution
-- Process isolation
-- Resource management
-
-## Legacy Value
-
-### **Historical Significance**
-This dashboard represents a critical milestone in Kodachi development:
-- **User Interface Evolution**: Foundation for modern GUI design
-- **Feature Development**: Proof of concept for core privacy features
-- **Integration Patterns**: Established patterns for system integration
-- **User Experience**: Defined user interaction patterns
-
-### **Reference Value**
-- **Feature Mapping**: Understanding feature evolution to current system
-- **Architecture Study**: Analysis of GUI-to-system integration patterns
-- **Configuration Management**: Study of configuration evolution
-- **User Interface Design**: Reference for GUI design decisions
-
-## License and Attribution
-
-**Author**: Warith Al Maawali  
-**Copyright**: © 2021 Eagle Eye Digital Solutions  
-**License**: See `/home/kodachi/LICENSE` for complete terms
-
-### **Contact Information**
-- **Website**: https://digi77.com  
-- **GitHub**: https://github.com/WMAL
-- **Discord**: https://discord.gg/KEFErEx
-- **LinkedIn**: https://www.linkedin.com/in/warith1977
-- **X (Twitter)**: https://x.com/warith2020
+Stay tuned for more updates! 🚀 Check out the [behind-the-scenes progress](https://github.com/WMAL/Linux-Kodachi/tree/main/v9-behind-scenes-progress) for Kodachi 9.
 
 ---
 
-*This documentation is based on analysis of the actual Gambas 3 source code and project files from Kodachi OS version 8.27, preserved for historical reference and development study.*
+---
+
+## Why Choose Kodachi?
+
+Kodachi was born out of a need to bridge the gap between **user-friendly operating systems** and the increasingly sophisticated world of **digital privacy threats**. With Kodachi, you can:
+
+- 🕵️‍♀️ **Browse the web anonymously** through layers of encryption and the **Tor network**.
+- 💾 **Leave no trace** on the hardware you're using, making it perfect for environments where **privacy is critical**.
+- 🔒 **Use cutting-edge cryptographic tools** for secure communication and data storage.
+- 🛡️ **Stay protected against malware** and network attacks with built-in **security features**.
+
+Kodachi is more than just another Linux distribution—it's a **robust**, **lightweight operating system** that puts your **security and privacy first**.
+
+---
+
+## Achievements
+
+Kodachi has been critically acclaimed by global publications and consistently recognized as one of the most secure Linux distributions available:
+
+- 🏆 **1st Place** at **TechRadar** for Best Linux Distro for Privacy & Security for **six consecutive years** (2020–2025).
+
+  - **[Original Article: TechRadar - Best Linux Distro for Privacy & Security](https://www.techradar.com/news/best-linux-distro-privacy-security)**
+  - [TechRadar 2020](https://www.digi77.com/software/kodachi/TechRadar2020.pdf)
+  - [TechRadar 2021](https://www.digi77.com/software/kodachi/TechRadar2021.pdf)
+  - [TechRadar 2022](https://www.digi77.com/software/kodachi/TechRadar2022.pdf)
+  - [TechRadar 2023](https://www.digi77.com/software/kodachi/TechRadar2023.pdf)
+  - [TechRadar 2024](https://www.digi77.com/software/kodachi/TechRadar2024.pdf)
+  - [TechRadar 2025](https://www.digi77.com/software/kodachi/TechRadar2025.pdf)
+
+- 🥇 **1st Place** in **Linux Format UK Magazine's** Privacy Distribution Roundup (2020).
+  - [Linux Format 2020](https://www.digi77.com/software/kodachi/Linux_Format_UK_Issue_267_September_2020.pdf)
+- 🥇 **1st Place** in **DistroWatch** for privacy-focused distributions (2019).
+  - [DistroWatch 2019](https://twitter.com/warith2020/status/1105179632935075840?s=20)
+- 🏅 **The Lab Hot Product** in **August 2021** by Australian APC Magazine.
+  - [APC Magazine 2021](https://www.digi77.com/software/kodachi/APC-Magazine--496-August-2021-Australia.pdf)
+
+---
+
+## Getting Started
+
+You don't need to be a cybersecurity expert to use Kodachi. Simply follow these steps:
+
+1. **[Download Kodachi](https://sourceforge.net/projects/linuxkodachi/files/latest/download)** from the official site.
+
+### Option 1: Use with Virtual Machine
+
+2. **VMware Workstation:**
+   1. Open VMware Workstation and create a new virtual machine.
+   2. Select "Installer disc image file (iso)" and browse to the Kodachi ISO file you downloaded.
+   3. Follow the prompts to configure the virtual machine settings (e.g., memory, disk size).
+   4. Finish the setup and start the virtual machine.
+   5. Kodachi will boot in live mode, allowing you to start using it immediately.
+3. **VirtualBox:**
+   1. Open VirtualBox and create a new virtual machine.
+   2. Select "Linux" as the type and "Debian (64-bit)" as the version.
+   3. Follow the prompts to configure the virtual machine settings (e.g., memory, disk size).
+   4. In the "Storage" settings, add the Kodachi ISO file as a virtual optical disk.
+   5. Start the virtual machine and Kodachi will boot in live mode.
+
+### Option 2: Create Bootable Media
+
+4. **Create Bootable Media:** Use a USB stick or DVD to create bootable media. Tools like **Rufus** (for Windows) or **Etcher** (for Linux/Mac) can help.
+5. **Boot Your System:** Restart your computer and boot from the USB/DVD. You may need to adjust your BIOS settings.
+6. **Start Using Kodachi:** The operating system will load in live mode, allowing you to immediately start browsing and working securely.
+
+---
+
+## Tutorials and Resources
+
+To learn how to use Kodachi, explore the following resources:
+
+- **YouTube Tutorials:**
+  - Search for **Linux Kodachi** on YouTube or visit [this link](https://www.youtube.com/results?search_query=linux+kodachi) for a collection of video tutorials.
+- **Official Documentation:** Visit the [Kodachi Documentation](https://www.digi77.com/linux-kodachi/) for detailed guides.
+- **Community Support:** Join the **[Kodachi support](https://discord.gg/KEFErEx)** to ask questions and share insights.
+
+---
+
+## Support and Donations
+
+Linux Kodachi is free, but maintaining a project of this magnitude takes time and resources. If you find Kodachi valuable and want to support its future development, consider making a donation.
+
+**Donation Options:**
+
+- **<a href="https://nowpayments.io/donation/linuxkodachi" target="_blank" rel="noopener noreferrer">Donate with Cryptocurrency</a>**
+- **<a href="https://www.paypal.com/ncp/payment/TJZSGR6452HS4" target="_blank" rel="noopener noreferrer">Donate with PayPal direct</a>**
+- **<a href="https://donorbox.org/kodachi" target="_blank" rel="noopener noreferrer">Donate with PayPal via Donorbox</a>**
+
+Your donations will be used to fund future development, improve user support, and ensure Kodachi remains the **most secure operating system available**.
+
+---
+
+## Conclusion
+
+Linux Kodachi is more than just a privacy tool—it's a **comprehensive solution** for those who need **advanced security and anonymity**. Whether you're a **journalist**, **activist**, or an **everyday user** who values privacy, Kodachi is tailored to protect you in the most hostile digital environments.
+
+**Download it today and experience privacy without compromise!**
+
+---
+
+## ⚠️ Disclaimer
+
+By using Kodachi, you acknowledge and agree that its primary purpose is to protect your privacy and ensure secure online activities. Kodachi should **not** be used for any illegal activities or to commit crimes. If your intention is to engage in unlawful actions or violate any applicable laws, you are advised to discontinue usage immediately. **Kodachi and its developers disclaim all liability for any violations of applicable laws committed by individuals using this software**. It is **your responsibility** to ensure compliance with the laws of your country or jurisdiction when using Kodachi or any other software or tool.
+
+---
+
+## Developed By
+
+**Warith Al Maawali**
+
+- **Website:** [Digi77](https://www.digi77.com)
+- **GitHub:** [WMAL](https://github.com/WMAL)
+- **Twitter:** [@warith2020](https://twitter.com/warith2020)
+- **LinkedIn:** [Warith Al Maawali](https://www.linkedin.com/in/warith-al-maawali/)
+
+Follow Kodachi on social media to stay updated on the latest developments.
+
+---
+
+# Linux Kodachi OS/Software/Code License Agreement
+
+This is a legal agreement between you and Warith AL Maawali regarding the use of Linux Kodachi (the "OS/Software/Code").
+
+- **Private Use**: Linux Kodachi is freeware for private, non-commercial use only.
+- **Commercial Use**: Government, companies, and organizations require a user/device license. Contact for pricing.
+- **License**: A purchased license grants a perpetual, worldwide, non-exclusive license for internal business use.
+- **Prohibited**: You may not distribute, modify, decompile, or reverse-engineer the software.
+- **Warranty**: Linux Kodachi is provided "as is" without any warranty. Use at your own risk.
+
+For the full version, visit: [Full License](https://github.com/WMAL/Linux-Kodachi/blob/main/Kodachi%208.27%20source/LICENSE)
+
+## Warrant Canary
+
+As of August 8, 2025:
+
+- No National Security Letters, gag orders, or warrants received.
+- Kodachi remains uncompromised and secure.
+- For more details, visit the [official Warrant Canary page](https://www.kodachi.cloud/warrant.html).
+
+---
+
+## Acknowledgements
+
+Special thanks to all the contributors and the open-source community for their invaluable support and contributions to the project.
+
+---
+
+## Contact & Support
+
+For any queries or support, please contact:
+
+- **Kodachi Website:** [Kodachi page](https://www.digi77.com/linux-kodachi/)
+- **Kodachi Anonymity Verifier:** [https://www.kodachi.cloud](https://www.kodachi.cloud)
+- **Discord Support:** [Kodachi support](https://discord.gg/KEFErEx)
+- **Contact:** [Contact page](https://www.digi77.com/contact/)
+
+---
+
+© 2025 by Warith AL Maawali, Sultanate of Oman, Muscat. All rights reserved.
+
+[⬆ Back to Overview](#overview)
