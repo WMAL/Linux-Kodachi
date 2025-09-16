@@ -1,136 +1,329 @@
-# Kodachi Development Roadmap
+# Kodachi Dashboard (Historical - v8.27)
 
-This roadmap provides an overview of the current status of key components in the Kodachi project. All code and infrastructure have been written from scratch; however, I have integrated the working code from the old version to avoid reinventing the wheel and accelerate development.
+Main graphical user interface for Kodachi OS version 8.27, providing comprehensive system control and monitoring capabilities through a Gambas 3 application.
 
-| Component                                                    | Status            | Completion                                                                          |
-| ------------------------------------------------------------ | ----------------- | ----------------------------------------------------------------------------------- |
-| **Kodachi Workers VPS**                                      | ✅ Completed      | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
-| **Kodachi Master VPS**                                       | ✅ Completed      | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
-| **[Kodachi Anonymity Verifier](https://www.kodachi.cloud/)** | ✅ Completed      | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
-| **Kodachi Client-Side Scripts**                              | ⚙️ In Development | ![85%](https://img.shields.io/badge/Progress-85%25-blue?style=flat-square)          |
-| **Kodachi Dashboard GUI**                                    | ⚙️ In Development | ![65%](https://img.shields.io/badge/Progress-65%25-orange?style=flat-square)        |
+## Purpose
+
+The Kodachi Dashboard serves as the central control hub for Kodachi OS 8.27, enabling users to manage VPN connections, Tor routing, DNS settings, IP monitoring, and system security through an intuitive graphical interface.
+
+## Main Features
+
+- **VPN Profile Management**: Selection and management of VPN configurations from multiple providers
+- **Tor Network Control**: Configuration and management of Tor routing and exit nodes
+- **DNS Server Switching**: Dynamic DNS server selection and leak prevention
+- **IP Address Monitoring**: Real-time IP address tracking and geolocation display
+- **System Health Monitoring**: Comprehensive system status and security monitoring
+- **Log File Management**: Centralized log viewing and analysis
+- **Sound Notifications**: Audio alerts for network and security events
+- **Multi-language Support**: Internationalization with translation support
+
+## Architecture
+
+```
+kodachi-dashboard/
+├── .project                    # Gambas project configuration
+├── .startup                    # Application startup configuration
+├── .version                    # Version information
+├── .settings                   # Application settings
+├── .src/                      # Source code directory
+│   ├── FMain.class            # Main form and application controller
+│   ├── FMain.form             # Main form UI definition
+│   ├── engineX.class          # System engine and backend operations
+│   ├── ipengine.class         # IP address and geolocation management
+│   ├── globalVars.module      # Global variables and configuration
+│   ├── Status.class           # System status monitoring
+│   ├── Status.form            # Status display UI
+│   ├── logs.class             # Log file management
+│   ├── logs.form              # Log viewer UI
+│   ├── password.class         # Authentication management
+│   ├── password.form          # Password input UI
+│   ├── termForm.class         # Terminal interface
+│   ├── termForm.form          # Terminal UI
+│   ├── md5filecheck.class     # File integrity verification
+│   └── pcinfo.module          # System information module
+├── .gambas/                   # Compiled Gambas bytecode
+├── .lang/                     # Translation files and language support
+├── images/                    # Application icons and graphics
+└── .hidden/                   # Development reference materials
+```
+
+## Key Components
+
+### **FMain.class** - Main Application Controller
+
+**Core Functionality:**
+- **Application Initialization**: Sets up engines, UI components, and system monitoring
+- **Instance Management**: Prevents multiple dashboard instances
+- **Event Coordination**: Manages user interactions and system responses
+- **State Management**: Tracks VPN profiles, Tor settings, DNS configurations
+
+**Key Variables:**
+- `myEngine`: Instance of EngineX for system operations
+- `ipEnginex`: Instance of Ipengine for IP-related operations  
+- `VPNprofile`: Currently selected VPN configuration
+- `TorProfile`: Active Tor routing configuration
+- `dnsEntry`: Selected DNS server configuration
+- `currentnetIP`: Current network IP address for monitoring
+
+**Features:**
+- Live OS detection and feature limiting
+- Automatic UI centering and sizing (1170x790 pixels)
+- JSON configuration management
+- Sound notification controls
+- Real-time IP monitoring toggles
+
+### **EngineX.class** - System Engine
+
+**Purpose**: Backend system operations and script execution interface.
+
+**Responsibilities:**
+- Execute system scripts and commands
+- Manage VPN connections and profiles
+- Control Tor network routing
+- Handle DNS server switching
+- Monitor system processes and services
+
+### **IPEngine.class** - IP and Geolocation Management
+
+**Purpose**: Handles IP address detection, monitoring, and geolocation services.
+
+**Capabilities:**
+- Real-time IP address fetching from multiple providers
+- Geolocation data retrieval and processing
+- IP change detection and notification
+- Provider failover and redundancy
+- JSON data processing for location information
+
+### **GlobalVars.module** - Global Configuration
+
+**Purpose**: Centralized configuration management and system variables.
+
+**Functions:**
+- `getGlobalVars()`: Loads system configuration
+- OS type detection (live/installed)
+- Path management for user directories
+- System-wide setting coordination
+
+### **Status.class** - System Status Monitoring
+
+**Purpose**: Real-time system status display and monitoring.
+
+**Features:**
+- Network connectivity status
+- VPN connection monitoring
+- Tor routing verification
+- DNS leak detection status
+- System health indicators
+
+### **Logs.class** - Log Management System
+
+**Purpose**: Centralized log file viewing and management.
+
+**Capabilities:**
+- Multi-log file support
+- Real-time log monitoring
+- Log filtering and search
+- Export and archive functionality
+
+### **Security Components**
+
+#### **Password.class** - Authentication Management
+- User authentication for sensitive operations
+- Password verification and validation
+- Security prompt handling
+
+#### **MD5FileCheck.class** - File Integrity Verification
+- File hash calculation and verification
+- System integrity monitoring
+- Tamper detection capabilities
+
+## User Interface Design
+
+### **Main Window Layout**
+- **Dimensions**: 1170x790 pixels, centered on screen
+- **Component Organization**: Tabbed interface with logical grouping
+- **Status Indicators**: Visual feedback for system states
+- **Control Panels**: Organized sections for different system aspects
+
+### **Key UI Features**
+- **VPN Selection**: Dropdown menus for provider and server selection
+- **Tor Controls**: Toggle switches and configuration options
+- **DNS Management**: Server selection and leak testing controls
+- **IP Display**: Real-time IP address and location information
+- **Status Monitoring**: Health indicators and connection status
+- **Sound Controls**: Audio notification preferences
+
+## Integration with Kodachi System
+
+### **Script Integration**
+The dashboard integrates with Kodachi system scripts through:
+- **Direct Execution**: Shell commands to system scripts
+- **JSON Communication**: Configuration exchange via JSON files
+- **File Monitoring**: Watching configuration and status files
+- **Process Management**: Starting and stopping system services
+
+### **Configuration Management**
+- **Global Config**: Integration with `Globalconfig` system script
+- **JSON Storage**: User preferences in `kodachi.json` and `kodachiweb.json`
+- **Backup System**: Automatic configuration backups
+- **Profile Management**: VPN and system profile storage
+
+### **System Monitoring**
+- **Real-time Updates**: Continuous monitoring of system status
+- **Event Notifications**: Sound and visual alerts for state changes
+- **Health Checking**: Integration with system health monitoring
+- **Log Aggregation**: Centralized log collection and display
+
+## Dependencies
+
+### **Gambas 3 Components**
+- **gb.image**: Image processing and display
+- **gb.gui**: GUI framework and controls
+- **gb.form**: Form management and dialogs
+- **gb.dbus**: D-Bus system integration
+- **gb.desktop**: Desktop environment integration
+- **gb.form.dialog**: Dialog boxes and user prompts
+- **gb.settings**: Configuration management
+- **gb.term**: Terminal integration
+- **gb.form.terminal**: Terminal widget support
+- **gb.gui.trayicon**: System tray integration
+- **gb.sdl2.audio**: Audio notification support
+- **gb.util.web**: Web utilities for IP services
+- **gb.web**: Web service integration
+
+### **System Dependencies**
+- **Kodachi Scripts**: Core system scripts in `~/.kbase/`
+- **Network Tools**: VPN clients, Tor, DNS utilities
+- **Configuration Files**: JSON configuration storage
+- **Audio System**: Sound notification support
+
+## Usage Instructions
+
+### **Application Launch**
+```bash
+# From desktop
+./Kodachi_Dashboard.desktop
+
+# Direct execution
+cd gambas/kodachi-dashboard
+gbx3
+```
+
+### **Primary Operations**
+
+#### **VPN Management**
+1. Select VPN provider from dropdown
+2. Choose server location
+3. Click connect/disconnect controls
+4. Monitor connection status
+
+#### **Tor Configuration**
+1. Enable/disable Tor routing
+2. Select exit node preferences
+3. Configure Tor-over-VPN settings
+4. Monitor Tor circuit status
+
+#### **DNS Management**
+1. Select DNS server provider
+2. Configure leak protection
+3. Test for DNS leaks
+4. Monitor DNS performance
+
+#### **IP Monitoring**
+1. Enable automatic IP checking
+2. Set monitoring intervals
+3. Configure change notifications
+4. View geolocation information
+
+## Historical Context
+
+### **Version Information**
+- **Application Version**: 0.0.220
+- **Kodachi OS Version**: 8.27
+- **Development Era**: 2021-2022
+- **Architecture**: Gambas 3 GUI application
+
+### **Evolution to Modern Kodachi**
+This dashboard represents the foundation that evolved into the current Kodachi 9.0.1 architecture:
+
+**Preserved Concepts:**
+- Centralized system control
+- Multi-provider VPN support
+- Tor integration and routing
+- DNS leak prevention
+- Real-time monitoring
+- User-friendly GUI interface
+
+**Architectural Evolution:**
+- **Script Backend**: Evolved into Rust service architecture
+- **JSON Configuration**: Enhanced with structured configuration management
+- **Monitoring System**: Improved with dedicated health services
+- **Security Features**: Enhanced with cryptographic signing and verification
+
+## Development Features
+
+### **Internationalization**
+- **Translation Support**: `.pot` files for multiple languages
+- **Language Framework**: Gambas native translation system
+- **User Locale**: Automatic locale detection and application
+
+### **Development Tools**
+- **Profiling**: Performance profiling with `.prof` files
+- **Documentation**: Automatic documentation generation
+- **Version Control**: Git integration with `.gitignore`
+- **Build System**: Gambas native compilation
+
+### **Testing and Debugging**
+- **Debug Integration**: Built-in debugging support
+- **Error Handling**: Comprehensive error management
+- **Logging**: Detailed application logging
+- **State Monitoring**: Real-time state tracking
+
+## Security Considerations
+
+### **Authentication**
+- Password protection for sensitive operations
+- User session management
+- Privilege escalation controls
+
+### **Data Protection**
+- Configuration file security
+- Sensitive data obfuscation
+- Secure temporary file handling
+
+### **System Integration**
+- Safe script execution
+- Process isolation
+- Resource management
+
+## Legacy Value
+
+### **Historical Significance**
+This dashboard represents a critical milestone in Kodachi development:
+- **User Interface Evolution**: Foundation for modern GUI design
+- **Feature Development**: Proof of concept for core privacy features
+- **Integration Patterns**: Established patterns for system integration
+- **User Experience**: Defined user interaction patterns
+
+### **Reference Value**
+- **Feature Mapping**: Understanding feature evolution to current system
+- **Architecture Study**: Analysis of GUI-to-system integration patterns
+- **Configuration Management**: Study of configuration evolution
+- **User Interface Design**: Reference for GUI design decisions
+
+## License and Attribution
+
+**Author**: Warith Al Maawali  
+**Copyright**: © 2021 Eagle Eye Digital Solutions  
+**License**: See `/home/kodachi/LICENSE` for complete terms
+
+### **Contact Information**
+- **Website**: https://digi77.com  
+- **GitHub**: https://github.com/WMAL
+- **Discord**: https://discord.gg/KEFErEx
+- **LinkedIn**: https://www.linkedin.com/in/warith1977
+- **X (Twitter)**: https://x.com/warith2020
 
 ---
 
-## Component Progress Breakdown
-
-| Feature / Utility        | Backend           | Frontend   | Notes                                                                                                                  |
-| ------------------------ | ----------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------- |
-| **Login Manager**        | ✅ Done           | ✅ Done    | Completed both authentication logic and UI integration.                                                                |
-| **Internet Fix Utility** | ✅ Done           | ✅ Done    | Network diagnostics and recovery utilities implemented.                                                                |
-| **Application Launcher** | ✅ Done           | ✅ Done    | Modular app launch system for privacy tools.                                                                           |
-| **Security Tools**       | ✅ Done           | ✅ Done    | Includes firewall toggles and protection utilities.                                                                    |
-| **IP Fetch Utility**     | ✅ Done           | ✅ Done    | Full location + ASN lookup integrated.                                                                                 |
-| **MAC Address Utility**  | ✅ Done           | ✅ Done    | Automatic and manual MAC spoofing supported.                                                                           |
-| **Hostname Changer**     | ✅ Done           | ✅ Done    | Persistent and session-based hostname updates handled.                                                                 |
-| **Time Zone Utility**    | ✅ Done           | ✅ Done    | Geo-based adjustment; includes IP-based firewall re-evaluation.                                                        |
-| **Command Guide**        | ✅ Done           | ✅ Done    | CLI helper with context-aware command suggestions.                                                                     |
-| **Gambas Command Line**  | ✅ Done           | ✅ Done    | Command line integration and debugging completed (Task #9).                                                            |
-| **Tor Manager**          | ✅ Done           | ✅ Done    | Backend and frontend complete; IP login testing needed (Task #6, Aug 28).                                              |
-| **System Information**   | ✅ Done           | ✅ Done    | Backend and frontend both completed with dynamic hardware and OS data parsing.                                         |
-| **DNS Manager**          | ✅ Done           | ⏳ Pending | Backend fully implemented; GUI frontend under development (Task #7, Sep 1).                                            |
-| **Card System**          | ✅ Done           | ✅ Done    | Decryption and patching completed (Task #1, Aug 15).                                                                   |
-| **Secure Connectivity**  | ✅ Done           | ✅ Done    | VPN and secure connection management fully implemented.                                                                |
-| **Project Connector**    | ⏳ In Progress    | ⏳ Pending | Rust implementation in progress (Task #2, Aug 17).                                                                     |
-| **Blender System**       | ❌ Cancelled      | ⏳ Pending | Backend cancelled; GUI with scoring planned (Task #8, Sep 5).                                                         |
-| **Settings Manager**     | ✅ Done           | ⏳ Pending | Core settings logic ready; GUI still under development.                                                                |
-| **CLI-Core Library**     | ✅ Done           | N/A        | Unified command-line interface foundation for all services.                                                            |
-| **Dependencies Checker** | ✅ Done           | N/A        | Comprehensive system dependency verification and management.                                                           |
-| **Auth-Shared Library**  | ✅ Done           | N/A        | Centralized authentication framework for all backend services.                                                         |
-| **Rust-Updater**         | ✅ Done           | N/A        | Automated dependency updating and API compatibility management.                                                        |
-
-### System-Wide Improvements
-
-- **📋 Unified Help Menus**: All 10+ Rust services now feature consistent `--help` and `--examples` output formats
-- **🔧 JSON-First Configuration**: Complete migration from YAML to JSON for all configuration and output files
-- **⚙️ Standardized CLI Options**: Unified `-e`, `-n`, `-v`, `-h`, and `--json` flags across all backend services
-- **🔗 Cross-Service Communication**: Seamless integration between all services using shared libraries and protocols
-- **🎨 GUI Enhancements**: Modern interface updates with real-time status integration and improved error handling
-- **🔐 Security Improvements**: Enhanced authentication, session management, and platform hardening measures
-- **⚡ Performance Optimization**: Improved error handling, memory management, and cryptographic integrity verification
-
----
-
-## Kodachi 9 Development Timeline
-
-**Development Started:** August 2024
-**Expected Release:** September 2025
-**Current Status:** Final Development Phase
-
-### Project Timeline
-
-|  #  | Task                             | Status | Completion Date | Notes |
-| :-: | :------------------------------- | :----: | :-------------: | ----- |
-|  1  | Card System (Decryption & Patch) | ✅ Done | Aug 15, 2025 | Decryption and patching completed |
-|  2  | Project Connector in Rust        | ⏳ In Progress | Aug 17, 2025 | Rust implementation of project connector |
-|  3  | Blender in Rust                  | ❌ Cancelled | - | Not needed |
-|  4  | Test all binaries                | ⏳ Pending | Aug 23, 2025 | Test compiled binaries across environments |
-|  5  | Recheck 8.27 features            | ⏳ Pending | Aug 26, 2025 | Verify all Kodachi 8.27 features |
-|  6  | Tor Manager IP Login GUI fix     | ⏳ Pending | Aug 28, 2025 | Fix IP login functionality |
-|  7  | DNS GUI                          | ⏳ Pending | Sep 1, 2025 | Complete GUI for DNS management |
-|  8  | Blender GUI + scoring            | ⏳ Pending | Sep 5, 2025 | Traffic mixing and obfuscation UI |
-|  9  | Gambas Command Line & Debug      | ✅ Done | Aug 11, 2025 | Command line integration completed |
-| 10  | Check Reference General MD       | ⏳ Pending | Sep 10, 2025 | Documentation review |
-| 11  | Research                         | ⏳ Pending | Sep 17, 2025 | Edge-case testing and hardening |
-| 12  | Build ISO                        | ⏳ Pending | **Sep 22, 2025** | Final ISO build for beta release |
-
-**Beta Release Target:** September 22, 2025
-
----
-
-## Release Plan Going Forward 🚀
-
-### Phase 1: Kodachi Binaries (Universal Linux)
-**Target:** After binary testing completion (Task #4)
-**Description:** Release standalone Kodachi binaries that work on any Linux distribution
-**Benefits:**
-- Fastest deployment to users
-- Cross-distro compatibility testing
-- Early bug detection without needing ISO builds
-- Community feedback on core functionality
-
-### Phase 2: Kodachi Debian Server
-**Target:** 2 weeks after Phase 1
-**Description:** Terminal-based server edition with optional lightweight TUI
-**Benefits:**
-- Smaller attack surface for security hardening
-- Network and security module stabilization
-- Core system testing without GUI overhead
-- Foundation for desktop edition
-
-### Phase 3: Kodachi Debian Desktop (Xfce)
-**Target:** 4 weeks after Phase 2
-**Description:** Full desktop experience with polished Xfce interface
-**Benefits:**
-- Incorporates all feedback from Phases 1 & 2
-- Refined UX based on real-world usage
-- Most stable and feature-complete release
-
-### Why This Order?
-
-**• Binaries First** = Fastest way to get real-world coverage on any distro. We catch environment bugs early without rebuilding ISOs.
-
-**• Server Next** = Stabilize network and security modules on a smaller, lighter attack surface, and harden the core that the Desktop will use.
-
-**• Desktop Last** = Integrate user feedback, polish UX, and ship the full experience.
-
-### What This Means for Users:
-
-• **Earlier Access**: Get features sooner with smaller downloads
-• **Better Stability**: Desktop benefits from two phases of testing
-• **Flexible Deployment**: Choose the edition that fits your needs
-• **Community-Driven**: Your feedback shapes each subsequent release
-
-### Notes:
-• The Server edition is not the final look - it's the backbone for Desktop
-• All editions share the same core security and privacy features
-• Binaries can be integrated into existing Linux installations
-
----
-
-Each of the above components is now integrated or in final testing stages. Kodachi 9 will support both GUI-based control and CLI command-driven interaction.
-
-## Development Approach
-
-- **From Scratch with Legacy Integration:**
-  Every component has been re-engineered from the ground up to ensure modern, robust architecture. That said, the working code from the previous version was utilized where applicable to maintain proven functionality and save valuable development time.
+*This documentation is based on analysis of the actual Gambas 3 source code and project files from Kodachi OS version 8.27, preserved for historical reference and development study.*
