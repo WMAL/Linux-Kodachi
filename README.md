@@ -1,6 +1,6 @@
 ## Overview
 
-# Linux Kodachi - Kodachi 9 soon 🚀
+# Linux Kodachi - Kodachi 9 soon
 
 **Linux Kodachi** is a **security-focused operating system** designed for users who value **privacy, anonymity,** and a **secure computing experience**. Developed by **Warith Al Maawali**, Kodachi provides all the tools necessary for anonymous online activities while maintaining ease of use. The current stable version is built on top of **Xubuntu 18.04.6** and further customized for enhanced privacy and security, while the upcoming **Kodachi 9** is being rebuilt from the ground up on a **Debian base** for enhanced performance and security. Kodachi serves as a **live system** that leaves **no trace** on the host machine.
 
@@ -25,15 +25,15 @@
 [![Privacy](https://img.shields.io/badge/Privacy-Focused-blue?style=for-the-badge&logo=tor)](https://www.kodachi.cloud)
 [![License](https://img.shields.io/badge/License-Proprietary-yellow?style=for-the-badge)](https://github.com/WMAL/Linux-Kodachi/blob/main/LICENSE)
 
-**🚀 A New Era of Privacy-Focused Computing**
+**🛡️ A New Era of Privacy-Focused Computing**
 
 </div>
 
-### 🚀 **Kodachi 9: A New Era is Coming!** 🚀
+### **Kodachi 9: A New Era is Coming!**
 
 **Kodachi 9** is currently under development and will be based on **<span style="color:blue;">Debian</span>**. The project is approximately **<span style="color:green;">90% complete</span>** (as of August 12, 2025). Every script has been rewritten from scratch to enhance performance and functionality. This effort has taken time, but the result will significantly improve the Kodachi experience.
 
-Stay tuned for more updates! 🚀 Check out the [R&D progress](https://github.com/WMAL/Linux-Kodachi/tree/main/Kodachi%209) for Kodachi 9.
+Stay tuned for more updates! Check out the [R&D progress](https://github.com/WMAL/Linux-Kodachi/tree/main/Kodachi%209) for Kodachi 9.
 
 ---
 
