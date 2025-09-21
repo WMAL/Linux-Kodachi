@@ -2,13 +2,14 @@
 
 This roadmap provides an overview of the current status of key components in the Kodachi project. All code and infrastructure have been written from scratch; however, I have integrated the working code from the old version to avoid reinventing the wheel and accelerate development.
 
-| Component                                                    | Status            | Completion                                                                          |
-| ------------------------------------------------------------ | ----------------- | ----------------------------------------------------------------------------------- |
-| **Kodachi Workers VPS**                                      | ✅ Completed      | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
-| **Kodachi Master VPS**                                       | ✅ Completed      | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
-| **[Kodachi Anonymity Verifier](https://www.kodachi.cloud/)** | ✅ Completed      | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
-| **Kodachi Client-Side Scripts**                              | ✅ Completed      | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
-| **Kodachi Dashboard GUI**                                    | ⚙️ In Development | ![65%](https://img.shields.io/badge/Progress-65%25-orange?style=flat-square)        |
+| Component                                                                          | Status            | Completion                                                                          |
+| ---------------------------------------------------------------------------------- | ----------------- | ----------------------------------------------------------------------------------- |
+| **Kodachi Workers VPS**                                                            | ✅ Completed      | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **Kodachi Master VPS**                                                             | ✅ Completed      | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **[Kodachi Anonymity Verifier](https://www.kodachi.cloud/)**                       | ✅ Completed      | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **[Kodachi Binary Documentation](https://www.kodachi.cloud/wiki/bina/index.html)** | ✅ Completed      | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **Kodachi Client Binary Backend**                                                  | ✅ Completed      | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **Kodachi Dashboard GUI**                                                          | ⚙️ In Development | ![65%](https://img.shields.io/badge/Progress-65%25-orange?style=flat-square)        |
 
 ---
 
