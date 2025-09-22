@@ -4,6 +4,8 @@
 
 **Linux Kodachi** is a **security-focused operating system** designed for users who value **privacy, anonymity,** and a **secure computing experience**. Developed by **Warith Al Maawali**, Kodachi provides all the tools necessary for anonymous online activities while maintaining ease of use. The current stable version is built on top of **Xubuntu 18.04.6** and further customized for enhanced privacy and security, while the upcoming **Kodachi 9** is being rebuilt from the ground up on a **Debian base** for enhanced performance and security. Kodachi serves as a **live system** that leaves **no trace** on the host machine.
 
+---
+
 # Kodachi 9 Development Roadmap
 
 This roadmap provides an overview of the current status of key components in the Kodachi project. All code and infrastructure have been written from scratch; however, I have integrated the working code from the old version to avoid reinventing the wheel and accelerate development.
@@ -52,7 +54,6 @@ Stay tuned for more updates! Check out the [R&D progress](https://github.com/WMA
 
 ---
 
----
 
 ## Why Choose Kodachi?
 
