@@ -20,6 +20,12 @@ This roadmap provides an overview of the current status of key components in the
 | **Kodachi Client Binary Backend**                                                  | ✅ Completed      | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **Kodachi Dashboard GUI**                                                          | ⚙️ In Development | ![65%](https://img.shields.io/badge/Progress-65%25-orange?style=flat-square)        |
 
+### **Kodachi 9: A New Era is Coming!**
+
+**Kodachi 9** is currently under development and will be based on **<span style="color:blue;">Debian</span>**. The project is approximately **<span style="color:green;">90% complete</span>** (as of August 12, 2025). Every script has been rewritten from scratch to enhance performance and functionality. This effort has taken time, but the result will significantly improve the Kodachi experience.
+
+Stay tuned for more updates! Check out the [R&D progress](https://github.com/WMAL/Linux-Kodachi/tree/main/Kodachi%209) for Kodachi 9.
+
 ---
 
 ## Features at a Glance
@@ -46,12 +52,6 @@ This roadmap provides an overview of the current status of key components in the
 **🛡️ A New Era of Privacy-Focused Computing**
 
 </div>
-
-### **Kodachi 9: A New Era is Coming!**
-
-**Kodachi 9** is currently under development and will be based on **<span style="color:blue;">Debian</span>**. The project is approximately **<span style="color:green;">90% complete</span>** (as of August 12, 2025). Every script has been rewritten from scratch to enhance performance and functionality. This effort has taken time, but the result will significantly improve the Kodachi experience.
-
-Stay tuned for more updates! Check out the [R&D progress](https://github.com/WMAL/Linux-Kodachi/tree/main/Kodachi%209) for Kodachi 9.
 
 ---
 
