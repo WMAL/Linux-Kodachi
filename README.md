@@ -22,7 +22,7 @@ This roadmap provides an overview of the current status of key components in the
 
 ### **Kodachi 9: A New Era is Coming!**
 
-**Kodachi 9** is currently under development and will be based on **<span style="color:blue;">Debian</span>**. The project is approximately **<span style="color:green;">90% complete</span>** (as of August 12, 2025). Every script has been rewritten from scratch to enhance performance and functionality. This effort has taken time, but the result will significantly improve the Kodachi experience.
+**Kodachi 9** is currently under development and will be based on **<span style="color:blue;">Debian</span>**. The project is approximately **<span style="color:green;">90% complete</span>** (as of September 2025). Every script has been rewritten from scratch to enhance performance and functionality. This effort has taken time, but the result will significantly improve the Kodachi experience.
 
 Stay tuned for more updates! Check out the [R&D progress](https://github.com/WMAL/Linux-Kodachi/tree/main/Kodachi-9/v9-behind-scenes-progress) for Kodachi 9.
 
@@ -187,7 +187,7 @@ For the full version, visit: [Full License](https://github.com/WMAL/Linux-Kodach
 
 ## Warrant Canary
 
-As of August 8, 2025:
+As of September 23, 2025:
 
 - No National Security Letters, gag orders, or warrants received.
 - Kodachi remains uncompromised and secure.
@@ -215,3 +215,4 @@ For any queries or support, please contact:
 © 2025 by Warith AL Maawali, Sultanate of Oman, Muscat. All rights reserved.
 
 [⬆ Back to Overview](#overview)
+

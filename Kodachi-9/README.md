@@ -55,7 +55,7 @@ This roadmap provides an overview of the current status of key components in the
 ## Kodachi 9 Development Timeline
 
 **Development Started:** August 2024
-**Expected Release:** October 2025
+**Expected Beta Release:** October 20, 2025
 **Current Status:** Final Development Phase
 
 ### Project Timeline

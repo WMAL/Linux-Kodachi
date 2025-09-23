@@ -1,7 +1,5 @@
 # 🚀 Tor-Manager: Major Update for Kodachi OS v9
 
- 
-
 ---
 
 ## 🔧 Overview
