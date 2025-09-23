@@ -270,7 +270,7 @@ cd gambas/app-name
 
 3. **Report vulnerabilities**:
    - Use private disclosure
-   - Email: security@kodachi.com
+   - Contact maintainers directly through GitHub
    - Do not create public issues for vulnerabilities
 
 ### Security Checklist
