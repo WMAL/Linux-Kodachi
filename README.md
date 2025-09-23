@@ -47,7 +47,7 @@ Stay tuned for more updates! Check out the [R&D progress](https://github.com/WMA
 [![Version](https://img.shields.io/badge/Version-9.0--beta-brightgreen?style=for-the-badge)](https://github.com/WMAL/Linux-Kodachi)
 [![Based on](https://img.shields.io/badge/Based%20on-Debian-red?style=for-the-badge&logo=debian)](https://www.debian.org)
 [![Privacy](https://img.shields.io/badge/Privacy-Focused-blue?style=for-the-badge&logo=tor)](https://www.kodachi.cloud)
-[![License](https://img.shields.io/badge/License-Proprietary-yellow?style=for-the-badge)](https://github.com/WMAL/Linux-Kodachi/blob/main/LICENSE)
+[![License](https://img.shields.io/badge/License-Proprietary-yellow?style=for-the-badge)](https://github.com/WMAL/Linux-Kodachi/blob/main/Kodachi-8.27-legacy-EOL/LICENSE)
 
 **🛡️ A New Era of Privacy-Focused Computing**
 
