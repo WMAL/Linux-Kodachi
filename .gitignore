@@ -1,0 +1,158 @@
+# Kodachi Linux - Git Ignore File
+# ================================
+
+# Operating System Files
+# ----------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*~
+*.swp
+*.swo
+
+# Version Control Artifacts
+# -------------------------
+.svn/
+.svn
+*.orig
+*.rej
+
+# IDE and Editor Files
+# -------------------
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.project
+.classpath
+.settings/
+*.iml
+
+# Build Outputs
+# ------------
+/target/
+/build/
+/dist/
+*.o
+*.so
+*.exe
+*.dll
+*.log
+*.pid
+
+# Temporary Files
+# --------------
+/tmp/
+/temp/
+*.tmp
+*.temp
+*.cache
+*.bak
+*.backup
+*.old
+
+# Gambas Build Files
+# -----------------
+.gambas/
+*.gambas
+.startup
+.lang/
+.src.*.bak
+
+# Rust/Cargo Files (if applicable)
+# --------------------------------
+debug/
+*.rs.bk
+*.pdb
+
+# Python Files
+# -----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+.Python
+env/
+venv/
+
+# Log Files
+# ---------
+*.log
+logs/
+*.log.*
+
+# Security Sensitive Files
+# -----------------------
+*.key
+*.pem
+*.crt
+*.p12
+*.pfx
+.env
+.env.local
+credentials.json
+secrets.yaml
+
+# System Configuration
+# -------------------
+config.local.yaml
+config.local.json
+*-local.conf
+
+# Documentation Build
+# ------------------
+docs/_build/
+docs/.doctrees/
+
+# Archives
+# --------
+*.tar
+*.tar.gz
+*.zip
+*.rar
+*.7z
+
+# Database Files
+# -------------
+*.db
+*.sqlite
+*.sqlite3
+
+# macOS
+# -----
+.AppleDouble
+.LSOverride
+Icon
+.DocumentRevisions-V100
+.fseventsd
+.TemporaryItems
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Linux
+# -----
+.directory
+.Trash-*
+.nfs*
+
+# Windows
+# -------
+desktop.ini
+$RECYCLE.BIN/
+*.msi
+*.msm
+*.msp
+*.lnk
+
+# Project Specific
+# ---------------
+/dashboard/hooks/results/*.json
+/dashboard/hooks/tmp/*
+/dashboard/hooks/logs/*.log
+!/dashboard/hooks/logs/.gitkeep
+/server-side-vps-master/www/var/www/html/auth/tokens/
+/server-side-vps-master/www/var/www/html/apps/uploads/
