@@ -4,7 +4,7 @@ The IP-Fetch utility in Kodachi v9 provides comprehensive network monitoring and
 
 ## 🎥 Watch the IP-Fetch Demo Video
 
-[Watch the IP-Fetch Demo Video](https://github.com/WMAL/Linux-Kodachi/blob/main/v9-behind-scenes-progress/ip-fetch-c.mp4)
+[Watch the IP-Fetch Demo Video](https://github.com/WMAL/Linux-Kodachi/raw/refs/heads/main/Kodachi-9/v9-behind-scenes-progress/ip-fetch-c.mp4)
 
 ---
 
@@ -72,4 +72,3 @@ The IP-Fetch utility is designed with a strong emphasis on user privacy and anon
 
 This application provides essential network identity visibility and management tools for Kodachi Security OS users, focusing on practical security monitoring and robust privacy protection features.
 
-*#NetworkMonitoring #IPAddress #KodachiOS #Security #Privacy #Anonymity*

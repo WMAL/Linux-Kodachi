@@ -4,7 +4,7 @@
 
 As the lead developer for Kodachi Security OS, I'm excited to share progress on implementing a cutting-edge challenge-response authentication system that perfectly balances security, usability, and user privacy. This milestone reflects my commitment to building a secure, privacy-respecting platform for the upcoming Kodachi v9.
 
-[Watch the Authentication System Demo Video](https://github.com/WMAL/Linux-Kodachi/raw/refs/heads/main/v9-behind-scenes-progress/Kodachi9-auth-demo.mp4)
+[Watch the Authentication System Demo Video](https://github.com/WMAL/Linux-Kodachi/raw/refs/heads/main/Kodachi-9/v9-behind-scenes-progress/Kodachi9-auth-demo.mp4)
 
 ---
 
@@ -119,4 +119,3 @@ This milestone represents ongoing work toward a secure, privacy-focused authenti
 - Production deployments should consider established protocols like OAuth 2.0, WebAuthn, or TLS client certificates
 - Security through transparency - while implementation details are proprietary, the security model is open to review
 
-**#CyberSecurity #Privacy #Authentication #SecureDesign #Kodachi**
