@@ -24,7 +24,7 @@ This roadmap provides an overview of the current status of key components in the
 
 **Kodachi 9** is currently under development and will be based on **<span style="color:blue;">Debian</span>**. The project is approximately **<span style="color:green;">90% complete</span>** (as of August 12, 2025). Every script has been rewritten from scratch to enhance performance and functionality. This effort has taken time, but the result will significantly improve the Kodachi experience.
 
-Stay tuned for more updates! Check out the [R&D progress](https://github.com/WMAL/Linux-Kodachi/tree/main/Kodachi%209) for Kodachi 9.
+Stay tuned for more updates! Check out the [R&D progress](https://github.com/WMAL/Linux-Kodachi/tree/main/Kodachi-9/v9-behind-scenes-progress) for Kodachi 9.
 
 ---
 
@@ -183,7 +183,7 @@ This is a legal agreement between you and Warith AL Maawali regarding the use of
 - **Prohibited**: You may not distribute, modify, decompile, or reverse-engineer the software.
 - **Warranty**: Linux Kodachi is provided "as is" without any warranty. Use at your own risk.
 
-For the full version, visit: [Full License](https://github.com/WMAL/Linux-Kodachi/blob/main/Kodachi%208.27%20source/LICENSE)
+For the full version, visit: [Full License](https://github.com/WMAL/Linux-Kodachi/blob/main/Kodachi-8.27-legacy-EOL/LICENSE)
 
 ## Warrant Canary
 
