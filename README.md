@@ -1,5 +1,22 @@
 ## Overview
 
+<div align="center">
+
+### 🎉 **ANNOUNCEMENT: Kodachi 9 Binaries Backend Released!** 🎉
+
+[![Release](https://img.shields.io/badge/Kodachi%209-Backend%20Released-success?style=for-the-badge&logo=debian&logoColor=white)](https://www.kodachi.cloud/wiki/bina/installation.html)
+[![Test Now](https://img.shields.io/badge/Test%20Now-Get%20Started-blue?style=for-the-badge&logo=rocket&logoColor=white)](https://www.kodachi.cloud/wiki/bina/installation.html)
+[![Security](https://img.shields.io/badge/Privacy%20%26%20Anonymity-Guaranteed-red?style=for-the-badge&logo=shield&logoColor=white)](https://www.kodachi.cloud/wiki/bina/installation.html)
+
+**The Kodachi 9 binaries backend is now available for testing!**
+Feel free to test them and enjoy enhanced anonymity and security.
+
+📚 **[Installation Guide & Documentation](https://www.kodachi.cloud/wiki/bina/installation.html)**
+
+---
+
+</div>
+
 # Linux Kodachi - Kodachi 9 soon
 
 **Linux Kodachi** is a **security-focused operating system** designed for users who value **privacy, anonymity,** and a **secure computing experience**. Developed by **Warith Al Maawali**, Kodachi provides all the tools necessary for anonymous online activities while maintaining ease of use. The current stable version is built on top of **Xubuntu 18.04.6** and further customized for enhanced privacy and security, while the upcoming **Kodachi 9** is being rebuilt from the ground up on a **Debian base** for enhanced performance and security. Kodachi serves as a **live system** that leaves **no trace** on the host machine.
@@ -17,7 +34,7 @@ This roadmap provides an overview of the current status of key components in the
 | **Kodachi Master VPS**                                                             | ✅ Completed      | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **[Kodachi Anonymity Verifier](https://www.kodachi.cloud/)**                       | ✅ Completed      | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **[Kodachi Binary Documentation](https://www.kodachi.cloud/wiki/bina/index.html)** | ✅ Completed      | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
-| **Kodachi Client Binary Backend**                                                  | ✅ Completed      | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **[Kodachi Client Binary Backend](https://www.kodachi.cloud/wiki/bina/installation.html)**                                                  | ✅ Completed      | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **Kodachi Dashboard GUI**                                                          | ⚙️ In Development | ![65%](https://img.shields.io/badge/Progress-65%25-orange?style=flat-square)        |
 
 ### **Kodachi 9: A New Era is Coming!**
