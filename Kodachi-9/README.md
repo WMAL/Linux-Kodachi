@@ -79,6 +79,13 @@ This roadmap provides an overview of the current status of key components in the
 
 ---
 
+## Installation Scripts
+
+- **[kodachi-binary-install.sh](kodachi-binary-install.sh)** - Downloads and installs Kodachi binaries without requiring sudo
+- **[kodachi-deps-install.sh](kodachi-deps-install.sh)** - Installs all system dependencies (requires sudo)
+
+---
+
 ## Release Plan Going Forward 🚀
 
 ### Phase 1: Kodachi Binaries (Universal Linux)
