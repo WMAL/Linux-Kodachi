@@ -8,7 +8,7 @@
 # License: See LICENSE file or https://kodachi.cloud/license
 #
 # Version: 9.0.1
-# Last updated: 2025-10-01
+# Last updated: 2025-10-04
 #
 # Description:
 # This script installs all system package dependencies required for
