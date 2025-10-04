@@ -1282,7 +1282,101 @@ EOF
     print_success "kloak service file created"
 }
 
+# Function to generate Pi-hole setupVars.conf for unattended installation
+generate_pihole_setupvars() {
+    print_step "Generating Pi-hole configuration for unattended installation..."
+
+    # Create /etc/pihole directory if it doesn't exist
+    mkdir -p /etc/pihole
+
+    # Detect primary network interface with multiple fallback methods
+    local interface=""
+    local ipv4_address=""
+
+    # Method 1: Try default route (most reliable when available)
+    interface=$(ip route | grep '^default' | head -1 | awk '{print $5}')
+    if [[ -n "$interface" ]]; then
+        ipv4_address=$(ip -4 addr show "$interface" 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1)
+    fi
+
+    # Method 2: Try interface with active IPv4 (if Method 1 failed)
+    if [[ -z "$interface" ]] || [[ -z "$ipv4_address" ]]; then
+        local addr_line=$(ip -4 -o addr show | grep -v "127.0.0.1" | head -1)
+        if [[ -n "$addr_line" ]]; then
+            interface=$(echo "$addr_line" | awk '{print $2}')
+            ipv4_address=$(echo "$addr_line" | awk '{print $4}' | cut -d'/' -f1)
+        fi
+    fi
+
+    # Method 3: Try first UP interface (last resort)
+    if [[ -z "$interface" ]] || [[ -z "$ipv4_address" ]]; then
+        interface=$(ip -o link show | grep "state UP" | grep -v "lo" | head -1 | awk '{print $2}' | sed 's/:$//')
+        if [[ -n "$interface" ]]; then
+            ipv4_address=$(ip -4 addr show "$interface" 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1)
+        fi
+    fi
+
+    # Clean interface name (remove @ifXX suffixes if present)
+    interface=$(echo "$interface" | cut -d'@' -f1)
+
+    # Debug output
+    print_info "Detected interface: ${interface:-NONE}"
+    print_info "Detected IPv4: ${ipv4_address:-NONE}"
+
+    # Validation
+    if [[ -z "$interface" ]] || [[ -z "$ipv4_address" ]]; then
+        print_error "Could not detect network interface or IP address"
+        print_info "Available interfaces:"
+        ip -o link show | grep -v "lo:" 2>/dev/null || echo "  No interfaces found"
+        print_info "Please configure network first or run Pi-hole installer manually"
+        return 1
+    fi
+
+    print_info "Using interface: $interface"
+    print_info "Using IPv4: $ipv4_address"
+
+    # Generate random web password
+    local web_password=$(generate_pihole_password)
+
+    # Double-hash the password for Pi-hole (SHA256 twice with newline)
+    local hashed_password=$(printf "%s" "$web_password" | sha256sum | awk '{print $1}')
+    hashed_password=$(printf "%s" "$hashed_password" | sha256sum | awk '{print $1}')
+
+    # Create setupVars.conf with all required settings
+    cat > /etc/pihole/setupVars.conf <<EOF
+# Pi-hole Configuration - Auto-generated for Kodachi
+PIHOLE_INTERFACE=$interface
+IPV4_ADDRESS=${ipv4_address}/24
+QUERY_LOGGING=true
+INSTALL_WEB_SERVER=true
+INSTALL_WEB_INTERFACE=true
+LIGHTTPD_ENABLED=true
+CACHE_SIZE=10000
+DNS_FQDN_REQUIRED=true
+DNS_BOGUS_PRIV=true
+DNSMASQ_LISTENING=local
+BLOCKING_ENABLED=true
+DNSSEC=false
+REV_SERVER=false
+PIHOLE_DNS_1=9.9.9.10
+PIHOLE_DNS_2=149.112.112.10
+WEBPASSWORD=$hashed_password
+EOF
+
+    if [[ -f /etc/pihole/setupVars.conf ]]; then
+        print_success "Pi-hole configuration created at /etc/pihole/setupVars.conf"
+        print_info "Web password: $web_password (save this!)"
+        echo "$web_password" > /etc/pihole/.webpassword_initial
+        chmod 600 /etc/pihole/.webpassword_initial
+        return 0
+    else
+        print_error "Failed to create Pi-hole configuration"
+        return 1
+    fi
+}
+
 # Function to install Pi-hole
+# To uninstall Pi-hole, run: echo -e "yes\nno\nno\nno\nno\nno\nno\nno\nno\nno" | sudo pihole uninstall
 install_pihole() {
     print_step "Installing Pi-hole..."
 
@@ -1299,16 +1393,29 @@ install_pihole() {
 
     echo "Pi-hole is not installed. Installing now..."
     echo ""
-    
+
     if [[ "$AUTO_YES" == "true" ]]; then
-        print_info "Auto mode: Installing Pi-hole with default settings..."
-        # Run Pi-hole installer with minimal interaction
-        if curl -sSL https://install.pi-hole.net | bash /dev/stdin --unattended; then
-            print_success "Pi-hole installed successfully in unattended mode"
+        print_info "Auto mode: Installing Pi-hole with default settings (Quad9 Unfiltered DNS)..."
+
+        # Generate setupVars.conf for unattended installation
+        if generate_pihole_setupvars; then
+            # Run Pi-hole installer in unattended mode
+            if curl -sSL https://install.pi-hole.net | bash /dev/stdin --unattended; then
+                print_success "Pi-hole installed successfully in unattended mode"
+
+                # Display saved password if available
+                if [[ -f /etc/pihole/.webpassword_initial ]]; then
+                    local saved_password=$(cat /etc/pihole/.webpassword_initial)
+                    print_info "Pi-hole Web Interface Password: $saved_password"
+                    print_warning "Password saved to: /etc/pihole/.webpassword_initial"
+                fi
+            else
+                print_error "Pi-hole unattended installation failed"
+                return 1
+            fi
         else
-            # Fallback to normal install if unattended fails
-            print_warning "Unattended install failed, trying interactive mode..."
-            curl -sSL https://install.pi-hole.net | bash
+            print_error "Failed to generate Pi-hole configuration"
+            return 1
         fi
     else
         print_warning "Pi-hole installer will run interactively."
@@ -1317,7 +1424,7 @@ install_pihole() {
         # Run Pi-hole installer
         curl -sSL https://install.pi-hole.net | bash
     fi
-    
+
     # Check installation result
     if command -v pihole &>/dev/null || systemctl is-active --quiet pihole-FTL 2>/dev/null; then
         print_success "Pi-hole installed successfully"
@@ -1335,7 +1442,11 @@ install_pihole() {
             echo ""
             print_info "Pi-hole Web Interface:"
             echo "  URL: http://$(hostname -I | awk '{print $1}')/admin"
-            echo "  Password: Set during installation or run 'pihole -a -p' to set"
+            if [[ -f /etc/pihole/.webpassword_initial ]]; then
+                echo "  Password: $(cat /etc/pihole/.webpassword_initial)"
+            else
+                echo "  Password: Set during installation or run 'pihole -a -p' to set"
+            fi
         fi
     else
         print_error "Failed to install Pi-hole"
