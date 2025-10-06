@@ -1536,8 +1536,12 @@ configure_pihole_port() {
     if [[ -f "$pihole_config" ]]; then
         print_info "Updating Pi-hole TOML configuration for port 5353..."
 
-        # Remove immutable attribute before any modifications
-        chattr -i "$pihole_config" 2>/dev/null || true
+        # Check if file is protected (immutable attribute)
+        local was_protected=false
+        if lsattr "$pihole_config" 2>/dev/null | grep -q '^....i'; then
+            was_protected=true
+            chattr -i "$pihole_config" 2>/dev/null || true
+        fi
 
         # The DNS port setting is between "cnameRecords = []" and "# Reverse server"
         # We need to match the exact pattern: line with "  port = 53" (2 spaces, no quotes)
@@ -1576,19 +1580,33 @@ configure_pihole_port() {
                 print_success "Added [dns] section with port = 5353 to $pihole_config"
             fi
         fi
+
+        # Restore protection if it was originally protected
+        if [ "$was_protected" = true ]; then
+            chattr +i "$pihole_config" 2>/dev/null || true
+        fi
     fi
 
     # Legacy Pi-hole uses pihole-FTL.conf (v5.x and earlier)
     if [[ -f "$pihole_ftl_config" ]]; then
         print_info "Updating legacy Pi-hole FTL configuration for port 5353..."
 
-        # Remove immutable attribute before modification
-        chattr -i "$pihole_ftl_config" 2>/dev/null || true
+        # Check if file is protected (immutable attribute)
+        local was_ftl_protected=false
+        if lsattr "$pihole_ftl_config" 2>/dev/null | grep -q '^....i'; then
+            was_ftl_protected=true
+            chattr -i "$pihole_ftl_config" 2>/dev/null || true
+        fi
 
         if grep -q "^LOCAL_PORT=" "$pihole_ftl_config"; then
             sed -i 's/^LOCAL_PORT=.*/LOCAL_PORT=5353/' "$pihole_ftl_config"
         else
             echo "LOCAL_PORT=5353" >> "$pihole_ftl_config"
+        fi
+
+        # Restore protection if it was originally protected
+        if [ "$was_ftl_protected" = true ]; then
+            chattr +i "$pihole_ftl_config" 2>/dev/null || true
         fi
 
         print_success "Set LOCAL_PORT=5353 in $pihole_ftl_config"
