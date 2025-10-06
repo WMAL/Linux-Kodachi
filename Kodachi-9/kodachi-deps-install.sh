@@ -1505,28 +1505,51 @@ install_ram_wipe_packages() {
             print_warning "Failed to install some dracut packages"
         fi
         
-        # Check if Kicksecure repository is already configured
-        if [[ -f "/etc/apt/sources.list.d/kicksecure.list" ]] && [[ -f "/usr/share/keyrings/kicksecure.gpg" ]]; then
-            print_info "Kicksecure repository already configured"
+        # Check if Kicksecure repository exists
+        if [[ -f "/etc/apt/sources.list.d/kicksecure.list" ]]; then
+            print_info "Kicksecure repository detected - refreshing GPG key..."
+
+            # Create keyrings directory if missing
+            install -d -m 0755 /usr/share/keyrings
+
+            # Download and convert key from Kicksecure website (most reliable method)
+            print_info "Fetching latest Kicksecure repository key..."
+            if curl --tlsv1.3 -fsSL https://www.kicksecure.com/keys/derivative.asc 2>/dev/null | gpg --yes --dearmor -o /usr/share/keyrings/kicksecure.gpg 2>/dev/null && \
+               [ -s /usr/share/keyrings/kicksecure.gpg ]; then
+                print_success "Repository key downloaded and converted successfully"
+            else
+                print_error "Failed to download repository key"
+                return 1
+            fi
+
+            # Verify repository works
+            print_info "Verifying Kicksecure repository..."
+            if apt-get update -o Dir::Etc::sourcelist="/etc/apt/sources.list.d/kicksecure.list" -o Dir::Etc::sourceparts="-" 2>&1 | tail -5; then
+                print_success "Kicksecure repository verified successfully"
+            else
+                print_warning "Repository verification had warnings (may still work)"
+            fi
         else
+            # Repository doesn't exist - add it for ram-wipe installation
             print_step "Adding Kicksecure repository for ram-wipe..."
-            
+
             # Create keyrings directory
             install -d -m 0755 /usr/share/keyrings
-            
-            # Import repo key
+
+            # Download and convert key from Kicksecure website (most reliable method)
             print_info "Importing Kicksecure repository key..."
-            if curl -fsSL https://www.kicksecure.com/keys/derivative.asc | gpg --dearmor -o /usr/share/keyrings/kicksecure.gpg; then
+            if curl --tlsv1.3 -fsSL https://www.kicksecure.com/keys/derivative.asc 2>/dev/null | gpg --yes --dearmor -o /usr/share/keyrings/kicksecure.gpg 2>/dev/null && \
+               [ -s /usr/share/keyrings/kicksecure.gpg ]; then
                 print_success "Repository key imported successfully"
             else
                 print_error "Failed to import repository key"
                 return 1
             fi
-            
+
             # Add repository
             print_info "Adding Kicksecure repository..."
             echo 'deb [signed-by=/usr/share/keyrings/kicksecure.gpg] https://deb.kicksecure.com bookworm main' | tee /etc/apt/sources.list.d/kicksecure.list
-            
+
             # Update package lists
             print_info "Updating package lists..."
             if apt-get update 2>&1 | tail -5; then
