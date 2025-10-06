@@ -327,6 +327,28 @@ install_dnscrypt_github() {
 
     if command -v dnscrypt-proxy &>/dev/null; then
         print_success "DNSCrypt Proxy is already installed"
+
+        # ALWAYS ensure config file exists
+        setup_dnscrypt_config
+
+        # Check if systemd service exists and is enabled
+        if systemctl list-unit-files dnscrypt-proxy.service &>/dev/null 2>&1; then
+            if systemctl is-enabled --quiet dnscrypt-proxy 2>/dev/null; then
+                print_success "DNSCrypt Proxy service is already enabled"
+            else
+                print_info "DNSCrypt Proxy service exists but not enabled - enabling now..."
+                if systemctl enable dnscrypt-proxy 2>/dev/null; then
+                    print_success "DNSCrypt Proxy service enabled"
+                else
+                    print_warning "Failed to enable DNSCrypt Proxy service"
+                fi
+            fi
+        else
+            # Service file doesn't exist, create it
+            print_info "DNSCrypt Proxy service file missing - creating now..."
+            setup_dnscrypt_service "existing"
+        fi
+
         return 0
     fi
 
@@ -373,6 +395,13 @@ install_dnscrypt_github() {
 
             rm -rf "$temp_dir"
             print_success "DNSCrypt Proxy installed successfully from GitHub"
+
+            # Setup configuration file
+            setup_dnscrypt_config
+
+            # Setup systemd service
+            setup_dnscrypt_service "github"
+
             return 0
         else
             print_error "Could not find DNSCrypt Proxy binary in archive"
@@ -1282,6 +1311,118 @@ EOF
     print_success "kloak service file created"
 }
 
+# Function to setup DNSCrypt Proxy configuration file
+setup_dnscrypt_config() {
+    local install_dir="/etc/dnscrypt-proxy"
+    local config_file="$install_dir/dnscrypt-proxy.toml"
+    local example_config="$install_dir/example-dnscrypt-proxy.toml"
+
+    print_step "Setting up DNSCrypt Proxy configuration..."
+
+    # Check if install directory exists
+    if [[ ! -d "$install_dir" ]]; then
+        print_error "DNSCrypt Proxy directory not found: $install_dir"
+        return 1
+    fi
+
+    # Check if config file already exists
+    if [[ -f "$config_file" ]]; then
+        print_success "DNSCrypt Proxy config file already exists"
+        return 0
+    fi
+
+    # Check if example config exists
+    if [[ ! -f "$example_config" ]]; then
+        print_error "Example config file not found: $example_config"
+        print_info "Cannot create DNSCrypt Proxy configuration"
+        return 1
+    fi
+
+    # Copy example config to actual config
+    print_info "Creating config file from example..."
+    if cp "$example_config" "$config_file"; then
+        # Set proper permissions
+        chmod 644 "$config_file"
+        print_success "DNSCrypt Proxy config file created: $config_file"
+        print_info "Config uses default settings - you can customize it later"
+        return 0
+    else
+        print_error "Failed to create config file"
+        return 1
+    fi
+}
+
+# Function to setup DNSCrypt Proxy systemd service
+setup_dnscrypt_service() {
+    local install_method="$1"
+
+    print_step "Setting up DNSCrypt Proxy service..."
+
+    # ALWAYS ensure config file exists before setting up service
+    setup_dnscrypt_config
+
+    # Check if systemd service already exists
+    if systemctl list-unit-files dnscrypt-proxy.service &>/dev/null; then
+        print_info "DNSCrypt Proxy service file already exists"
+    else
+        # Create systemd service file
+        print_info "Creating DNSCrypt Proxy systemd service file..."
+        create_dnscrypt_service_file
+    fi
+
+    # Enable service but do not start it
+    print_info "Enabling DNSCrypt Proxy service (not starting)..."
+    if systemctl enable dnscrypt-proxy 2>/dev/null; then
+        print_success "DNSCrypt Proxy service enabled (use 'systemctl start dnscrypt-proxy' to activate)"
+    else
+        print_warning "Failed to enable DNSCrypt Proxy service"
+    fi
+
+    print_info "DNSCrypt Proxy service is ready but not active - user can start when needed"
+}
+
+# Function to create DNSCrypt Proxy systemd service file
+create_dnscrypt_service_file() {
+    cat > /etc/systemd/system/dnscrypt-proxy.service << 'EOF'
+[Unit]
+Description=DNSCrypt Proxy
+Documentation=https://github.com/DNSCrypt/dnscrypt-proxy/wiki
+After=network-online.target
+Before=nss-lookup.target
+Wants=network-online.target nss-lookup.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/dnscrypt-proxy -config /etc/dnscrypt-proxy/dnscrypt-proxy.toml
+WorkingDirectory=/etc/dnscrypt-proxy
+Restart=on-failure
+RestartSec=10
+User=root
+Group=root
+
+# Security settings
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/etc/dnscrypt-proxy
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+SystemCallArchitectures=native
+LockPersonality=true
+RestrictRealtime=true
+RestrictNamespaces=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    # Reload systemd to recognize new service
+    systemctl daemon-reload
+    print_success "DNSCrypt Proxy service file created"
+}
+
 # Function to generate Pi-hole setupVars.conf for unattended installation
 generate_pihole_setupvars() {
     print_step "Generating Pi-hole configuration for unattended installation..."
@@ -1361,6 +1502,9 @@ REV_SERVER=false
 PIHOLE_DNS_1=9.9.9.10
 PIHOLE_DNS_2=149.112.112.10
 WEBPASSWORD=$hashed_password
+# Run Pi-hole on port 5353 to avoid conflict with DNSCrypt Proxy (port 53)
+FTLCONF_LOCAL_PORT=5353
+FTLCONF_dns_port=5353
 EOF
 
     if [[ -f /etc/pihole/setupVars.conf ]]; then
@@ -1373,6 +1517,167 @@ EOF
         print_error "Failed to create Pi-hole configuration"
         return 1
     fi
+}
+
+# Function to configure Pi-hole to use port 5353
+configure_pihole_port() {
+    print_step "Configuring Pi-hole to use port 5353..."
+
+    local pihole_config="/etc/pihole/pihole.toml"
+    local pihole_ftl_config="/etc/pihole/pihole-FTL.conf"
+
+    # Check if Pi-hole is installed
+    if ! command -v pihole &>/dev/null; then
+        print_warning "Pi-hole is not installed, skipping port configuration"
+        return 1
+    fi
+
+    # Modern Pi-hole uses pihole.toml (v6.x)
+    if [[ -f "$pihole_config" ]]; then
+        print_info "Updating Pi-hole TOML configuration for port 5353..."
+
+        # Remove immutable attribute before any modifications
+        chattr -i "$pihole_config" 2>/dev/null || true
+
+        # The DNS port setting is between "cnameRecords = []" and "# Reverse server"
+        # We need to match the exact pattern: line with "  port = 53" (2 spaces, no quotes)
+        # that comes after "# Port used by the DNS server" comment
+        if grep -q "# Port used by the DNS server" "$pihole_config"; then
+            # Create backup
+            cp "$pihole_config" "${pihole_config}.bak" 2>/dev/null || true
+
+            # Use awk for precise line matching and replacement
+            awk '
+                /# Port used by the DNS server/ { print; found=1; next }
+                found && /^  port = [0-9]+$/ {
+                    print "  port = 5353"
+                    found=0
+                    next
+                }
+                { print }
+            ' "$pihole_config" > "${pihole_config}.tmp" && mv "${pihole_config}.tmp" "$pihole_config"
+
+            print_success "Updated DNS port to 5353 in $pihole_config"
+        elif grep -q "^  port = 53$" "$pihole_config"; then
+            # Fallback: update first occurrence of "  port = 53" (exact match)
+            sed -i '0,/^  port = 53$/s//  port = 5353/' "$pihole_config"
+            print_success "Updated port to 5353 in $pihole_config"
+        else
+            # Add port setting after [dns] section with proper indentation
+            if grep -q "^\[dns\]" "$pihole_config"; then
+                sed -i '/^\[dns\]/a \  # Port used by the DNS server\n  port = 5353' "$pihole_config"
+                print_success "Added port = 5353 to [dns] section in $pihole_config"
+            else
+                # Add entire dns section
+                echo "" >> "$pihole_config"
+                echo "[dns]" >> "$pihole_config"
+                echo "  # Port used by the DNS server" >> "$pihole_config"
+                echo "  port = 5353" >> "$pihole_config"
+                print_success "Added [dns] section with port = 5353 to $pihole_config"
+            fi
+        fi
+    fi
+
+    # Legacy Pi-hole uses pihole-FTL.conf (v5.x and earlier)
+    if [[ -f "$pihole_ftl_config" ]]; then
+        print_info "Updating legacy Pi-hole FTL configuration for port 5353..."
+
+        # Remove immutable attribute before modification
+        chattr -i "$pihole_ftl_config" 2>/dev/null || true
+
+        if grep -q "^LOCAL_PORT=" "$pihole_ftl_config"; then
+            sed -i 's/^LOCAL_PORT=.*/LOCAL_PORT=5353/' "$pihole_ftl_config"
+        else
+            echo "LOCAL_PORT=5353" >> "$pihole_ftl_config"
+        fi
+
+        print_success "Set LOCAL_PORT=5353 in $pihole_ftl_config"
+    fi
+
+    # Restart Pi-hole service to apply changes
+    print_info "Restarting Pi-hole service..."
+    if systemctl restart pihole-FTL 2>/dev/null; then
+        print_success "Pi-hole restarted successfully on port 5353"
+
+        # Verify port
+        sleep 2
+        if ss -tlnp 2>/dev/null | grep -q ":5353.*pihole-FTL\|:5353.*dnsmasq"; then
+            print_success "Verified: Pi-hole is listening on port 5353"
+        else
+            print_warning "Could not verify Pi-hole port (may need manual check)"
+        fi
+    else
+        print_warning "Failed to restart Pi-hole - you may need to restart manually"
+    fi
+
+    print_info "Pi-hole configured to avoid port conflict with DNSCrypt Proxy"
+    return 0
+}
+
+# Function to check DNS service coordination (DNSCrypt + Pi-hole)
+check_dns_services() {
+    print_step "Checking DNS service coordination..."
+
+    local dnscrypt_port_53=false
+    local pihole_port_5353=false
+    local port_conflicts=false
+
+    # Check if DNSCrypt is running on port 53
+    if command -v dnscrypt-proxy &>/dev/null; then
+        if systemctl is-active --quiet dnscrypt-proxy 2>/dev/null; then
+            if ss -tlnp 2>/dev/null | grep -q ":53.*dnscrypt"; then
+                dnscrypt_port_53=true
+                print_success "DNSCrypt Proxy running on port 53"
+            else
+                print_warning "DNSCrypt Proxy service active but not listening on port 53"
+            fi
+        else
+            print_info "DNSCrypt Proxy not running (service not started)"
+        fi
+    else
+        print_info "DNSCrypt Proxy not installed"
+    fi
+
+    # Check if Pi-hole is running on port 5353
+    if command -v pihole &>/dev/null; then
+        if systemctl is-active --quiet pihole-FTL 2>/dev/null; then
+            if ss -tlnp 2>/dev/null | grep -q ":5353.*pihole-FTL\|:5353.*dnsmasq"; then
+                pihole_port_5353=true
+                print_success "Pi-hole running on port 5353"
+            elif ss -tlnp 2>/dev/null | grep -q ":53.*pihole-FTL\|:53.*dnsmasq"; then
+                print_error "Pi-hole running on port 53 - PORT CONFLICT DETECTED!"
+                print_warning "Pi-hole must use port 5353 to avoid conflict with DNSCrypt"
+                port_conflicts=true
+            else
+                print_warning "Pi-hole service active but not listening on expected ports"
+            fi
+        else
+            print_info "Pi-hole not running (service not started)"
+        fi
+    else
+        print_info "Pi-hole not installed"
+    fi
+
+    # Check for any port conflicts
+    if [[ "$port_conflicts" == "true" ]]; then
+        print_error "DNS port conflict detected - services cannot coexist"
+        print_info "Run 'configure_pihole_port' to fix Pi-hole configuration"
+        return 1
+    fi
+
+    # Summary
+    echo ""
+    if [[ "$dnscrypt_port_53" == "true" && "$pihole_port_5353" == "true" ]]; then
+        print_success "✓ DNS services properly coordinated - no conflicts"
+        print_info "  → DNSCrypt Proxy on port 53 (system DNS)"
+        print_info "  → Pi-hole on port 5353 (ad-blocking DNS)"
+    elif [[ "$dnscrypt_port_53" == "true" || "$pihole_port_5353" == "true" ]]; then
+        print_info "DNS services partially configured"
+    else
+        print_info "DNS services not active"
+    fi
+
+    return 0
 }
 
 # Function to install Pi-hole
@@ -1388,6 +1693,10 @@ install_pihole() {
         if command -v pihole &>/dev/null; then
             pihole status 2>/dev/null | head -5 || true
         fi
+
+        # Ensure Pi-hole is configured for port 5353
+        configure_pihole_port
+
         return 0
     fi
 
@@ -1428,6 +1737,11 @@ install_pihole() {
     # Check installation result
     if command -v pihole &>/dev/null || systemctl is-active --quiet pihole-FTL 2>/dev/null; then
         print_success "Pi-hole installed successfully"
+
+        # Configure Pi-hole to use port 5353 (avoid conflict with DNSCrypt)
+        echo ""
+        configure_pihole_port
+        echo ""
 
         # Check if service is running
         if systemctl is-active --quiet pihole-FTL; then
@@ -1517,6 +1831,14 @@ install_ram_wipe_packages() {
             if curl --tlsv1.3 -fsSL https://www.kicksecure.com/keys/derivative.asc 2>/dev/null | gpg --yes --dearmor -o /usr/share/keyrings/kicksecure.gpg 2>/dev/null && \
                [ -s /usr/share/keyrings/kicksecure.gpg ]; then
                 print_success "Repository key downloaded and converted successfully"
+
+                # Normalize sources.list to use correct key path if needed
+                if ! grep -q "signed-by=/usr/share/keyrings/kicksecure.gpg" /etc/apt/sources.list.d/kicksecure.list; then
+                    print_info "Normalizing repository configuration to use correct key path..."
+                    sed 's|signed-by=/usr/share/keyrings/[^]]*|signed-by=/usr/share/keyrings/kicksecure.gpg|g' /etc/apt/sources.list.d/kicksecure.list > /tmp/kicksecure.list.fixed
+                    cat /tmp/kicksecure.list.fixed | tee /etc/apt/sources.list.d/kicksecure.list > /dev/null
+                    print_success "Repository configuration normalized"
+                fi
             else
                 print_error "Failed to download repository key"
                 return 1
@@ -1561,6 +1883,9 @@ install_ram_wipe_packages() {
         
         # Install ram-wipe
         print_step "Installing ram-wipe from Kicksecure repository..."
+        # Refresh all package lists to ensure dependencies are available
+        print_info "Refreshing package lists..."
+        apt-get update >/dev/null 2>&1
         if apt-get install -y ram-wipe 2>&1 | tail -5; then
             print_success "ram-wipe installed successfully"
             echo ""
@@ -1719,6 +2044,7 @@ elif [[ "$INSTALL_MODE" == "interactive" ]]; then
             print_warning "GitHub installation failed, trying apt package..."
             if timeout 60 apt-get install -y dnscrypt-proxy 2>&1 | tail -5; then
                 print_success "DNSCrypt Proxy installed via apt"
+                setup_dnscrypt_service "apt"
             else
                 print_error "Failed to install DNSCrypt Proxy from both GitHub and apt"
             fi
@@ -2290,95 +2616,251 @@ else
     print_warning "Cleanup had some issues but continuing..."
 fi
 
-# Final status
+# ============================================================================
+# SERVICE CLEANUP - Stop services and kill processes
+# ============================================================================
+
 echo ""
-echo -e "${GREEN}╔══════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║   Dependency Installation Complete!          ║${NC}"
-echo -e "${GREEN}╚══════════════════════════════════════════════╝${NC}"
+print_highlight "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+print_highlight "Service Cleanup and Hardening"
+print_highlight "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-print_success "Script execution complete!"
+print_info "Stopping unnecessary services and processes for security..."
+echo ""
 
-# Clean up any remaining temporary files from GitHub downloads
-cleanup_github_temp_files() {
-    print_step "Cleaning up temporary files..."
-    
-    local cleaned_files=0
-    local temp_files=(
-        "/tmp/hysteria"
-        "/tmp/v2ray-install.sh"
-        "/tmp/dnscrypt-proxy-install"
-        "/tmp/v2ray-plugin-install"
-        "/tmp/qrencode-install-"*
-        "/tmp/kloak-install-"*
-        "/tmp/mieru_"*.deb
-    )
-    
-    for file_pattern in "${temp_files[@]}"; do
-        if ls ${file_pattern} 2>/dev/null 1>&2; then
-            rm -rf ${file_pattern} 2>/dev/null && ((cleaned_files++))
+# Function to stop, disable service and kill processes
+stop_and_disable_service() {
+    local service_name="$1"
+    local service_display="$2"
+    local process_name="$3"  # Process name to kill
+
+    print_step "Processing ${service_display}..."
+
+    # Stop systemd service if exists
+    if systemctl list-unit-files 2>/dev/null | grep -q "^${service_name}"; then
+        if systemctl is-active --quiet "$service_name" 2>/dev/null; then
+            if systemctl stop "$service_name" 2>/dev/null; then
+                echo -e "  ${GREEN}✓${NC} Stopped systemd service: ${service_name}"
+            fi
         fi
-    done
-    
-    # Clean up any other GitHub-related temp files
-    find /tmp -maxdepth 1 -name "*github*" -o -name "*install*" -o -name "*.tar.gz" -o -name "*.deb" 2>/dev/null | while read temp_file; do
-        if [[ -f "$temp_file" ]] || [[ -d "$temp_file" ]]; then
-            rm -rf "$temp_file" 2>/dev/null && ((cleaned_files++))
+
+        # Disable the service
+        if systemctl is-enabled --quiet "$service_name" 2>/dev/null; then
+            if systemctl disable "$service_name" 2>/dev/null; then
+                echo -e "  ${GREEN}✓${NC} Disabled ${service_display}"
+            fi
         fi
-    done
-    
-    if [[ $cleaned_files -gt 0 ]]; then
-        print_success "Cleaned up $cleaned_files temporary files"
-    else
-        print_info "No temporary files to clean up"
+    fi
+
+    # Kill any running processes (even if not managed by systemd)
+    if [[ -n "$process_name" ]]; then
+        if pgrep -x "$process_name" >/dev/null 2>&1; then
+            echo -e "  ${YELLOW}!${NC} Found running process: $process_name"
+
+            # Try graceful termination first
+            if pkill -TERM "$process_name" 2>/dev/null; then
+                echo -e "  ${GREEN}✓${NC} Sent TERM signal to $process_name"
+                sleep 2
+            fi
+
+            # Force kill if still running
+            if pgrep -x "$process_name" >/dev/null 2>&1; then
+                if pkill -9 "$process_name" 2>/dev/null; then
+                    echo -e "  ${GREEN}✓${NC} Force killed $process_name processes"
+                fi
+            fi
+
+            # Verify stopped
+            sleep 1
+            if ! pgrep -x "$process_name" >/dev/null 2>&1; then
+                echo -e "  ${GREEN}✓${NC} Process $process_name successfully stopped"
+            else
+                echo -e "  ${RED}✗${NC} Warning: $process_name may still be running"
+            fi
+        else
+            echo -e "  ${BLUE}ℹ${NC} No $process_name processes found"
+        fi
     fi
 }
 
-cleanup_github_temp_files
+# Stop and disable CUPS (printing service) - not needed on Kodachi
+stop_and_disable_service "cups.service" "CUPS Printing Service" "cupsd"
+stop_and_disable_service "cups-browsed.service" "CUPS Browser Service" "cups-browsed"
 
-# Final Pi-hole installation reminder if not installed
-if [[ "$PIHOLE_INSTALLED" == "false" ]]; then
-    echo ""
-    print_warning "Pi-hole was NOT installed!"
-    echo ""
-    print_info "Pi-hole provides network-wide ad blocking and DNS filtering."
-    print_info "To install Pi-hole manually, run:"
-    echo ""
-    echo -e "  ${BOLD}${CYAN}curl -sSL https://install.pi-hole.net | bash${NC}"
-    echo ""
-    print_info "Note: Pi-hole installation is interactive and requires configuration."
-fi
+# Stop and disable Tor - will be managed by Kodachi tor-switch service
 echo ""
-print_highlight "Emoji Flag Support in ip-fetch:"
-print_success "Kitty terminal is already installed!"
-echo ""
-print_info "To launch Kitty and see emoji flags:"
-echo "  1. From menu: Applications → System → Kitty"
-echo "  2. Or in terminal: type 'kitty' to launch it"
-echo "  3. In Kitty, run: ip-fetch (from hooks folder or if in PATH)"
-echo ""
-print_info "Alternatively, in this session just type: kitty"
-echo "  Then run: cd ~/dashboard/hooks && ./ip-fetch"
-echo ""
+print_step "Processing Tor (will be managed by Kodachi)..."
+echo -e "  ${CYAN}Note:${NC} Tor will be controlled by Kodachi's tor-switch service"
+stop_and_disable_service "tor.service" "Tor Service" "tor"
+stop_and_disable_service "tor@default.service" "Tor Default Instance" ""
 
-# Check if binaries are installed
-if command -v ip-fetch &>/dev/null 2>&1; then
-    print_success "Kodachi binaries detected in PATH"
-    echo ""
-    print_info "You can now use Kodachi tools!"
+# Stop and disable Shadowsocks server - will be configured manually when needed
+echo ""
+print_step "Processing Shadowsocks (manual configuration)..."
+echo -e "  ${CYAN}Note:${NC} Shadowsocks can be configured manually when needed"
+stop_and_disable_service "shadowsocks-libev.service" "Shadowsocks Server" "ss-server"
+stop_and_disable_service "shadowsocks-libev-local.service" "Shadowsocks Local" "ss-local"
+stop_and_disable_service "shadowsocks-libev-redir.service" "Shadowsocks Redir" "ss-redir"
+stop_and_disable_service "shadowsocks-libev-server.service" "Shadowsocks Server Instance" ""
+
+# Stop and disable Redsocks - will be configured manually when needed
+echo ""
+print_step "Processing Redsocks (manual configuration)..."
+echo -e "  ${CYAN}Note:${NC} Redsocks can be configured manually when needed"
+stop_and_disable_service "redsocks.service" "Redsocks Transparent Proxy" "redsocks"
+
+# Handle Pi-hole based on installation mode and user preference
+echo ""
+print_step "Processing Pi-hole..."
+PIHOLE_KEEP=false  # Default: stop Pi-hole for security
+
+# Check if Pi-hole is installed
+if command -v pihole &>/dev/null || systemctl list-unit-files 2>/dev/null | grep -q "^pihole-FTL"; then
+    echo -e "  ${GREEN}✓${NC} Pi-hole is installed"
+
+    # In interactive or non-auto mode, ask user
+    if [[ "$INSTALL_MODE" == "interactive" ]] || [[ "$AUTO_YES" == "false" ]]; then
+        echo ""
+        print_info "Pi-hole provides network-wide DNS filtering and ad blocking."
+        print_info "It's currently running on ports 53 (DNS), 80 (HTTP), and 443 (HTTPS)."
+        echo ""
+
+        read -p "$(echo -e ${CYAN}"Do you want to keep Pi-hole running? [Y/n]: "${NC})" -n 1 -r
+        echo ""
+
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            PIHOLE_KEEP=true
+        fi
+    else
+        # In auto mode, stop Pi-hole by default
+        echo -e "  ${CYAN}Note:${NC} Pi-hole will be stopped (ports 53, 80, 443 closed)"
+        echo -e "  ${CYAN}To keep it running:${NC} Use --interactive mode and answer 'Y'"
+    fi
+
+    if [[ "$PIHOLE_KEEP" == "false" ]]; then
+        print_step "Stopping Pi-hole as requested..."
+        stop_and_disable_service "pihole-FTL.service" "Pi-hole FTL Service" "pihole-FTL"
+        echo -e "  ${YELLOW}ℹ${NC} To remove Pi-hole completely, run: pihole uninstall"
+    else
+        echo -e "  ${GREEN}✓${NC} Pi-hole will remain active"
+    fi
 else
-    print_warning "Kodachi binaries not detected in PATH"
-    echo ""
-    print_info "If you haven't installed the binaries yet, run:"
-    echo "  curl -sSL https://www.kodachi.cloud/apps/os/install/kodachi-binary-install.sh | bash"
-    echo ""
-    print_info "Or if already installed, reload your PATH:"
-    echo "  source ~/.bashrc"
+    echo -e "  ${BLUE}ℹ${NC} Pi-hole not installed"
+fi
+
+# ============================================================================
+# EXIM4 COMPLETE REMOVAL
+# ============================================================================
+
+echo ""
+print_highlight "Removing Exim4 Mail Transfer Agent..."
+echo ""
+
+print_info "Exim4 is not needed for Kodachi and opens port 25 unnecessarily"
+
+# Check if exim4 processes are running (regardless of package status)
+if pgrep -x "exim4" >/dev/null 2>&1; then
+    print_step "Killing exim4 processes..."
+    pkill -9 exim4 2>/dev/null || true
+    sleep 1
+    if ! pgrep -x "exim4" >/dev/null 2>&1; then
+        echo -e "  ${GREEN}✓${NC} Killed all exim4 processes"
+    else
+        echo -e "  ${YELLOW}!${NC} Some exim4 processes may still be running"
+    fi
+fi
+
+# Check if exim4 packages are installed
+if dpkg -l 2>/dev/null | grep -q "^ii.*exim4"; then
+    print_step "Removing exim4 packages..."
+
+    # Stop exim4 service if running
+    systemctl stop exim4 2>/dev/null || true
+    systemctl disable exim4 2>/dev/null || true
+
+    # Purge all exim4 packages
+    if DEBIAN_FRONTEND=noninteractive apt-get purge -y exim4 exim4-base exim4-config exim4-daemon-light 2>&1 | grep -E "(Removing|Purging)"; then
+        echo -e "  ${GREEN}✓${NC} Removed exim4 packages"
+
+        # Clean up dependencies
+        print_step "Cleaning up unused dependencies..."
+        if apt-get autoremove -y 2>&1 | grep -E "(Removing|freed)"; then
+            echo -e "  ${GREEN}✓${NC} Cleaned up dependencies"
+        fi
+    else
+        echo -e "  ${YELLOW}!${NC} exim4 removal encountered issues"
+    fi
+
+    # Verify exim4 is gone
+    if ! dpkg -l 2>/dev/null | grep -q "^ii.*exim4" && ! pgrep -x "exim4" >/dev/null 2>&1; then
+        echo -e "  ${GREEN}✓${NC} exim4 completely removed"
+    fi
+else
+    # Check if process is running without package
+    if pgrep -x "exim4" >/dev/null 2>&1; then
+        echo -e "  ${YELLOW}!${NC} exim4 process running but package not installed (killed above)"
+    else
+        echo -e "  ${GREEN}✓${NC} exim4 not installed (good!)"
+    fi
+fi
+
+# ============================================================================
+# CLEANUP SUMMARY AND VERIFICATION
+# ============================================================================
+
+echo ""
+print_highlight "Service Cleanup Summary"
+print_highlight "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+
+print_info "Services and processes stopped:"
+echo "  • CUPS (printing) - not needed"
+echo "  • Tor - will be managed by Kodachi tor-switch"
+echo "  • Shadowsocks - configure manually when needed"
+echo "  • Redsocks - configure manually when needed"
+if [[ "$PIHOLE_KEEP" == "false" ]]; then
+    echo "  • Pi-hole - stopped as requested"
+fi
+echo ""
+
+print_info "Packages removed:"
+echo "  • exim4 (mail transfer agent) - security hardening"
+echo ""
+
+# Verify processes are stopped
+echo ""
+print_step "Verifying processes are stopped..."
+STILL_RUNNING=()
+for proc in cupsd tor ss-server ss-local ss-redir redsocks exim4; do
+    if pgrep -x "$proc" >/dev/null 2>&1; then
+        STILL_RUNNING+=("$proc")
+    fi
+done
+
+if [[ ${#STILL_RUNNING[@]} -eq 0 ]]; then
+    echo -e "  ${GREEN}✓${NC} All targeted processes successfully stopped"
+else
+    echo -e "  ${YELLOW}!${NC} Warning: Some processes still running: ${STILL_RUNNING[*]}"
 fi
 
 echo ""
-print_success "Dependencies installation complete!"
+print_success "Service cleanup completed!"
 echo ""
+
+print_info "To re-enable a service if needed (Kodachi binaries can also do this):"
+echo -e "  ${CYAN}sudo systemctl enable <service>${NC}"
+echo -e "  ${CYAN}sudo systemctl start <service>${NC}"
+echo ""
+
+# Final port check
+print_step "Checking open ports after cleanup..."
+echo ""
+if command -v ss &>/dev/null; then
+    echo -e "${CYAN}Currently listening ports:${NC}"
+    ss -tlnp 2>/dev/null | grep LISTEN | awk '{print "  " $4}' | sort -u | head -15
+    echo ""
+fi
 
 # Display Pi-hole configuration if installed and running
 if systemctl is-active --quiet pihole-FTL 2>/dev/null && command -v pihole &>/dev/null; then
@@ -2439,3 +2921,122 @@ if ! systemctl is-active --quiet pihole-FTL 2>/dev/null && ! command -v pihole &
     echo "  • Web interface settings"
     echo ""
 fi
+
+# ============================================================================
+# CLEANUP TEMPORARY FILES
+# ============================================================================
+
+# Clean up any remaining temporary files from GitHub downloads
+cleanup_github_temp_files() {
+    print_step "Cleaning up temporary files..."
+
+    local cleaned_files=0
+    local temp_files=(
+        "/tmp/hysteria"
+        "/tmp/v2ray-install.sh"
+        "/tmp/dnscrypt-proxy-install"
+        "/tmp/v2ray-plugin-install"
+        "/tmp/qrencode-install-"*
+        "/tmp/kloak-install-"*
+        "/tmp/mieru_"*.deb
+    )
+
+    for file_pattern in "${temp_files[@]}"; do
+        if ls ${file_pattern} 2>/dev/null 1>&2; then
+            rm -rf ${file_pattern} 2>/dev/null && ((cleaned_files++))
+        fi
+    done
+
+    # Clean up any other GitHub-related temp files
+    find /tmp -maxdepth 1 -name "*github*" -o -name "*install*" -o -name "*.tar.gz" -o -name "*.deb" 2>/dev/null | while read temp_file; do
+        if [[ -f "$temp_file" ]] || [[ -d "$temp_file" ]]; then
+            rm -rf "$temp_file" 2>/dev/null && ((cleaned_files++))
+        fi
+    done
+
+    if [[ $cleaned_files -gt 0 ]]; then
+        print_success "Cleaned up $cleaned_files temporary files"
+    else
+        print_info "No temporary files to clean up"
+    fi
+}
+
+echo ""
+cleanup_github_temp_files
+
+# ============================================================================
+# BINARY DETECTION AND EMOJI SUPPORT
+# ============================================================================
+
+# Check if binaries are installed - verify at least 3 core binaries exist
+echo ""
+BINARY_COUNT=0
+INSTALL_LOCATIONS=("$HOME/dashboard/hooks" "$HOME/Desktop/dashboard/hooks")
+CORE_BINARIES=("ip-fetch" "health-control" "tor-switch")
+FOUND_LOCATION=""
+
+for location in "${INSTALL_LOCATIONS[@]}"; do
+    if [ -d "$location" ]; then
+        local_count=0
+        for binary in "${CORE_BINARIES[@]}"; do
+            if [ -f "$location/$binary" ]; then
+                ((local_count++))
+            fi
+        done
+        if [ $local_count -gt 0 ]; then
+            BINARY_COUNT=$local_count
+            FOUND_LOCATION="$location"
+            break  # Found install location, stop checking
+        fi
+    fi
+done
+
+if [ $BINARY_COUNT -ge 3 ]; then
+    print_success "Kodachi binaries are installed ($BINARY_COUNT/3 core binaries found)"
+    echo ""
+    print_info "Installation location: $FOUND_LOCATION"
+    echo ""
+    if ! command -v ip-fetch &>/dev/null 2>&1; then
+        print_info "Binaries installed but not in PATH yet. To add to PATH:"
+        echo "  source ~/.bashrc"
+        echo ""
+        print_info "Or logout and login again for PATH to update automatically"
+    else
+        print_info "Binaries are in PATH and ready to use!"
+    fi
+elif [ $BINARY_COUNT -gt 0 ]; then
+    print_warning "Partial installation detected ($BINARY_COUNT/3 core binaries found)"
+    echo ""
+    print_info "Please reinstall binaries:"
+    echo "  curl -sSL https://www.kodachi.cloud/apps/os/install/kodachi-binary-install.sh | bash"
+else
+    print_warning "Kodachi binaries not detected"
+    echo ""
+    print_info "To install binaries, run:"
+    echo "  curl -sSL https://www.kodachi.cloud/apps/os/install/kodachi-binary-install.sh | bash"
+fi
+
+echo ""
+print_highlight "Emoji Flag Support in ip-fetch:"
+print_success "Kitty terminal is already installed!"
+echo ""
+print_info "To launch Kitty and see emoji flags:"
+echo "  1. From menu: Applications → System → Kitty"
+echo "  2. Or in terminal: type 'kitty' to launch it"
+echo "  3. In Kitty, run: ip-fetch (from hooks folder or if in PATH)"
+echo ""
+print_info "Alternatively, in this session just type: kitty"
+echo "  Then run: cd ~/dashboard/hooks && ./ip-fetch"
+echo ""
+
+# ============================================================================
+# FINAL MESSAGE
+# ============================================================================
+
+echo ""
+echo -e "${GREEN}╔══════════════════════════════════════════════╗${NC}"
+echo -e "${GREEN}║   Dependency Installation Complete!          ║${NC}"
+echo -e "${GREEN}╚══════════════════════════════════════════════╝${NC}"
+echo ""
+print_success "Installation finished successfully!"
+echo ""
