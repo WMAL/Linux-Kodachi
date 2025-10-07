@@ -8,7 +8,7 @@
 # License: See LICENSE file or https://kodachi.cloud/license
 #
 # Version: 9.0.1
-# Last updated: 2025-10-04
+# Last updated: 2025-10-07
 #
 # Description:
 # This script installs all system package dependencies required for
@@ -2728,6 +2728,40 @@ print_step "Processing Redsocks (manual configuration)..."
 echo -e "  ${CYAN}Note:${NC} Redsocks can be configured manually when needed"
 stop_and_disable_service "redsocks.service" "Redsocks Transparent Proxy" "redsocks"
 
+# Stop and disable kloak - keystroke anonymization (manual start when needed)
+echo ""
+print_step "Processing kloak (keystroke anonymization)..."
+echo -e "  ${CYAN}Note:${NC} kloak will be disabled for manual activation when needed"
+
+# Stop kloak service
+if systemctl is-active --quiet kloak.service 2>/dev/null; then
+    if systemctl stop kloak.service 2>/dev/null; then
+        echo -e "  ${GREEN}✓${NC} Stopped kloak service"
+    else
+        echo -e "  ${YELLOW}!${NC} Failed to stop kloak service"
+    fi
+else
+    echo -e "  ${BLUE}ℹ${NC} kloak service not running"
+fi
+
+# Disable kloak service
+if systemctl is-enabled --quiet kloak.service 2>/dev/null; then
+    if systemctl disable kloak.service 2>/dev/null; then
+        echo -e "  ${GREEN}✓${NC} Disabled kloak service"
+    else
+        echo -e "  ${YELLOW}!${NC} Failed to disable kloak service"
+    fi
+else
+    echo -e "  ${BLUE}ℹ${NC} kloak service already disabled"
+fi
+
+# Verify kloak is disabled
+if systemctl is-enabled kloak.service 2>/dev/null; then
+    echo -e "  ${RED}✗${NC} Warning: kloak service is still enabled"
+else
+    echo -e "  ${GREEN}✓${NC} Verified: kloak service is disabled"
+fi
+
 # Handle Pi-hole based on installation mode and user preference
 echo ""
 print_step "Processing Pi-hole..."
@@ -2837,6 +2871,7 @@ echo "  • CUPS (printing) - not needed"
 echo "  • Tor - will be managed by Kodachi tor-switch"
 echo "  • Shadowsocks - configure manually when needed"
 echo "  • Redsocks - configure manually when needed"
+echo "  • kloak (keystroke anonymization) - disabled for manual activation"
 if [[ "$PIHOLE_KEEP" == "false" ]]; then
     echo "  • Pi-hole - stopped as requested"
 fi
