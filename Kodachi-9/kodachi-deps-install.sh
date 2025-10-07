@@ -2762,6 +2762,40 @@ else
     echo -e "  ${GREEN}✓${NC} Verified: kloak service is disabled"
 fi
 
+# Stop and disable ram-wipe-kexec-prepare - RAM wipe preparation (manual start when needed)
+echo ""
+print_step "Processing ram-wipe-kexec-prepare (RAM wipe preparation)..."
+echo -e "  ${CYAN}Note:${NC} ram-wipe-kexec-prepare will be disabled for manual activation when needed"
+
+# Stop ram-wipe-kexec-prepare service
+if systemctl is-active --quiet ram-wipe-kexec-prepare.service 2>/dev/null; then
+    if systemctl stop ram-wipe-kexec-prepare.service 2>/dev/null; then
+        echo -e "  ${GREEN}✓${NC} Stopped ram-wipe-kexec-prepare service"
+    else
+        echo -e "  ${YELLOW}!${NC} Failed to stop ram-wipe-kexec-prepare service"
+    fi
+else
+    echo -e "  ${BLUE}ℹ${NC} ram-wipe-kexec-prepare service not running"
+fi
+
+# Disable ram-wipe-kexec-prepare service
+if systemctl is-enabled --quiet ram-wipe-kexec-prepare.service 2>/dev/null; then
+    if systemctl disable ram-wipe-kexec-prepare.service 2>/dev/null; then
+        echo -e "  ${GREEN}✓${NC} Disabled ram-wipe-kexec-prepare service"
+    else
+        echo -e "  ${YELLOW}!${NC} Failed to disable ram-wipe-kexec-prepare service"
+    fi
+else
+    echo -e "  ${BLUE}ℹ${NC} ram-wipe-kexec-prepare service already disabled"
+fi
+
+# Verify ram-wipe-kexec-prepare is disabled
+if systemctl is-enabled ram-wipe-kexec-prepare.service 2>/dev/null; then
+    echo -e "  ${RED}✗${NC} Warning: ram-wipe-kexec-prepare service is still enabled"
+else
+    echo -e "  ${GREEN}✓${NC} Verified: ram-wipe-kexec-prepare service is disabled"
+fi
+
 # Handle Pi-hole based on installation mode and user preference
 echo ""
 print_step "Processing Pi-hole..."
@@ -2872,6 +2906,7 @@ echo "  • Tor - will be managed by Kodachi tor-switch"
 echo "  • Shadowsocks - configure manually when needed"
 echo "  • Redsocks - configure manually when needed"
 echo "  • kloak (keystroke anonymization) - disabled for manual activation"
+echo "  • ram-wipe-kexec-prepare (RAM wipe preparation) - disabled for manual activation"
 if [[ "$PIHOLE_KEEP" == "false" ]]; then
     echo "  • Pi-hole - stopped as requested"
 fi
