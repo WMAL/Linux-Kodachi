@@ -271,7 +271,7 @@ print_success "Package extracted successfully"
 
 # Step 5: Create installation directory structure
 print_step "Creating installation directories..."
-mkdir -p "$INSTALL_PATH"/{config/signkeys,logs,tmp,results/signatures,backups,others,sounds,flags}
+mkdir -p "$INSTALL_PATH"/{config/signkeys,config/profiles,logs,tmp,results/signatures,backups,others,sounds,flags}
 print_success "Directory structure created"
 
 # Step 6: Install binaries
