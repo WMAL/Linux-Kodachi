@@ -43,15 +43,32 @@
 
 set -euo pipefail
 
-# Color codes for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-MAGENTA='\033[0;35m'
-BOLD='\033[1m'
-NC='\033[0m' # No Color
+# Refuse root execution to keep this user-space only
+if [ "${EUID:-$(id -u)}" -eq 0 ]; then
+    echo "[ERROR] Do not run as root. Use regular user." >&2
+    exit 1
+fi
+
+# Color codes for output (only if TTY is present)
+if [ -t 1 ]; then
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[1;33m'
+    BLUE='\033[0;34m'
+    CYAN='\033[0;36m'
+    MAGENTA='\033[0;35m'
+    BOLD='\033[1m'
+    NC='\033[0m'
+else
+    RED=""
+    GREEN=""
+    YELLOW=""
+    BLUE=""
+    CYAN=""
+    MAGENTA=""
+    BOLD=""
+    NC=""
+fi
 
 # Function to print colored output
 print_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
@@ -147,20 +164,26 @@ fi
 TEMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TEMP_DIR"' EXIT
 
-# Function to download with retry
+# Function to download with retry and exponential backoff
 download_with_retry() {
     local url="$1"
     local output="$2"
-    local max_retries=3
+    local max_retries=4
     local retry=0
+    local backoff=2
 
     while [[ $retry -lt $max_retries ]]; do
-        if curl -fsSL --connect-timeout 10 --max-time 300 "$url" -o "$output"; then
+        if curl --fail --location --show-error --silent \
+               --connect-timeout 15 --max-time 90 \
+               "$url" -o "$output"; then
             return 0
         fi
         retry=$((retry + 1))
-        print_warning "Download failed, retry $retry/$max_retries..."
-        sleep 2
+        if [[ $retry -lt $max_retries ]]; then
+            print_warning "Download failed, retry $retry/$max_retries in ${backoff}s..."
+            sleep "$backoff"
+            backoff=$((backoff * 2))
+        fi
     done
 
     return 1
@@ -258,9 +281,20 @@ else
 fi
 
 # Step 4: Extract package
+print_step "Checking archive for unsafe paths..."
+# Prevent path traversal attacks by checking for absolute paths or parent directory references
+if tar -tzf "$PACKAGE_FILE" | grep -E '^/|(^|/)\.\.(/|$)' >/dev/null 2>&1; then
+    print_error "Archive contains unsafe paths (absolute paths or parent directory references)"
+    print_error "This could indicate a malicious archive."
+    print_error "Installation aborted for security reasons."
+    exit 1
+fi
+print_success "Archive path check passed"
+
 print_step "Extracting package..."
 cd "$TEMP_DIR"
-tar -xzf "$PACKAGE_FILE"
+# Use safe extraction flags to prevent ownership/permission issues
+tar -xzf "$PACKAGE_FILE" --no-same-owner --no-same-permissions --numeric-owner
 EXTRACT_DIR="$TEMP_DIR/$PACKAGE_NAME"
 
 if [[ ! -d "$EXTRACT_DIR" ]]; then
@@ -338,19 +372,40 @@ if [[ -d "$EXTRACT_DIR/flags" ]]; then
     cp -r "$EXTRACT_DIR/flags/"* "$INSTALL_PATH/flags/" 2>/dev/null || true
 fi
 
-# Step 9: Add to PATH in .bashrc
+# Step 9: Add to PATH in .bashrc with idempotent block management
 if [[ "$SKIP_PATH_UPDATE" != "true" ]]; then
     print_step "Updating PATH in .bashrc..."
 
-    # Check if already in bashrc
-    if ! grep -q "KODACHI_HOME=\"$INSTALL_PATH\"" "$HOME/.bashrc" 2>/dev/null; then
-        echo "" >> "$HOME/.bashrc"
-        echo "# Kodachi Binary Tools" >> "$HOME/.bashrc"
-        echo "export KODACHI_HOME=\"$INSTALL_PATH\"" >> "$HOME/.bashrc"
-        echo "export PATH=\"\$KODACHI_HOME:\$PATH\"" >> "$HOME/.bashrc"
-        print_success "Added to .bashrc"
+    # Use BEGIN/END markers for idempotent updates
+    if ! grep -q "^# BEGIN KODACHI PATH$" "$HOME/.bashrc" 2>/dev/null; then
+        # First time installation - add the block
+        {
+            echo ""
+            echo "# BEGIN KODACHI PATH"
+            echo "export KODACHI_HOME=\"$INSTALL_PATH\""
+            echo "export PATH=\"\$KODACHI_HOME:\$PATH\""
+            echo "# END KODACHI PATH"
+        } >> "$HOME/.bashrc"
+        print_success "Added Kodachi path block to .bashrc"
     else
-        print_info "Already in .bashrc"
+        # Block exists - update the KODACHI_HOME value in place
+        awk -v NEWHOME="$INSTALL_PATH" '
+            BEGIN { inblk=0 }
+            /^# BEGIN KODACHI PATH$/ {
+                inblk=1
+                print
+                print "export KODACHI_HOME=\"" NEWHOME "\""
+                print "export PATH=\"$KODACHI_HOME:$PATH\""
+                next
+            }
+            /^# END KODACHI PATH$/ {
+                inblk=0
+                print
+                next
+            }
+            { if (!inblk) print }
+        ' "$HOME/.bashrc" > "$HOME/.bashrc.tmp" && mv "$HOME/.bashrc.tmp" "$HOME/.bashrc"
+        print_success "Updated Kodachi path block in .bashrc"
     fi
 fi
 
