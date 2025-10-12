@@ -3,12 +3,19 @@
 # Kodachi Dependencies Installation Script (REQUIRES SUDO/ROOT)
 # ==============================================================
 #
-# Author: Warith Al Maawali
-# Copyright (c) 2025 Kodachi Security OS
-# License: See LICENSE file or https://kodachi.cloud/license
+# SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.0
+# Copyright (c) 2013-2025 Warith Al Maawali
 #
+# This file is part of Kodachi OS.
+# For full license terms, see LICENSE.md or visit:
+# http://kodachi.cloud/wiki/bina/license.html
+#
+# Commercial or organizational use requires a written license.
+# Contact: warith@digi77.com
+#
+# Author: Warith Al Maawali
 # Version: 9.0.1
-# Last updated: 2025-10-07
+# Last updated: 2025-10-13
 #
 # Description:
 # This script installs all system package dependencies required for

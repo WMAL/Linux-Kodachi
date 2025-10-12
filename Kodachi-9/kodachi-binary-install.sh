@@ -3,12 +3,19 @@
 # Kodachi Binary Installation Script (NO SUDO REQUIRED)
 # ======================================================
 #
-# Author: Warith Al Maawali
-# Copyright (c) 2025 Kodachi Security OS
-# License: See LICENSE file or https://kodachi.cloud/license
+# SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.0
+# Copyright (c) 2013-2025 Warith Al Maawali
 #
+# This file is part of Kodachi OS.
+# For full license terms, see LICENSE.md or visit:
+# http://kodachi.cloud/wiki/bina/license.html
+#
+# Commercial or organizational use requires a written license.
+# Contact: warith@digi77.com
+#
+# Author: Warith Al Maawali
 # Version: 9.0.1
-# Last updated: 2025-10-04
+# Last updated: 2025-10-13
 #
 # Description:
 # This script downloads and installs Kodachi security tool binaries
@@ -287,6 +294,9 @@ stop_permission_guard_if_running() {
         echo "  Option 3: Logout (daemon stops automatically):"
         echo -e "    ${BOLD}sudo online-auth logout${NC}"
         echo ""
+        print_info "To verify the daemon is stopped, run:"
+        echo -e "  ${BOLD}sudo permission-guard --daemon-status${NC}"
+        echo ""
         print_info "Note: The daemon will automatically start again when you log in - no manual restart needed"
         echo ""
         print_warning "After stopping the daemon, re-run this installation script"
@@ -387,7 +397,7 @@ print_success "Package extracted successfully"
 
 # Step 5: Create installation directory structure
 print_step "Creating installation directories..."
-mkdir -p "$INSTALL_PATH"/{config/signkeys,config/profiles,logs,tmp,results/signatures,backups,others,sounds,flags}
+mkdir -p "$INSTALL_PATH"/{config/signkeys,config/profiles,logs,tmp,results/signatures,backups,others,sounds,flags,licenses}
 print_success "Directory structure created"
 
 # Step 5.5: Stop permission-guard daemon if running (prevents binary replacement issues)
@@ -455,6 +465,13 @@ fi
 
 if [[ -d "$EXTRACT_DIR/flags" ]]; then
     cp -r "$EXTRACT_DIR/flags/"* "$INSTALL_PATH/flags/" 2>/dev/null || true
+fi
+
+if [[ -d "$EXTRACT_DIR/licenses" ]]; then
+    cp -r "$EXTRACT_DIR/licenses/"* "$INSTALL_PATH/licenses/" 2>/dev/null || true
+    if [[ -f "$INSTALL_PATH/licenses/LICENSE.md" ]]; then
+        print_success "LICENSE.md installed"
+    fi
 fi
 
 # Step 9: Add to PATH in .bashrc with idempotent block management
