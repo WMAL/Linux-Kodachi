@@ -212,6 +212,88 @@ verify_signature() {
     fi
 }
 
+# Function to detect and stop permission-guard daemon
+stop_permission_guard_if_running() {
+    # Try to find permission-guard binary location
+    local pg_binary=""
+    if command -v permission-guard &>/dev/null; then
+        pg_binary="permission-guard"
+    elif [[ -f "$INSTALL_PATH/permission-guard" ]]; then
+        pg_binary="$INSTALL_PATH/permission-guard"
+    fi
+
+    if [[ -z "$pg_binary" ]]; then
+        # No binary found, skip check
+        return 0
+    fi
+
+    # Check if daemon is actually running (handle multiple scenarios)
+    daemon_running=false
+
+    # Method 1: Try with sudo first (for root-owned daemons, non-interactive)
+    if sudo -n $pg_binary --daemon-status --json 2>/dev/null | grep -q '"running":true'; then
+        daemon_running=true
+    # Method 2: Try without sudo (for user-owned daemons)
+    elif $pg_binary --daemon-status --json 2>/dev/null | grep -q '"running":true'; then
+        daemon_running=true
+    # Method 3: Check for EPERM error (daemon running but no permission to check)
+    elif $pg_binary --daemon-status --json 2>/dev/null | grep -q 'EPERM.*Operation not permitted'; then
+        daemon_running=true
+    # Method 4: Fallback to direct process check
+    elif pgrep -f "permission-guard.*daemon" >/dev/null 2>&1; then
+        daemon_running=true
+    fi
+
+    if [[ "$daemon_running" == "true" ]]; then
+        print_warning "Detected running permission-guard daemon"
+        print_step "Attempting to stop permission-guard daemon..."
+
+        # Try to stop without sudo first
+        if "$pg_binary" --stop-daemon &>/dev/null; then
+            sleep 2  # Wait for daemon to fully stop
+
+            # Verify it actually stopped (check with both sudo and non-sudo)
+            if sudo -n $pg_binary --daemon-status --json 2>/dev/null | grep -q '"running":false'; then
+                print_success "Successfully stopped permission-guard daemon"
+                print_info "The daemon will automatically start again when you log in"
+                return 0
+            elif $pg_binary --daemon-status --json 2>/dev/null | grep -q '"running":false'; then
+                print_success "Successfully stopped permission-guard daemon"
+                print_info "The daemon will automatically start again when you log in"
+                return 0
+            elif ! pgrep -f "permission-guard.*daemon" >/dev/null 2>&1; then
+                # Process check shows it stopped
+                print_success "Successfully stopped permission-guard daemon"
+                print_info "The daemon will automatically start again when you log in"
+                return 0
+            else
+                print_error "Stop command succeeded but daemon is still running"
+                print_info "This may require sudo privileges to stop"
+                # Fall through to sudo instructions below
+            fi
+        fi
+
+        # If we reach here, need sudo to stop
+        print_error "Cannot stop permission-guard daemon - requires sudo privileges"
+        echo ""
+        print_highlight "ACTION REQUIRED: Choose one of the following options:"
+        echo ""
+        echo "  Option 1: Stop daemon directly (if in PATH):"
+        echo -e "    ${BOLD}sudo permission-guard --stop-daemon${NC}"
+        echo ""
+        echo "  Option 2: Stop daemon directly (direct path):"
+        echo -e "    ${BOLD}sudo $INSTALL_PATH/permission-guard --stop-daemon${NC}"
+        echo ""
+        echo "  Option 3: Logout (daemon stops automatically):"
+        echo -e "    ${BOLD}sudo online-auth logout${NC}"
+        echo ""
+        print_info "Note: The daemon will automatically start again when you log in - no manual restart needed"
+        echo ""
+        print_warning "After stopping the daemon, re-run this installation script"
+        exit 1
+    fi
+}
+
 echo ""
 print_highlight "======= Downloading Kodachi Binaries ======="
 echo ""
@@ -307,6 +389,9 @@ print_success "Package extracted successfully"
 print_step "Creating installation directories..."
 mkdir -p "$INSTALL_PATH"/{config/signkeys,config/profiles,logs,tmp,results/signatures,backups,others,sounds,flags}
 print_success "Directory structure created"
+
+# Step 5.5: Stop permission-guard daemon if running (prevents binary replacement issues)
+stop_permission_guard_if_running
 
 # Step 6: Install binaries
 print_step "Installing binaries..."
