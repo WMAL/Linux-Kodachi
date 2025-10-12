@@ -200,7 +200,7 @@ This is a legal agreement between you and Warith AL Maawali regarding the use of
 - **Prohibited**: You may not distribute, modify, decompile, or reverse-engineer the software.
 - **Warranty**: Linux Kodachi is provided "as is" without any warranty. Use at your own risk.
 
-For the full version, visit: [Full License](https://github.com/WMAL/Linux-Kodachi/blob/main/Kodachi-8.27-legacy-EOL/LICENSE)
+For the full version, visit: [Full License](https://github.com/WMAL/Linux-Kodachi/blob/main/LICENSE.md)
 
 ## Warrant Canary
 
