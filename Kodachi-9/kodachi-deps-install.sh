@@ -47,6 +47,8 @@
 #   --proxy-only                 Install only proxy tools (v2ray, xray, hysteria2, mieru)
 #   --auto                       Automatic mode - answer yes to all prompts (default)
 #   --no-auto                    Disable automatic mode - require user confirmation
+#   --forcegui, --force-gui      Force installation of GUI packages on terminal-based systems
+#                                By default: GUI packages skipped if no desktop environment detected
 #   --force-kicksecure-ramwipe   Keep/Install Kicksecure RAM wipe (dracut + ram-wipe)
 #                                By default: Removes dracut/ram-wipe, restores initramfs-tools
 #                                Note: Kodachi has built-in RAM wipe via 'health-control memory-wipe'
@@ -100,8 +102,11 @@ SECURITY_PACKAGES="ufw macchanger firejail apparmor apparmor-utils apparmor-prof
 # Privacy - DNS and anonymity tools  
 PRIVACY_PACKAGES="dnsutils"
 
-# Advanced - Specialized tools and utilities
-ADVANCED_PACKAGES="jq git build-essential bleachbit rng-tools-debian haveged ccze yamllint kitty fontconfig fonts-noto-color-emoji alsa-utils pulseaudio pulseaudio-utils libnotify-bin smartmontools lm-sensors hdparm htop iotop vnstat efibootmgr rfkill"
+# Advanced - Specialized tools and utilities (non-GUI)
+ADVANCED_PACKAGES="jq git build-essential rng-tools-debian haveged ccze yamllint smartmontools lm-sensors hdparm htop iotop vnstat efibootmgr rfkill"
+
+# GUI-only packages - only installed on systems with desktop environments
+GUI_PACKAGES="bleachbit kitty fontconfig fonts-noto-color-emoji alsa-utils pulseaudio pulseaudio-utils libnotify-bin"
 
 # Packages that require contrib/non-free repositories
 CONTRIB_PACKAGES="shadowsocks-v2ray-plugin v2ray"
@@ -113,6 +118,7 @@ RESOLVCONF_PACKAGE="resolvconf"
 INSTALL_MODE="full"
 AUTO_YES=true
 INSTALL_KICKSECURE_RAMWIPE=false
+FORCE_GUI_INSTALL=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -145,6 +151,10 @@ while [[ $# -gt 0 ]]; do
             INSTALL_KICKSECURE_RAMWIPE=true
             shift
             ;;
+        --forcegui|--force-gui)
+            FORCE_GUI_INSTALL=true
+            shift
+            ;;
         --help)
             echo "Kodachi Dependencies Installation Script"
             echo ""
@@ -159,6 +169,8 @@ while [[ $# -gt 0 ]]; do
             echo "  --proxy-only                 Install only proxy tools"
             echo "  --auto                       Automatic mode - answer yes to all prompts (default)"
             echo "  --no-auto                    Disable automatic mode - require user confirmation"
+            echo "  --forcegui, --force-gui      Force installation of GUI packages on terminal-based systems"
+            echo "                               By default: GUI packages skipped if no desktop environment detected"
             echo "  --force-kicksecure-ramwipe   Keep/Install Kicksecure RAM wipe (dracut + ram-wipe)"
             echo "                               By default: Removes dracut/ram-wipe, restores initramfs-tools"
             echo "                               Note: Kodachi has built-in RAM wipe via 'health-control memory-wipe'"
@@ -186,6 +198,51 @@ check_systemd_resolved() {
         fi
     fi
     return 1  # systemd-resolved is not managing DNS
+}
+
+# Function to detect if system has GUI/desktop environment
+detect_gui_environment() {
+    # Check for DISPLAY variable (X11 session)
+    if [[ -n "$DISPLAY" ]] || [[ -n "$WAYLAND_DISPLAY" ]]; then
+        return 0  # GUI detected
+    fi
+
+    # Check for running display managers
+    local display_managers=(
+        "lightdm" "gdm3" "gdm" "sddm" "kdm" "xdm" "lxdm" "slim"
+        "nodm" "wdm" "entrance" "ly"
+    )
+    for dm in "${display_managers[@]}"; do
+        if systemctl is-active --quiet "$dm" 2>/dev/null || pgrep -x "$dm" >/dev/null 2>&1; then
+            return 0  # Display manager running
+        fi
+    done
+
+    # Check systemd default target
+    if systemctl get-default 2>/dev/null | grep -q "graphical.target"; then
+        return 0  # System configured for graphical boot
+    fi
+
+    # Check for X11 or Wayland processes
+    if pgrep -x "Xorg" >/dev/null 2>&1 || pgrep -x "X" >/dev/null 2>&1; then
+        return 0  # X11 server running
+    fi
+    if pgrep -f "wayland" >/dev/null 2>&1 || [[ -n "$XDG_SESSION_TYPE" ]] && [[ "$XDG_SESSION_TYPE" == "wayland" ]]; then
+        return 0  # Wayland session running
+    fi
+
+    # Check for installed desktop environments
+    local desktop_packages=(
+        "xfce4" "gnome-shell" "plasma-desktop" "lxde" "mate-desktop"
+        "cinnamon" "budgie-desktop" "i3" "openbox"
+    )
+    for de in "${desktop_packages[@]}"; do
+        if dpkg -l "$de" 2>/dev/null | grep -q "^ii"; then
+            return 0  # Desktop environment installed
+        fi
+    done
+
+    return 1  # No GUI detected
 }
 
 # Function to install resolvconf with conflict handling
@@ -2365,22 +2422,41 @@ elif [[ "$INSTALL_MODE" == "interactive" ]]; then
     fi
     ensure_dpkg_healthy
     
-    # Advanced packages  
-    ADVANCED_DESC="Additional tools and utilities:
+    # Advanced packages (non-GUI)
+    ADVANCED_DESC="Additional tools and utilities (non-GUI):
   • Development: git, build-essential
   • System monitoring: htop, iotop, sensors
-  • Terminal: kitty with font config and emoji support
-  • Audio support: PulseAudio, ALSA
-  • Hardware tools: smartmontools, rfkill"
-    
-    ADVANCED_MANUAL="  sudo apt-get install jq git build-essential bleachbit rng-tools-debian \\
-    haveged ccze yamllint kitty fontconfig fonts-noto-color-emoji qrencode alsa-utils pulseaudio \\
-    pulseaudio-utils libnotify-bin smartmontools lm-sensors hdparm \\
+  • Hardware tools: smartmontools, rfkill
+  • Utilities: jq, yamllint, haveged"
+
+    ADVANCED_MANUAL="  sudo apt-get install jq git build-essential rng-tools-debian \\
+    haveged ccze yamllint smartmontools lm-sensors hdparm \\
     htop iotop vnstat efibootmgr rfkill"
-    
+
     install_category_interactive "$ADVANCED_PACKAGES" "Advanced" "$ADVANCED_DESC" "$ADVANCED_MANUAL"
     ensure_dpkg_healthy
-    
+
+    # GUI packages (only if desktop environment detected or forced)
+    if detect_gui_environment || [[ "$FORCE_GUI_INSTALL" == "true" ]]; then
+        if [[ "$FORCE_GUI_INSTALL" == "true" ]] && ! detect_gui_environment; then
+            print_warning "No desktop environment detected, but --forcegui specified"
+        fi
+
+        GUI_DESC="GUI-specific packages for desktop environments:
+  • Terminal: kitty terminal emulator
+  • Fonts: fontconfig, emoji support
+  • Audio: PulseAudio, ALSA utilities
+  • Desktop tools: bleachbit, notifications"
+
+        GUI_MANUAL="  sudo apt-get install bleachbit kitty fontconfig fonts-noto-color-emoji \\
+    alsa-utils pulseaudio pulseaudio-utils libnotify-bin"
+
+        install_category_interactive "$GUI_PACKAGES" "GUI" "$GUI_DESC" "$GUI_MANUAL"
+        ensure_dpkg_healthy
+    else
+        print_warning "Skipping GUI packages (no desktop environment detected). Use --forcegui to install them anyway."
+    fi
+
     # Contrib/non-free packages
     echo ""
     if [[ "$AUTO_YES" == "true" ]]; then
@@ -2563,6 +2639,20 @@ elif [[ "$INSTALL_MODE" == "full" ]]; then
     ensure_dpkg_healthy
     wait_for_apt
 
+    # Install GUI packages if desktop environment detected or forced
+    echo ""
+    if detect_gui_environment || [[ "$FORCE_GUI_INSTALL" == "true" ]]; then
+        if [[ "$FORCE_GUI_INSTALL" == "true" ]] && ! detect_gui_environment; then
+            print_warning "No desktop environment detected, but --forcegui specified"
+            print_info "Installing GUI packages anyway..."
+        fi
+        install_packages "$GUI_PACKAGES" "GUI"
+        ensure_dpkg_healthy
+        wait_for_apt
+    else
+        print_warning "Skipping GUI packages (no desktop environment detected). Use --forcegui to install them anyway."
+    fi
+
     # Also install proxy tools
     echo ""
     print_highlight "Installing Proxy Tools"
@@ -2632,6 +2722,21 @@ else
     wait_for_apt
     install_packages "$ADVANCED_PACKAGES" "Advanced"
     ensure_dpkg_healthy
+    wait_for_apt
+
+    # Install GUI packages if desktop environment detected or forced
+    echo ""
+    if detect_gui_environment || [[ "$FORCE_GUI_INSTALL" == "true" ]]; then
+        if [[ "$FORCE_GUI_INSTALL" == "true" ]] && ! detect_gui_environment; then
+            print_warning "No desktop environment detected, but --forcegui specified"
+            print_info "Installing GUI packages anyway..."
+        fi
+        install_packages "$GUI_PACKAGES" "GUI"
+        ensure_dpkg_healthy
+        wait_for_apt
+    else
+        print_warning "Skipping GUI packages (no desktop environment detected). Use --forcegui to install them anyway."
+    fi
 
     # Also install proxy tools
     echo ""
