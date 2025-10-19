@@ -49,6 +49,8 @@
 #   --no-auto                    Disable automatic mode - require user confirmation
 #   --forcegui, --force-gui      Force installation of GUI packages on terminal-based systems
 #                                By default: GUI packages skipped if no desktop environment detected
+#   --skipgui, --skip-gui        Skip GUI packages even on systems with desktop environments
+#                                Use this for headless server installations on GUI systems
 #   --force-kicksecure-ramwipe   Keep/Install Kicksecure RAM wipe (dracut + ram-wipe)
 #                                By default: Removes dracut/ram-wipe, restores initramfs-tools
 #                                Note: Kodachi has built-in RAM wipe via 'health-control memory-wipe'
@@ -119,6 +121,7 @@ INSTALL_MODE="full"
 AUTO_YES=true
 INSTALL_KICKSECURE_RAMWIPE=false
 FORCE_GUI_INSTALL=false
+SKIP_GUI_INSTALL=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -155,6 +158,10 @@ while [[ $# -gt 0 ]]; do
             FORCE_GUI_INSTALL=true
             shift
             ;;
+        --skipgui|--skip-gui)
+            SKIP_GUI_INSTALL=true
+            shift
+            ;;
         --help)
             echo "Kodachi Dependencies Installation Script"
             echo ""
@@ -171,6 +178,8 @@ while [[ $# -gt 0 ]]; do
             echo "  --no-auto                    Disable automatic mode - require user confirmation"
             echo "  --forcegui, --force-gui      Force installation of GUI packages on terminal-based systems"
             echo "                               By default: GUI packages skipped if no desktop environment detected"
+            echo "  --skipgui, --skip-gui        Skip GUI packages even on systems with desktop environments"
+            echo "                               Use this for headless server installations on GUI systems"
             echo "  --force-kicksecure-ramwipe   Keep/Install Kicksecure RAM wipe (dracut + ram-wipe)"
             echo "                               By default: Removes dracut/ram-wipe, restores initramfs-tools"
             echo "                               Note: Kodachi has built-in RAM wipe via 'health-control memory-wipe'"
@@ -179,6 +188,7 @@ while [[ $# -gt 0 ]]; do
             echo "Examples:"
             echo "  sudo bash kodachi-deps-install.sh --full --auto"
             echo "  sudo bash kodachi-deps-install.sh --interactive"
+            echo "  sudo bash kodachi-deps-install.sh --full --skipgui"
             exit 0
             ;;
         *)
@@ -2436,8 +2446,10 @@ elif [[ "$INSTALL_MODE" == "interactive" ]]; then
     install_category_interactive "$ADVANCED_PACKAGES" "Advanced" "$ADVANCED_DESC" "$ADVANCED_MANUAL"
     ensure_dpkg_healthy
 
-    # GUI packages (only if desktop environment detected or forced)
-    if detect_gui_environment || [[ "$FORCE_GUI_INSTALL" == "true" ]]; then
+    # GUI packages (only if desktop environment detected or forced, unless explicitly skipped)
+    if [[ "$SKIP_GUI_INSTALL" == "true" ]]; then
+        print_info "Skipping GUI packages (--skipgui specified by user)."
+    elif detect_gui_environment || [[ "$FORCE_GUI_INSTALL" == "true" ]]; then
         if [[ "$FORCE_GUI_INSTALL" == "true" ]] && ! detect_gui_environment; then
             print_warning "No desktop environment detected, but --forcegui specified"
         fi
@@ -2639,9 +2651,11 @@ elif [[ "$INSTALL_MODE" == "full" ]]; then
     ensure_dpkg_healthy
     wait_for_apt
 
-    # Install GUI packages if desktop environment detected or forced
+    # Install GUI packages if desktop environment detected or forced, unless explicitly skipped
     echo ""
-    if detect_gui_environment || [[ "$FORCE_GUI_INSTALL" == "true" ]]; then
+    if [[ "$SKIP_GUI_INSTALL" == "true" ]]; then
+        print_info "Skipping GUI packages (--skipgui specified by user)."
+    elif detect_gui_environment || [[ "$FORCE_GUI_INSTALL" == "true" ]]; then
         if [[ "$FORCE_GUI_INSTALL" == "true" ]] && ! detect_gui_environment; then
             print_warning "No desktop environment detected, but --forcegui specified"
             print_info "Installing GUI packages anyway..."
@@ -2724,9 +2738,11 @@ else
     ensure_dpkg_healthy
     wait_for_apt
 
-    # Install GUI packages if desktop environment detected or forced
+    # Install GUI packages if desktop environment detected or forced, unless explicitly skipped
     echo ""
-    if detect_gui_environment || [[ "$FORCE_GUI_INSTALL" == "true" ]]; then
+    if [[ "$SKIP_GUI_INSTALL" == "true" ]]; then
+        print_info "Skipping GUI packages (--skipgui specified by user)."
+    elif detect_gui_environment || [[ "$FORCE_GUI_INSTALL" == "true" ]]; then
         if [[ "$FORCE_GUI_INSTALL" == "true" ]] && ! detect_gui_environment; then
             print_warning "No desktop environment detected, but --forcegui specified"
             print_info "Installing GUI packages anyway..."
