@@ -15,7 +15,7 @@
 #
 # Author: Warith Al Maawali
 # Version: 9.0.1
-# Last updated: 2025-10-13
+# Last updated: 2025-10-19
 #
 # Description:
 # This script installs all system package dependencies required for

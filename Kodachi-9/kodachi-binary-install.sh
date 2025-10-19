@@ -15,7 +15,7 @@
 #
 # Author: Warith Al Maawali
 # Version: 9.0.1
-# Last updated: 2025-10-13
+# Last updated: 2025-10-19
 #
 # Description:
 # This script downloads and installs Kodachi security tool binaries
@@ -397,7 +397,7 @@ print_success "Package extracted successfully"
 
 # Step 5: Create installation directory structure
 print_step "Creating installation directories..."
-mkdir -p "$INSTALL_PATH"/{config/signkeys,config/profiles,logs,tmp,results/signatures,backups,others,sounds,flags,licenses}
+mkdir -p "$INSTALL_PATH"/{config/signkeys,config/profiles,logs,tmp,results/signatures,backups,others,sounds,flags,licenses,binaries-update-scripts}
 print_success "Directory structure created"
 
 # Step 5.5: Stop permission-guard daemon if running (prevents binary replacement issues)
@@ -474,6 +474,15 @@ if [[ -d "$EXTRACT_DIR/licenses" ]]; then
     fi
 fi
 
+if [[ -d "$EXTRACT_DIR/binaries-update-scripts" ]]; then
+    cp -r "$EXTRACT_DIR/binaries-update-scripts/"* "$INSTALL_PATH/binaries-update-scripts/" 2>/dev/null || true
+    script_count=$(find "$INSTALL_PATH/binaries-update-scripts" -type f -name "*.sh" | wc -l)
+    if [[ $script_count -gt 0 ]]; then
+        print_success "Update scripts installed ($script_count scripts)"
+        print_info "Scripts location: $INSTALL_PATH/binaries-update-scripts/"
+    fi
+fi
+
 # Step 9: Add to PATH in .bashrc with idempotent block management
 if [[ "$SKIP_PATH_UPDATE" != "true" ]]; then
     print_step "Updating PATH in .bashrc..."
@@ -544,11 +553,12 @@ check_sudoers_status() {
         print_highlight "Next Steps:"
         echo ""
         echo "1. Install system dependencies (requires sudo):"
-        echo -e "   ${BOLD}curl -sSL $CDN_BASE/kodachi-deps-install.sh | sudo bash${NC}"
+        echo -e "   ${BOLD}sudo bash $INSTALL_PATH/binaries-update-scripts/kodachi-deps-install.sh${NC}"
         echo ""
         echo "2. Deploy binaries globally (requires sudo):"
         echo -e "   ${BOLD}sudo $INSTALL_PATH/global-launcher deploy${NC}"
         echo "   This creates symlinks in /usr/local/bin for system-wide access"
+        echo "   Note: This step is automatically performed when you authenticate with 'sudo online-auth authenticate --relogin'"
     else
         print_warning "User '$current_user' is NOT in the sudoers group"
         echo ""
@@ -570,33 +580,17 @@ check_sudoers_status() {
         print_highlight "After adding to sudoers, you can:"
         echo ""
         echo "1. Install system dependencies:"
-        echo -e "   ${BOLD}sudo bash ~/kodachi-deps-install.sh${NC}"
+        echo -e "   ${BOLD}sudo bash $INSTALL_PATH/binaries-update-scripts/kodachi-deps-install.sh${NC}"
         echo ""
         echo "2. Deploy binaries globally:"
         echo -e "   ${BOLD}sudo $INSTALL_PATH/global-launcher deploy${NC}"
+        echo "   Note: This step is automatically performed when you authenticate with 'sudo online-auth authenticate --relogin'"
     fi
 }
 
 echo ""
 # Check sudoers status and provide appropriate next steps
 check_sudoers_status
-echo ""
-
-# Download dependency installer for convenience
-print_step "Downloading dependency installer for later use..."
-DEPS_SCRIPT="$HOME/kodachi-deps-install.sh"
-if download_with_retry "$CDN_BASE/kodachi-deps-install.sh" "$DEPS_SCRIPT"; then
-    chmod +x "$DEPS_SCRIPT"
-    print_success "Dependency installer saved to: $DEPS_SCRIPT"
-    echo ""
-    print_info "To install dependencies later, run:"
-    echo "  sudo bash $DEPS_SCRIPT"
-else
-    print_warning "Could not download dependency installer"
-    print_info "You can download it later from:"
-    echo "  $CDN_BASE/kodachi-deps-install.sh"
-fi
-
 echo ""
 print_success "Binary installation complete! No sudo was required."
 echo ""
