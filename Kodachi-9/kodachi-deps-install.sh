@@ -1679,6 +1679,10 @@ RestartSec=10
 User=root
 Group=root
 
+# CRITICAL: Allow binding to port 53 (privileged port)
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
 # Security settings
 NoNewPrivileges=true
 ProtectSystem=strict
@@ -3092,57 +3096,136 @@ echo ""
 print_info "Stopping unnecessary services and processes for security..."
 echo ""
 
-# Function to stop, disable service and kill processes
+# Detect if running in chroot environment (live-build)
+is_chroot_environment() {
+    # Check for live-build indicator files
+    if [ -f "/.debian-live-build" ] || [ -f "/tmp/live-build-chroot" ]; then
+        return 0
+    fi
+    # Check if we're in a chroot by comparing root inode
+    if [ "$(stat -c %d:%i / 2>/dev/null)" != "$(stat -c %d:%i /proc/1/root 2>/dev/null)" ]; then
+        return 0
+    fi
+    # Check if /proc/1/cmdline contains typical init processes
+    if [ -f /proc/1/cmdline ]; then
+        local init_cmd
+        init_cmd=$(tr '\0' ' ' < /proc/1/cmdline 2>/dev/null)
+        # In chroot, PID 1 might be something unusual
+        if [[ ! "$init_cmd" =~ (systemd|init|/sbin/init) ]]; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# Function to stop, disable service and kill processes (chroot-aware)
 stop_and_disable_service() {
     local service_name="$1"
     local service_display="$2"
     local process_name="$3"  # Process name to kill
+    local in_chroot=false
 
-    print_step "Processing ${service_display}..."
-
-    # Stop systemd service if exists
-    if systemctl list-unit-files 2>/dev/null | grep -q "^${service_name}"; then
-        if systemctl is-active --quiet "$service_name" 2>/dev/null; then
-            if systemctl stop "$service_name" 2>/dev/null; then
-                echo -e "  ${GREEN}✓${NC} Stopped systemd service: ${service_name}"
-            fi
-        fi
-
-        # Disable the service
-        if systemctl is-enabled --quiet "$service_name" 2>/dev/null; then
-            if systemctl disable "$service_name" 2>/dev/null; then
-                echo -e "  ${GREEN}✓${NC} Disabled ${service_display}"
-            fi
-        fi
+    # Detect chroot environment
+    if is_chroot_environment; then
+        in_chroot=true
+        echo -e "  ${CYAN}[CHROOT]${NC} Processing ${service_display}..."
+    else
+        print_step "Processing ${service_display}..."
     fi
 
-    # Kill any running processes (even if not managed by systemd)
-    if [[ -n "$process_name" ]]; then
-        if pgrep -x "$process_name" >/dev/null 2>&1; then
-            echo -e "  ${YELLOW}!${NC} Found running process: $process_name"
+    local stopped_service=false
+    local disabled_service=false
+    local killed_process=false
 
-            # Try graceful termination first
-            if pkill -TERM "$process_name" 2>/dev/null; then
-                echo -e "  ${GREEN}✓${NC} Sent TERM signal to $process_name"
-                sleep 2
-            fi
-
-            # Force kill if still running
+    # In chroot, prioritize process killing since systemctl may not work
+    if [ "$in_chroot" = true ]; then
+        # Kill process first in chroot
+        if [[ -n "$process_name" ]]; then
             if pgrep -x "$process_name" >/dev/null 2>&1; then
+                echo -e "  ${YELLOW}!${NC} Found running process: $process_name"
+
+                # Force kill immediately in chroot (no grace period needed)
                 if pkill -9 "$process_name" 2>/dev/null; then
-                    echo -e "  ${GREEN}✓${NC} Force killed $process_name processes"
+                    echo -e "  ${GREEN}✓${NC} Force killed $process_name"
+                    sleep 1
                 fi
+
+                # Verify stopped
+                if ! pgrep -x "$process_name" >/dev/null 2>&1; then
+                    echo -e "  ${GREEN}✓${NC} Process $process_name stopped successfully"
+                    killed_process=true
+                else
+                    echo -e "  ${RED}✗${NC} Failed to stop $process_name"
+                fi
+            else
+                echo -e "  ${BLUE}ℹ${NC} No $process_name processes found"
+                killed_process=true
+            fi
+        fi
+
+        # Try systemctl but don't rely on it in chroot
+        if command -v systemctl >/dev/null 2>&1; then
+            systemctl disable "$service_name" >/dev/null 2>&1 && disabled_service=true
+        fi
+    else
+        # Normal system: use systemctl properly
+        if systemctl list-unit-files 2>/dev/null | grep -q "^${service_name}"; then
+            if systemctl is-active --quiet "$service_name" 2>/dev/null; then
+                if systemctl stop "$service_name" 2>/dev/null; then
+                    echo -e "  ${GREEN}✓${NC} Stopped systemd service: ${service_name}"
+                    stopped_service=true
+                else
+                    echo -e "  ${RED}✗${NC} Failed to stop ${service_name}"
+                fi
+            else
+                echo -e "  ${BLUE}ℹ${NC} Service not running: ${service_name}"
+                stopped_service=true
             fi
 
-            # Verify stopped
-            sleep 1
-            if ! pgrep -x "$process_name" >/dev/null 2>&1; then
-                echo -e "  ${GREEN}✓${NC} Process $process_name successfully stopped"
+            # Disable the service
+            if systemctl is-enabled --quiet "$service_name" 2>/dev/null; then
+                if systemctl disable "$service_name" 2>/dev/null; then
+                    echo -e "  ${GREEN}✓${NC} Disabled ${service_display}"
+                    disabled_service=true
+                else
+                    echo -e "  ${RED}✗${NC} Failed to disable ${service_name}"
+                fi
             else
-                echo -e "  ${RED}✗${NC} Warning: $process_name may still be running"
+                echo -e "  ${BLUE}ℹ${NC} Service not enabled: ${service_name}"
+                disabled_service=true
             fi
-        else
-            echo -e "  ${BLUE}ℹ${NC} No $process_name processes found"
+        fi
+
+        # Kill any remaining processes (fallback for non-systemd services)
+        if [[ -n "$process_name" ]]; then
+            if pgrep -x "$process_name" >/dev/null 2>&1; then
+                echo -e "  ${YELLOW}!${NC} Found running process: $process_name"
+
+                # Try graceful termination first
+                if pkill -TERM "$process_name" 2>/dev/null; then
+                    echo -e "  ${GREEN}✓${NC} Sent TERM signal to $process_name"
+                    sleep 2
+                fi
+
+                # Force kill if still running
+                if pgrep -x "$process_name" >/dev/null 2>&1; then
+                    if pkill -9 "$process_name" 2>/dev/null; then
+                        echo -e "  ${GREEN}✓${NC} Force killed $process_name processes"
+                    fi
+                fi
+
+                # Verify stopped
+                sleep 1
+                if ! pgrep -x "$process_name" >/dev/null 2>&1; then
+                    echo -e "  ${GREEN}✓${NC} Process $process_name successfully stopped"
+                    killed_process=true
+                else
+                    echo -e "  ${RED}✗${NC} Warning: $process_name may still be running"
+                fi
+            else
+                echo -e "  ${BLUE}ℹ${NC} No $process_name processes found"
+                killed_process=true
+            fi
         fi
     fi
 }
@@ -3157,7 +3240,13 @@ stop_and_disable_service "cups-browsed.service" "CUPS Browser Service" "cups-bro
 # Stop and disable Tor - will be managed by Kodachi tor-switch service
 echo ""
 print_step "Processing Tor (will be managed by Kodachi)..."
-if [[ "$INITIAL_TOR_RUNNING" == "true" ]]; then
+
+# In chroot, FORCE stop regardless of initial state (for ISO builds)
+if is_chroot_environment; then
+    echo -e "  ${CYAN}Note:${NC} Chroot build detected - forcing Tor stop for clean ISO"
+    stop_and_disable_service "tor.service" "Tor Service" "tor"
+    stop_and_disable_service "tor@default.service" "Tor Default Instance" ""
+elif [[ "$INITIAL_TOR_RUNNING" == "true" ]]; then
     echo -e "  ${YELLOW}⚠${NC}  Tor was running before script - ${BOLD}PRESERVED${NC}"
     echo -e "  ${CYAN}Note:${NC} Stopping it could break your anonymized connection during update"
     echo -e "  ${CYAN}To stop manually after script:${NC}"
@@ -3172,7 +3261,11 @@ fi
 # Stop and disable Shadowsocks server - will be managed by routing-switch
 echo ""
 print_step "Processing Shadowsocks (routing-switch control)..."
-echo -e "  ${CYAN}Note:${NC} Shadowsocks will be managed by routing-switch"
+if is_chroot_environment; then
+    echo -e "  ${CYAN}Note:${NC} Chroot build detected - forcing Shadowsocks stop for clean ISO"
+else
+    echo -e "  ${CYAN}Note:${NC} Shadowsocks will be managed by routing-switch"
+fi
 stop_and_disable_service "shadowsocks-libev.service" "Shadowsocks Server" "ss-server"
 stop_and_disable_service "shadowsocks-libev-local.service" "Shadowsocks Local" "ss-local"
 stop_and_disable_service "shadowsocks-libev-redir.service" "Shadowsocks Redir" "ss-redir"
@@ -3181,7 +3274,12 @@ stop_and_disable_service "shadowsocks-libev-server.service" "Shadowsocks Server 
 # Stop and disable Redsocks - will be managed by routing-switch
 echo ""
 print_step "Processing Redsocks (routing-switch control)..."
-if [[ "$INITIAL_REDSOCKS_RUNNING" == "true" ]]; then
+
+# In chroot, FORCE stop regardless of initial state (for ISO builds)
+if is_chroot_environment; then
+    echo -e "  ${CYAN}Note:${NC} Chroot build detected - forcing Redsocks stop for clean ISO"
+    stop_and_disable_service "redsocks.service" "Redsocks Transparent Proxy" "redsocks"
+elif [[ "$INITIAL_REDSOCKS_RUNNING" == "true" ]]; then
     echo -e "  ${YELLOW}⚠${NC}  Redsocks was running before script - ${BOLD}PRESERVED${NC}"
     echo -e "  ${CYAN}Note:${NC} Stopping it could break your transparent proxy during update"
     echo -e "  ${CYAN}To stop manually after script:${NC}"
@@ -3208,7 +3306,13 @@ stop_and_disable_service "avahi-daemon.socket" "Avahi Daemon Socket" ""
 # Stop and disable DNSCrypt Proxy - will be managed by dns-switch
 echo ""
 print_step "Processing DNSCrypt Proxy (dns-switch control)..."
-if [[ "$INITIAL_DNSCRYPT_RUNNING" == "true" ]]; then
+
+# In chroot, FORCE stop regardless of initial state (for ISO builds)
+if is_chroot_environment; then
+    echo -e "  ${CYAN}Note:${NC} Chroot build detected - forcing DNSCrypt stop for clean ISO"
+    stop_and_disable_service "dnscrypt-proxy.service" "DNSCrypt Proxy" "dnscrypt-proxy"
+    stop_and_disable_service "dnscrypt-proxy.socket" "DNSCrypt Proxy Socket" ""
+elif [[ "$INITIAL_DNSCRYPT_RUNNING" == "true" ]]; then
     echo -e "  ${YELLOW}⚠${NC}  DNSCrypt Proxy was running before script - ${BOLD}PRESERVED${NC}"
     echo -e "  ${CYAN}Note:${NC} Stopping it could break your internet connection during update"
     echo -e "  ${CYAN}To stop manually after script:${NC}"
