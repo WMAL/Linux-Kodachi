@@ -668,29 +668,22 @@ display_info() {
 show_menu() {
     echo -e "${BOLD}SELECT PROFILE:${NC}"
     echo ""
-    echo -e " ${GREEN}[1]${NC} ${BOLD}WireGuard + Torrify Setup${NC}"
-    echo -e "     ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} WireGuard ${CYAN}→${NC} Torrify ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[1]${NC} ${BOLD}WireGuard Setup:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} WireGuard ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[2]${NC} ${BOLD}Xray-VLESS-Reality:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Connect ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[3]${NC} ${BOLD}OpenVPN Setup:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} OpenVPN ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[4]${NC} ${BOLD}V2Ray Setup:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} V2Ray ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[5]${NC} ${BOLD}Hysteria2 Setup:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Hysteria2 ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[6]${NC} ${BOLD}Xray-VLESS Setup:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Xray-VLESS ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[7]${NC} ${BOLD}Xray-Trojan Setup:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Xray-Trojan ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[8]${NC} ${BOLD}Mita Setup:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Mita ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[9]${NC} ${BOLD}Torrify Only:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Net Check ${CYAN}→${NC} Torrify ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[10]${NC} ${BOLD}WireGuard+Torrify:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Harden ${CYAN}→${NC} Connect ${CYAN}→${NC} Torrify ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[11]${NC} ${BOLD}Exit${NC} - Skip to shell (Return: type ${CYAN}'kodachi'${NC} and press Enter)"
     echo ""
-    echo -e " ${GREEN}[2]${NC} ${BOLD}Xray-VLESS-Reality Setup${NC}"
-    echo -e "     ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Xray-VLESS-Reality ${CYAN}→${NC} Verify"
+    echo -e "${YELLOW}NOTE:${NC} ${CYAN}health-control -e${NC}, ${CYAN}routing-switch -e${NC} | ${PROFILE_COUNT_RAW}+ profiles: ${CYAN}workflow-manager list${NC}"
+    echo -e "${YELLOW}TIP:${NC} MicroSOCKS: ${CYAN}routing-switch microsocks-enable -u USER -p PASS${NC}"
     echo ""
-    echo -e " ${GREEN}[3]${NC} ${BOLD}OpenVPN Setup${NC}"
-    echo -e "     ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} OpenVPN ${CYAN}→${NC} Verify"
-    echo ""
-    echo -e " ${GREEN}[4]${NC} ${BOLD}WireGuard Only Setup${NC}"
-    echo -e "     ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} WireGuard ${CYAN}→${NC} Verify"
-    echo ""
-    echo -e " ${GREEN}[5]${NC} ${BOLD}Torrify Only Setup${NC}"
-    echo -e "     ${CYAN}→${NC} Auth ${CYAN}→${NC} Net Check ${CYAN}→${NC} Torrify ${CYAN}→${NC} Verify"
-    echo ""
-    echo -e " ${GREEN}[6]${NC} ${BOLD}Exit${NC} - Skip and continue to shell"
-    echo ""
-    echo -e "${YELLOW}NOTE:${NC} Explore commands: ${CYAN}sudo [binary] -e${NC}  (e.g., health-control, routing-switch, tor-switch)"
-    echo -e "      ${PROFILE_COUNT_RAW}+ profiles: ${CYAN}sudo workflow-manager list${NC} | MicroSOCKS proxy: ${CYAN}routing-switch microsocks-enable${NC}"
-    echo ""
-    echo -e "${YELLOW}TIP:${NC} To return to this menu anytime, type ${CYAN}kodachi${NC} and press Enter"
-    echo ""
-    echo -ne "${BOLD}Enter choice [1-6]:${NC} "
+    echo -ne "${BOLD}Enter choice [1-11]:${NC} "
 }
 
 # Function to execute selected profile
@@ -699,8 +692,8 @@ execute_profile() {
 
     case "$choice" in
         1)
-            echo -e "\n${YELLOW}Running WireGuard + Torrify Setup...${NC}\n"
-            sudo workflow-manager run initial_terminal_setup_wireguard_torrify
+            echo -e "\n${YELLOW}Running WireGuard Setup...${NC}\n"
+            sudo workflow-manager run initial_terminal_setup_wireguard_only
             ;;
         2)
             echo -e "\n${YELLOW}Running Xray-VLESS-Reality Setup...${NC}\n"
@@ -711,14 +704,34 @@ execute_profile() {
             sudo workflow-manager run initial_terminal_setup_openvpn_only
             ;;
         4)
-            echo -e "\n${YELLOW}Running WireGuard Only Setup...${NC}\n"
-            sudo workflow-manager run initial_terminal_setup_wireguard_only
+            echo -e "\n${YELLOW}Running V2Ray Setup...${NC}\n"
+            sudo workflow-manager run initial_terminal_setup_v2ray_only
             ;;
         5)
+            echo -e "\n${YELLOW}Running Hysteria2 Setup...${NC}\n"
+            sudo workflow-manager run initial_terminal_setup_hysteria2_only
+            ;;
+        6)
+            echo -e "\n${YELLOW}Running Xray-VLESS Setup...${NC}\n"
+            sudo workflow-manager run initial_terminal_setup_xray_vless_only
+            ;;
+        7)
+            echo -e "\n${YELLOW}Running Xray-Trojan Setup...${NC}\n"
+            sudo workflow-manager run initial_terminal_setup_xray_trojan_only
+            ;;
+        8)
+            echo -e "\n${YELLOW}Running Mita Setup...${NC}\n"
+            sudo workflow-manager run initial_terminal_setup_mita_only
+            ;;
+        9)
             echo -e "\n${YELLOW}Running Torrify Only Setup...${NC}\n"
             sudo workflow-manager run initial_terminal_setup_auth_torrify_only
             ;;
-        6)
+        10)
+            echo -e "\n${YELLOW}Running WireGuard + Torrify Setup...${NC}\n"
+            sudo workflow-manager run initial_terminal_setup_wireguard_torrify
+            ;;
+        11)
             echo -e "\n${GREEN}Continuing to shell...${NC}\n"
             return 0
             ;;
@@ -785,7 +798,6 @@ main() {
 
     # Only print counts line if we have something to show
     [ -n "$counts_line" ] && echo -e "$counts_line"
-    echo ""
 
     # Display information
     display_info
