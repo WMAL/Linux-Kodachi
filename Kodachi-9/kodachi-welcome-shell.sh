@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Kodachi Welcome Script - Login Session Information Display
-# ===========================================================
+# Kodachi Welcome Script - Test Version (Login Session Information Display)
+# ==========================================================================
 #
 # SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.0
 # Copyright (c) 2013-2025 Warith Al Maawali
@@ -18,9 +18,9 @@
 # Last updated: 2025-10-21
 #
 # Description:
-# This script displays system status, security information, and network details
-# when users log in to Kodachi OS. Optimized for 80x24 terminal resolution.
-# Provides interactive menu for executing common system profiles and workflows.
+# Test version of the Kodachi welcome script for validation before deployment.
+# Identical functionality to production version but designed for standalone testing.
+# Displays system status, security information, and provides interactive menu.
 #
 # Links:
 # - Website: https://www.digi77.com
@@ -30,13 +30,10 @@
 # - LinkedIn: https://www.linkedin.com/in/warith1977
 # - X (Twitter): https://x.com/warith2020
 #
-# Installation:
-#   sudo cp kodachi-welcome.sh /etc/profile.d/kodachi-welcome.sh
-#   sudo chmod +x /etc/profile.d/kodachi-welcome.sh
-#
 # Usage:
-#   Automatically runs on login for interactive shell sessions.
-#   To skip: export KODACHI_SKIP_WELCOME=1 before login
+#   bash kodachi-welcome-test.sh
+#
+#   Test this script before deploying to /etc/profile.d/kodachi-welcome.sh
 #
 # Features:
 #   - Binary deployment verification
@@ -46,16 +43,6 @@
 #   - Security score and hardening status
 #   - Cryptocurrency prices and news headlines
 #   - Interactive profile menu for system workflows
-
-# Skip if environment variable is set
-if [ "$KODACHI_SKIP_WELCOME" = "1" ]; then
-    return 0 2>/dev/null || exit 0
-fi
-
-# Skip if not interactive
-if [[ $- != *i* ]]; then
-    return 0 2>/dev/null || exit 0
-fi
 
 # Color codes for compact display (optimized for black terminal)
 RED='\033[0;31m'
@@ -1071,5 +1058,4 @@ main() {
 # Run main function
 main
 
-# Return to shell
-return 0 2>/dev/null || exit 0
+exit 0
