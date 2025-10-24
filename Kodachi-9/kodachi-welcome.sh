@@ -678,12 +678,14 @@ show_menu() {
     echo -e " ${GREEN}[8]${NC} ${BOLD}Mita Setup:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Mita ${CYAN}→${NC} Verify"
     echo -e " ${GREEN}[9]${NC} ${BOLD}Torrify Only:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Net Check ${CYAN}→${NC} Torrify ${CYAN}→${NC} Verify"
     echo -e " ${GREEN}[10]${NC} ${BOLD}WireGuard+Torrify:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Harden ${CYAN}→${NC} Connect ${CYAN}→${NC} Torrify ${CYAN}→${NC} Verify"
-    echo -e " ${GREEN}[11]${NC} ${BOLD}Exit${NC} - Skip to shell (Return: type ${CYAN}'kodachi'${NC} and press Enter)"
+    echo -e " ${GREEN}[11]${NC} ${BOLD}Emergency Recovery:${NC} ${CYAN}→${NC} Detorrify ${CYAN}→${NC} Disconnect ${CYAN}→${NC} Recover ${CYAN}→${NC} Reset ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[12]${NC} ${BOLD}Security Score Check:${NC} ${CYAN}→${NC} Display comprehensive security score report"
+    echo -e " ${GREEN}[13]${NC} ${BOLD}Exit${NC} - Skip to shell (Return: type ${CYAN}'kodachi'${NC} and press Enter)"
     echo ""
     echo -e "${YELLOW}NOTE:${NC} ${CYAN}health-control -e${NC}, ${CYAN}routing-switch -e${NC} | ${PROFILE_COUNT_RAW}+ profiles: ${CYAN}workflow-manager list${NC}"
     echo -e "${YELLOW}TIP:${NC} MicroSOCKS: ${CYAN}routing-switch microsocks-enable -u USER -p PASS${NC}"
     echo ""
-    echo -ne "${BOLD}Enter choice [1-11]:${NC} "
+    echo -ne "${BOLD}Enter choice [1-13]:${NC} "
 }
 
 # Function to execute selected profile
@@ -694,50 +696,166 @@ execute_profile() {
         1)
             echo -e "\n${YELLOW}Running WireGuard Setup...${NC}\n"
             sudo workflow-manager run initial_terminal_setup_wireguard_only
+            echo ""
+            echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
+            echo -e "${BOLD}Return to Menu Options:${NC}"
+            echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+            echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+            echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+            echo ""
+            echo -ne "${BOLD}Your choice:${NC} "
+            read -r refresh_choice
             ;;
         2)
             echo -e "\n${YELLOW}Running Xray-VLESS-Reality Setup...${NC}\n"
             sudo workflow-manager run initial_terminal_setup_xray_vless_reality_only
+            echo ""
+            echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
+            echo -e "${BOLD}Return to Menu Options:${NC}"
+            echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+            echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+            echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+            echo ""
+            echo -ne "${BOLD}Your choice:${NC} "
+            read -r refresh_choice
             ;;
         3)
             echo -e "\n${YELLOW}Running OpenVPN Setup...${NC}\n"
             sudo workflow-manager run initial_terminal_setup_openvpn_only
+            echo ""
+            echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
+            echo -e "${BOLD}Return to Menu Options:${NC}"
+            echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+            echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+            echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+            echo ""
+            echo -ne "${BOLD}Your choice:${NC} "
+            read -r refresh_choice
             ;;
         4)
             echo -e "\n${YELLOW}Running V2Ray Setup...${NC}\n"
             sudo workflow-manager run initial_terminal_setup_v2ray_only
+            echo ""
+            echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
+            echo -e "${BOLD}Return to Menu Options:${NC}"
+            echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+            echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+            echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+            echo ""
+            echo -ne "${BOLD}Your choice:${NC} "
+            read -r refresh_choice
             ;;
         5)
             echo -e "\n${YELLOW}Running Hysteria2 Setup...${NC}\n"
             sudo workflow-manager run initial_terminal_setup_hysteria2_only
+            echo ""
+            echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
+            echo -e "${BOLD}Return to Menu Options:${NC}"
+            echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+            echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+            echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+            echo ""
+            echo -ne "${BOLD}Your choice:${NC} "
+            read -r refresh_choice
             ;;
         6)
             echo -e "\n${YELLOW}Running Xray-VLESS Setup...${NC}\n"
             sudo workflow-manager run initial_terminal_setup_xray_vless_only
+            echo ""
+            echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
+            echo -e "${BOLD}Return to Menu Options:${NC}"
+            echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+            echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+            echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+            echo ""
+            echo -ne "${BOLD}Your choice:${NC} "
+            read -r refresh_choice
             ;;
         7)
             echo -e "\n${YELLOW}Running Xray-Trojan Setup...${NC}\n"
             sudo workflow-manager run initial_terminal_setup_xray_trojan_only
+            echo ""
+            echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
+            echo -e "${BOLD}Return to Menu Options:${NC}"
+            echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+            echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+            echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+            echo ""
+            echo -ne "${BOLD}Your choice:${NC} "
+            read -r refresh_choice
             ;;
         8)
             echo -e "\n${YELLOW}Running Mita Setup...${NC}\n"
             sudo workflow-manager run initial_terminal_setup_mita_only
+            echo ""
+            echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
+            echo -e "${BOLD}Return to Menu Options:${NC}"
+            echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+            echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+            echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+            echo ""
+            echo -ne "${BOLD}Your choice:${NC} "
+            read -r refresh_choice
             ;;
         9)
             echo -e "\n${YELLOW}Running Torrify Only Setup...${NC}\n"
             sudo workflow-manager run initial_terminal_setup_auth_torrify_only
+            echo ""
+            echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
+            echo -e "${BOLD}Return to Menu Options:${NC}"
+            echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+            echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+            echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+            echo ""
+            echo -ne "${BOLD}Your choice:${NC} "
+            read -r refresh_choice
             ;;
         10)
             echo -e "\n${YELLOW}Running WireGuard + Torrify Setup...${NC}\n"
             sudo workflow-manager run initial_terminal_setup_wireguard_torrify
+            echo ""
+            echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
+            echo -e "${BOLD}Return to Menu Options:${NC}"
+            echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+            echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+            echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+            echo ""
+            echo -ne "${BOLD}Your choice:${NC} "
+            read -r refresh_choice
             ;;
         11)
-            echo -e "\n${GREEN}Continuing to shell...${NC}\n"
-            return 0
+            echo -e "\n${YELLOW}Running Emergency Recovery...${NC}\n"
+            sudo workflow-manager run recovery-master-complete
+            echo ""
+            echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
+            echo -e "${BOLD}Return to Menu Options:${NC}"
+            echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+            echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+            echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+            echo ""
+            echo -ne "${BOLD}Your choice:${NC} "
+            read -r refresh_choice
+            ;;
+        12)
+            echo -e "\n${YELLOW}Checking Security Score...${NC}\n"
+            sudo health-control security-score
+            echo ""
+            echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
+            echo -e "${BOLD}Return to Menu Options:${NC}"
+            echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+            echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+            echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+            echo ""
+            echo -ne "${BOLD}Your choice:${NC} "
+            read -r refresh_choice
+            ;;
+        13)
+            echo -e "\n${GREEN}Exiting to shell...${NC}\n"
+            return 1
             ;;
         *)
-            echo -e "\n${RED}Invalid choice. Continuing to shell...${NC}\n"
-            return 1
+            echo -e "\n${RED}Invalid choice. Please try again...${NC}\n"
+            sleep 1
             ;;
     esac
 }
@@ -802,12 +920,63 @@ main() {
     # Display information
     display_info
 
-    # Show menu and get user choice
-    show_menu
-    read -r choice
+    # Menu loop - continue until user selects Exit
+    while true; do
+        # Show menu and get user choice
+        show_menu
+        read -r choice
 
-    # Execute selected profile
-    execute_profile "$choice"
+        # Execute selected profile
+        execute_profile "$choice"
+
+        # Check if user wants to exit
+        if [ $? -eq 1 ]; then
+            break  # Exit selected
+        fi
+
+        # Check user's refresh preference
+        if [ "$refresh_choice" != "s" ] && [ "$refresh_choice" != "S" ]; then
+            # User pressed Enter (or anything else) - FULL REFRESH
+            echo ""
+            echo -e "${CYAN}▸ Refreshing system data...${NC}"
+
+            # Re-fetch all dynamic data
+            fetch_system_info
+            count_profiles
+            count_logs
+            count_binaries
+            check_permission_guard
+            fetch_latest_version
+            fetch_crypto_prices
+            fetch_news_headlines
+
+            echo -e "${GREEN}+ Data refresh complete!${NC}"
+            sleep 0.5
+        else
+            # User pressed 's' - SKIP REFRESH
+            echo ""
+            echo -e "${YELLOW}▸ Skipping data refresh (using cached data)${NC}"
+            sleep 0.3
+        fi
+
+        # Clear and redisplay header with status
+        clear
+        show_header
+        echo -e "${DEPLOY_STATUS} | ${AUTH_STATUS} | ${DNS_STATUS_MSG} | ${INFO_STATUS} | ${PERM_GUARD_STATUS}"
+
+        # Build counts line only if we have hooks directory info
+        local counts_line=""
+        [ -n "$PROFILE_COUNT" ] && counts_line="${PROFILE_COUNT}"
+        [ -n "$LOGS_COUNT" ] && counts_line="${counts_line:+$counts_line | }${LOGS_COUNT}"
+        [ -n "$BINARIES_COUNT" ] && counts_line="${counts_line:+$counts_line | }${BINARIES_COUNT}"
+        [ -n "$LATEST_VERSION" ] && counts_line="${counts_line:+$counts_line | }${LATEST_VERSION}"
+
+        # Only print counts line if we have something to show
+        [ -n "$counts_line" ] && echo -e "$counts_line"
+
+        # Display information
+        display_info
+    done
 
     echo ""
 }
