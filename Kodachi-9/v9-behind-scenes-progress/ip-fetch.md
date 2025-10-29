@@ -2,13 +2,13 @@
 
 The IP-Fetch utility in Kodachi v9 provides comprehensive network monitoring and security features through a clean, user-friendly Gambas interface. This application focuses on giving users visibility and control over their IP address and related network security settings.
 
-## 🎥 Watch the IP-Fetch Demo Video
+## ![Video](https://img.shields.io/badge/-Demo%20Video-red?style=flat-square&logo=youtube) Watch the IP-Fetch Demo Video
 
 [Watch the IP-Fetch Demo Video](https://github.com/WMAL/Linux-Kodachi/raw/refs/heads/main/Kodachi-9/v9-behind-scenes-progress/ip-fetch-c.mp4)
 
 ---
 
-## 🧩 Core Functionality
+## ![Core](https://img.shields.io/badge/-Core%20Functionality-blue?style=flat-square&logo=puzzle-piece) Core Functionality
 
 ### IP Address Monitoring
 
@@ -38,7 +38,7 @@ The IP-Fetch utility in Kodachi v9 provides comprehensive network monitoring and
 
 ---
 
-## ⚙️ Technical Implementation
+## ![Technical](https://img.shields.io/badge/-Technical%20Implementation-gray?style=flat-square&logo=cog) Technical Implementation
 
 - **System Tray Integration**: Runs in the background with tray icon access.
 - **JSON-based Data Storage**: Maintains IP history in structured format.
@@ -47,7 +47,7 @@ The IP-Fetch utility in Kodachi v9 provides comprehensive network monitoring and
 
 ---
 
-## 🖥️ User Interface Features
+## ![UI](https://img.shields.io/badge/-User%20Interface%20Features-purple?style=flat-square&logo=window) User Interface Features
 
 - **Multi-tab Design**: Separate tabs for IP information, MAC addresses, hostname settings, timezone, and application settings.
 - **Visual Status Indicators**: Color-coded icons show connection security status.
@@ -56,7 +56,7 @@ The IP-Fetch utility in Kodachi v9 provides comprehensive network monitoring and
 
 ---
 
-## 🔒 Privacy and Anonymity Enhancements
+## ![Privacy](https://img.shields.io/badge/-Privacy%20and%20Anonymity%20Enhancements-green?style=flat-square&logo=lock) Privacy and Anonymity Enhancements
 
 The IP-Fetch utility is designed with a strong emphasis on user privacy and anonymity. Here's how the key features contribute:
 
