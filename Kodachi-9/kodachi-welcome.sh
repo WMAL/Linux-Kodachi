@@ -57,6 +57,12 @@ if [[ $- != *i* ]]; then
     return 0 2>/dev/null || exit 0
 fi
 
+# Build signature - UPDATE BUILD_NUM BEFORE CREATING ISO
+BUILD_VERSION="9.0.1"
+BUILD_NUM="1"  # Change this number before each build (1, 2, 3, etc.)
+BUILD_DATE="2025-10-25"  # Auto-updated during ISO creation
+SCRIPT_VERSION="${BUILD_VERSION}.${BUILD_NUM}"
+
 # Color codes for compact display (optimized for black terminal)
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -97,6 +103,63 @@ NEWS_HEADLINES=""
 # Hooks directory
 HOOKS_DIR=""
 
+# Detect if we are running from the live ISO environment
+is_live_session() {
+    if grep -q "boot=live\|persistent=0\|boot=casper" /proc/cmdline 2>/dev/null; then
+        return 0
+    fi
+
+    if mount | grep -q "/run/live" 2>/dev/null; then
+        return 0
+    fi
+
+    if [ -d /run/live/medium ] || [ -d /run/live/rootfs ]; then
+        return 0
+    fi
+
+    return 1
+}
+
+# Ensure installed system has Kodachi GRUB branding applied
+ensure_grub_theme() {
+    local helper="/usr/local/bin/kodachi-apply-grub-theme"
+    local theme_txt="/boot/grub/live-theme/theme.txt"
+    local splash_png="/boot/grub/splash.png"
+    local cfg_file="/etc/default/grub.d/40-kodachi-theme.cfg"
+
+    echo -e "${CYAN}▸ Checking Kodachi GRUB theme...${NC}"
+
+    # Live sessions do not ship the GRUB helper; skip silently
+    if is_live_session; then
+        echo -e "${CYAN}▸ Live session detected - skipping GRUB theme check${NC}"
+        return 0
+    fi
+
+    # Helper only exists on installed systems; warn if missing
+    if [ ! -x "$helper" ]; then
+        echo -e "${YELLOW}! Theme helper not found (${helper}) - skipping${NC}"
+        return 0
+    fi
+
+    local needs_fix=0
+    [ -f "$theme_txt" ] || needs_fix=1
+    [ -f "$splash_png" ] || needs_fix=1
+    if [ ! -s "$cfg_file" ] || ! grep -q "live-theme/theme.txt" "$cfg_file" 2>/dev/null; then
+        needs_fix=1
+    fi
+
+    if [ $needs_fix -eq 1 ]; then
+        echo -e "${CYAN}▸ Restoring Kodachi GRUB theme...${NC}"
+        if sudo "$helper" >/tmp/kodachi-grub-theme.log 2>&1; then
+            echo -e "${GREEN}✓ GRUB theme synchronized${NC}"
+        else
+            echo -e "${YELLOW}! Unable to apply GRUB theme (see /tmp/kodachi-grub-theme.log)${NC}"
+        fi
+    else
+        echo -e "${GREEN}✓ GRUB theme already applied${NC}"
+    fi
+}
+
 # Function to check if jq is available
 check_jq() {
     command -v jq >/dev/null 2>&1
@@ -114,6 +177,7 @@ parse_json() {
         echo "$json" | grep -o "\"$key\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" | sed 's/.*"\([^"]*\)"$/\1/' | head -1
     fi
 }
+
 
 # Function to display compact header
 show_header() {
@@ -385,7 +449,46 @@ setup_dnscrypt() {
         return 1
     fi
 
-    # STEP 2: Check if this is first run (only configure DNSCrypt on first run)
+    # STEP 2: Smart DNSCrypt verification and auto-fix
+    # Check if DNSCrypt is running but being bypassed by systemd-resolved
+
+    # Get DNSCrypt service status
+    DNSCRYPT_CHECK=$(sudo dns-switch dnscrypt --json 2>/dev/null)
+    SERVICE_ACTIVE=$(parse_json "$DNSCRYPT_CHECK" ".data.service_active")
+    LISTENING=$(parse_json "$DNSCRYPT_CHECK" ".data.listening")
+    CONFIGURED_AS_RESOLVER=$(parse_json "$DNSCRYPT_CHECK" ".data.configured_as_resolver")
+
+    # Check if DNSCrypt is running AND listening but NOT configured as resolver - HIJACKED!
+    if [ "$SERVICE_ACTIVE" = "true" ] && [ "$LISTENING" = "true" ] && [ "$CONFIGURED_AS_RESOLVER" != "true" ]; then
+        # DNSCrypt is running but NOT configured as resolver - HIJACKED!
+        echo -e "${YELLOW}! DNSCrypt is running but NOT configured as resolver (current DNS: $NAMESERVERS)${NC}"
+        echo -e "${YELLOW}! Fixing DNSCrypt configuration...${NC}"
+
+        # Re-configure DNSCrypt as resolver (dns-switch handles systemd-resolved automatically)
+        echo "  • Configuring DNSCrypt as DNS resolver..."
+        sudo dns-switch switch --names dnscrypt >/dev/null 2>&1
+        sleep 2
+
+        # Verify fix worked
+        DNSCRYPT_CHECK=$(sudo dns-switch dnscrypt --json 2>/dev/null)
+        CONFIGURED_AS_RESOLVER=$(parse_json "$DNSCRYPT_CHECK" ".data.configured_as_resolver")
+
+        if [ "$CONFIGURED_AS_RESOLVER" = "true" ]; then
+            echo -e "${GREEN}  ✓ DNSCrypt successfully configured as resolver${NC}"
+        else
+            echo -e "${RED}  ✗ Failed to configure DNSCrypt as resolver${NC}"
+        fi
+
+        # Update NAMESERVERS for display
+        DNS_STATUS=$(sudo dns-switch status --json 2>/dev/null)
+        if check_jq; then
+            NAMESERVERS=$(echo "$DNS_STATUS" | jq -r '.data.nameservers[]' 2>/dev/null | tr '\n' ', ' | sed 's/, $//')
+        else
+            NAMESERVERS=$(echo "$DNS_STATUS" | grep -o '"nameservers":\[[^]]*\]' | sed 's/.*\[\(.*\)\].*/\1/' | tr -d '"' | sed 's/,/, /g')
+        fi
+    fi
+
+    # STEP 3: Check if this is first run (only configure DNSCrypt on first run)
     if [ ! -f "$FLAG_FILE" ]; then
         # FIRST RUN - Attempt to configure DNSCrypt
         echo -e "${YELLOW}! First run detected, configuring DNSCrypt...${NC}"
@@ -416,9 +519,6 @@ setup_dnscrypt() {
             sleep 1
         fi
 
-        # Create flag file to mark configuration done
-        touch "$FLAG_FILE" 2>/dev/null
-
         # Re-fetch nameservers after configuration attempt
         DNS_STATUS=$(sudo dns-switch status --json 2>/dev/null)
         if check_jq; then
@@ -448,6 +548,9 @@ setup_dnscrypt() {
             # DNSCrypt is fully operational
             ACTUAL_DNS_MODE="127.0.0.1 (DNSCrypt)"
             DNS_STATUS_MSG="${GREEN}[SDNS:+]${NC}"
+
+            # Create flag file only after successful verification
+            touch "$FLAG_FILE" 2>/dev/null
             return 0
         else
             # 127.0.0.1 configured but service not running
@@ -557,33 +660,53 @@ fetch_crypto_prices() {
 
 # Function to fetch news headlines
 fetch_news_headlines() {
-    local NEWS_JSON=$(sudo online-info-switch rss --random --max-items 2 --json 2>/dev/null)
+    local MAX_RETRIES=3
+    local retry_count=0
+    local HEADLINE1=""
+    local HEADLINE2=""
+    local NEWS_JSON=""
 
-    if check_jq && [ -n "$NEWS_JSON" ]; then
-        # Get first 2 headlines and add ellipsis if truncated (max 71 chars + "...")
-        local HEADLINE1=$(echo "$NEWS_JSON" | jq -r '.items[0].title' 2>/dev/null || echo "")
-        local HEADLINE2=$(echo "$NEWS_JSON" | jq -r '.items[1].title' 2>/dev/null || echo "")
+    # Retry loop to handle empty/failed RSS feeds
+    while [ $retry_count -lt $MAX_RETRIES ]; do
+        NEWS_JSON=$(sudo online-info-switch rss --random --max-items 2 --json 2>/dev/null)
 
-        # Truncate with ellipsis if too long
-        if [ -n "$HEADLINE1" ] && [ "$HEADLINE1" != "null" ]; then
-            if [ ${#HEADLINE1} -gt 71 ]; then
-                HEADLINE1="${HEADLINE1:0:71}..."
+        if check_jq && [ -n "$NEWS_JSON" ]; then
+            # Get first 2 headlines and add ellipsis if truncated (max 71 chars + "...")
+            HEADLINE1=$(echo "$NEWS_JSON" | jq -r '.items[0].title' 2>/dev/null || echo "")
+            HEADLINE2=$(echo "$NEWS_JSON" | jq -r '.items[1].title' 2>/dev/null || echo "")
+
+            # Truncate with ellipsis if too long
+            if [ -n "$HEADLINE1" ] && [ "$HEADLINE1" != "null" ]; then
+                if [ ${#HEADLINE1} -gt 71 ]; then
+                    HEADLINE1="${HEADLINE1:0:71}..."
+                fi
             fi
-        fi
 
-        if [ -n "$HEADLINE2" ] && [ "$HEADLINE2" != "null" ]; then
-            if [ ${#HEADLINE2} -gt 71 ]; then
-                HEADLINE2="${HEADLINE2:0:71}..."
-            fi
-        fi
-
-        if [ -n "$HEADLINE1" ] && [ "$HEADLINE1" != "null" ]; then
-            NEWS_HEADLINES="${BOLD}•${NC} ${CYAN}${HEADLINE1}${NC}"
             if [ -n "$HEADLINE2" ] && [ "$HEADLINE2" != "null" ]; then
-                NEWS_HEADLINES="${NEWS_HEADLINES}\n${BOLD}•${NC} ${CYAN}${HEADLINE2}${NC}"
+                if [ ${#HEADLINE2} -gt 71 ]; then
+                    HEADLINE2="${HEADLINE2:0:71}..."
+                fi
             fi
-        else
-            NEWS_HEADLINES="${YELLOW}No news available${NC}"
+
+            # Check if we got at least one valid headline
+            if [ -n "$HEADLINE1" ] && [ "$HEADLINE1" != "null" ]; then
+                # Success - we have valid news
+                break
+            fi
+        fi
+
+        # No valid headlines - retry
+        retry_count=$((retry_count + 1))
+        if [ $retry_count -lt $MAX_RETRIES ]; then
+            sleep 1  # Wait 1 second before retry
+        fi
+    done
+
+    # Set final NEWS_HEADLINES based on result
+    if [ -n "$HEADLINE1" ] && [ "$HEADLINE1" != "null" ]; then
+        NEWS_HEADLINES="${BOLD}•${NC} ${CYAN}${HEADLINE1}${NC}"
+        if [ -n "$HEADLINE2" ] && [ "$HEADLINE2" != "null" ]; then
+            NEWS_HEADLINES="${NEWS_HEADLINES}\n${BOLD}•${NC} ${CYAN}${HEADLINE2}${NC}"
         fi
     else
         NEWS_HEADLINES="${YELLOW}No news available${NC}"
@@ -694,7 +817,7 @@ display_info() {
 
     # Apply color based on status
     if [ "$SYSTEM_STATUS" = "Live" ]; then
-        SYSTEM_STATUS_COLORED="${YELLOW}${SYSTEM_STATUS}${NC}"
+        SYSTEM_STATUS_COLORED="${GREEN}${SYSTEM_STATUS}${NC}"
     elif [ "$SYSTEM_STATUS" = "Installed - Encrypted" ]; then
         SYSTEM_STATUS_COLORED="${GREEN}${SYSTEM_STATUS}${NC}"
     elif [ "$SYSTEM_STATUS" = "Installed - Not Encrypted" ]; then
@@ -723,7 +846,7 @@ display_info() {
 
     # Show ACTUAL DNS mode (verified, not hardcoded)
     # Truncate DNS mode if too long
-    DNS_DISPLAY=$(echo "$ACTUAL_DNS_MODE" | cut -c1-25)
+    DNS_DISPLAY=$(echo "$ACTUAL_DNS_MODE" | cut -c1-50)
 
     # Line 1: Security Score | Hardening | Torrified Status
     echo -e "${BOLD}Security:${NC} ${SCORE_COLOR}${SEC_SCORE}/100 [${SEC_STATUS}]${NC} | ${BOLD}Hardening:${NC} ${GREEN}${HARDENING_STATUS}${NC} | ${BOLD}Torrified:${NC} ${TOR_STATUS}"
@@ -748,31 +871,36 @@ display_info() {
     echo -e "${NEWS_HEADLINES}"
 
     echo -e "${CYAN}────────────────────────────────────────────────────────────────────────────${NC}"
-    echo ""
 }
 
 # Function to display profile menu
 show_menu() {
     echo -e "${BOLD}SELECT PROFILE:${NC}"
     echo ""
-    echo -e " ${GREEN}[1]${NC} ${BOLD}WireGuard Setup:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} WireGuard ${CYAN}→${NC} Verify"
-    echo -e " ${GREEN}[2]${NC} ${BOLD}Xray-VLESS-Reality:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Connect ${CYAN}→${NC} Verify"
-    echo -e " ${GREEN}[3]${NC} ${BOLD}OpenVPN Setup:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} OpenVPN ${CYAN}→${NC} Verify"
-    echo -e " ${GREEN}[4]${NC} ${BOLD}V2Ray Setup:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} V2Ray ${CYAN}→${NC} Verify"
-    echo -e " ${GREEN}[5]${NC} ${BOLD}Hysteria2 Setup:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Hysteria2 ${CYAN}→${NC} Verify"
-    echo -e " ${GREEN}[6]${NC} ${BOLD}Xray-VLESS Setup:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Xray-VLESS ${CYAN}→${NC} Verify"
-    echo -e " ${GREEN}[7]${NC} ${BOLD}Xray-Trojan Setup:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Xray-Trojan ${CYAN}→${NC} Verify"
-    echo -e " ${GREEN}[8]${NC} ${BOLD}Mita Setup:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Mita ${CYAN}→${NC} Verify"
-    echo -e " ${GREEN}[9]${NC} ${BOLD}Torrify Only:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Net Check ${CYAN}→${NC} Torrify ${CYAN}→${NC} Verify"
-    echo -e " ${GREEN}[10]${NC} ${BOLD}WireGuard+Torrify:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Harden ${CYAN}→${NC} Connect ${CYAN}→${NC} Torrify ${CYAN}→${NC} Verify"
-    echo -e " ${GREEN}[11]${NC} ${BOLD}Emergency Recovery:${NC} ${CYAN}→${NC} Detorrify ${CYAN}→${NC} Disconnect ${CYAN}→${NC} Recover ${CYAN}→${NC} Reset ${CYAN}→${NC} Verify"
-    echo -e " ${GREEN}[12]${NC} ${BOLD}Security Score Check:${NC} ${CYAN}→${NC} Display comprehensive security score report"
-    echo -e " ${GREEN}[13]${NC} ${BOLD}Exit${NC} - Skip to shell (Return: type ${CYAN}'kodachi'${NC} and press Enter)"
-    echo ""
+    echo -e " ${GREEN}[1]${NC} ${BOLD}Connect to WireGuard:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} WireGuard ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[2]${NC} ${BOLD}Connect to Xray-VLESS-Reality:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Connect ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[3]${NC} ${BOLD}Connect to OpenVPN:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} OpenVPN ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[4]${NC} ${BOLD}Connect to V2Ray:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} V2Ray ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[5]${NC} ${BOLD}Connect to Hysteria2:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Hysteria2 ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[6]${NC} ${BOLD}Connect to Xray-VLESS:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Xray-VLESS ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[7]${NC} ${BOLD}Connect to Xray-Trojan:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Xray-Trojan ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[8]${NC} ${BOLD}Connect to Mita:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Mita ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[9]${NC} ${BOLD}Torrify System:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Net Check ${CYAN}→${NC} Torrify ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[10]${NC} ${BOLD}Connect WireGuard + Torrify:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Harden ${CYAN}→${NC} Connect ${CYAN}→${NC} Torrify ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[11]${NC} ${BOLD}Enable DNSCrypt:${NC} ${CYAN}→${NC} Set Cloudflare ${CYAN}→${NC} Enable ${CYAN}→${NC} Net Check ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[12]${NC} ${BOLD}Enable Tor DNS:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Torrify ${CYAN}→${NC} nftables ${CYAN}→${NC} DNS ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[13]${NC} ${BOLD}Disconnect Routing:${NC} ${CYAN}→${NC} Disconnect ${CYAN}→${NC} Status ${CYAN}→${NC} IP Fetch"
+    echo -e " ${GREEN}[14]${NC} ${BOLD}Remove Tor Routing:${NC} ${CYAN}→${NC} Remove iptables ${CYAN}→${NC} Remove nftables ${CYAN}→${NC} Stop DNS ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[15]${NC} ${BOLD}Emergency Network Recovery:${NC} ${CYAN}→${NC} Detorrify ${CYAN}→${NC} Disconnect ${CYAN}→${NC} Recover ${CYAN}→${NC} Reset ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[16]${NC} ${BOLD}Check Security Score:${NC} ${CYAN}→${NC} Display comprehensive security score report"
+    echo -e " ${GREEN}[17]${NC} ${BOLD}Reboot System${NC} - Restart the system"
+    echo -e " ${GREEN}[18]${NC} ${BOLD}Shutdown System${NC} - Power off the system"
+    echo -e " ${GREEN}[19]${NC} ${BOLD}Exit${NC} - Skip to shell (Return: type ${CYAN}'kodachi'${NC} and press Enter)"
+    echo -e "${CYAN}────────────────────────────────────────────────────────────────────────────${NC}"
     echo -e "${YELLOW}NOTE:${NC} ${CYAN}health-control -e${NC}, ${CYAN}routing-switch -e${NC} | ${PROFILE_COUNT_RAW}+ profiles: ${CYAN}workflow-manager list${NC}"
     echo -e "${YELLOW}TIP:${NC} MicroSOCKS: ${CYAN}routing-switch microsocks-enable -u USER -p PASS${NC}"
     echo ""
-    echo -ne "${BOLD}Enter choice [1-13]:${NC} "
+    echo -ne "${BOLD}Enter choice [1-19]:${NC} "
 }
 
 # Function to execute selected profile
@@ -781,7 +909,7 @@ execute_profile() {
 
     case "$choice" in
         1)
-            echo -e "\n${YELLOW}Running WireGuard Setup...${NC}\n"
+            echo -e "\n${YELLOW}Connecting to WireGuard...${NC}\n"
             sudo workflow-manager run initial_terminal_setup_wireguard_only
             echo ""
             echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
@@ -794,7 +922,7 @@ execute_profile() {
             read -r refresh_choice
             ;;
         2)
-            echo -e "\n${YELLOW}Running Xray-VLESS-Reality Setup...${NC}\n"
+            echo -e "\n${YELLOW}Connecting to Xray-VLESS-Reality...${NC}\n"
             sudo workflow-manager run initial_terminal_setup_xray_vless_reality_only
             echo ""
             echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
@@ -807,7 +935,7 @@ execute_profile() {
             read -r refresh_choice
             ;;
         3)
-            echo -e "\n${YELLOW}Running OpenVPN Setup...${NC}\n"
+            echo -e "\n${YELLOW}Connecting to OpenVPN...${NC}\n"
             sudo workflow-manager run initial_terminal_setup_openvpn_only
             echo ""
             echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
@@ -820,7 +948,7 @@ execute_profile() {
             read -r refresh_choice
             ;;
         4)
-            echo -e "\n${YELLOW}Running V2Ray Setup...${NC}\n"
+            echo -e "\n${YELLOW}Connecting to V2Ray...${NC}\n"
             sudo workflow-manager run initial_terminal_setup_v2ray_only
             echo ""
             echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
@@ -833,7 +961,7 @@ execute_profile() {
             read -r refresh_choice
             ;;
         5)
-            echo -e "\n${YELLOW}Running Hysteria2 Setup...${NC}\n"
+            echo -e "\n${YELLOW}Connecting to Hysteria2...${NC}\n"
             sudo workflow-manager run initial_terminal_setup_hysteria2_only
             echo ""
             echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
@@ -846,7 +974,7 @@ execute_profile() {
             read -r refresh_choice
             ;;
         6)
-            echo -e "\n${YELLOW}Running Xray-VLESS Setup...${NC}\n"
+            echo -e "\n${YELLOW}Connecting to Xray-VLESS...${NC}\n"
             sudo workflow-manager run initial_terminal_setup_xray_vless_only
             echo ""
             echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
@@ -859,7 +987,7 @@ execute_profile() {
             read -r refresh_choice
             ;;
         7)
-            echo -e "\n${YELLOW}Running Xray-Trojan Setup...${NC}\n"
+            echo -e "\n${YELLOW}Connecting to Xray-Trojan...${NC}\n"
             sudo workflow-manager run initial_terminal_setup_xray_trojan_only
             echo ""
             echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
@@ -872,7 +1000,7 @@ execute_profile() {
             read -r refresh_choice
             ;;
         8)
-            echo -e "\n${YELLOW}Running Mita Setup...${NC}\n"
+            echo -e "\n${YELLOW}Connecting to Mita...${NC}\n"
             sudo workflow-manager run initial_terminal_setup_mita_only
             echo ""
             echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
@@ -885,7 +1013,7 @@ execute_profile() {
             read -r refresh_choice
             ;;
         9)
-            echo -e "\n${YELLOW}Running Torrify Only Setup...${NC}\n"
+            echo -e "\n${YELLOW}Torrifying System...${NC}\n"
             sudo workflow-manager run initial_terminal_setup_auth_torrify_only
             echo ""
             echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
@@ -898,7 +1026,7 @@ execute_profile() {
             read -r refresh_choice
             ;;
         10)
-            echo -e "\n${YELLOW}Running WireGuard + Torrify Setup...${NC}\n"
+            echo -e "\n${YELLOW}Connecting WireGuard + Torrifying...${NC}\n"
             sudo workflow-manager run initial_terminal_setup_wireguard_torrify
             echo ""
             echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
@@ -911,8 +1039,8 @@ execute_profile() {
             read -r refresh_choice
             ;;
         11)
-            echo -e "\n${YELLOW}Running Emergency Recovery...${NC}\n"
-            sudo workflow-manager run recovery-master-complete
+            echo -e "\n${YELLOW}Enabling DNSCrypt...${NC}\n"
+            sudo workflow-manager run dns-dnscrypt-enable
             echo ""
             echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
             echo -e "${BOLD}Return to Menu Options:${NC}"
@@ -924,6 +1052,58 @@ execute_profile() {
             read -r refresh_choice
             ;;
         12)
+            echo -e "\n${YELLOW}Enabling Tor DNS...${NC}\n"
+            sudo workflow-manager run tor-dns-nftables-full
+            echo ""
+            echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
+            echo -e "${BOLD}Return to Menu Options:${NC}"
+            echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+            echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+            echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+            echo ""
+            echo -ne "${BOLD}Your choice:${NC} "
+            read -r refresh_choice
+            ;;
+        13)
+            echo -e "\n${YELLOW}Disconnecting Routing...${NC}\n"
+            sudo workflow-manager run routing-disconnect-clean
+            echo ""
+            echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
+            echo -e "${BOLD}Return to Menu Options:${NC}"
+            echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+            echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+            echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+            echo ""
+            echo -ne "${BOLD}Your choice:${NC} "
+            read -r refresh_choice
+            ;;
+        14)
+            echo -e "\n${YELLOW}Removing Tor Routing...${NC}\n"
+            sudo workflow-manager run detorrify-complete-verify
+            echo ""
+            echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
+            echo -e "${BOLD}Return to Menu Options:${NC}"
+            echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+            echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+            echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+            echo ""
+            echo -ne "${BOLD}Your choice:${NC} "
+            read -r refresh_choice
+            ;;
+        15)
+            echo -e "\n${YELLOW}Running Emergency Network Recovery...${NC}\n"
+            sudo workflow-manager run recovery-master-complete
+            echo ""
+            echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
+            echo -e "${BOLD}Return to Menu Options:${NC}"
+            echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+            echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+            echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+            echo ""
+            echo -ne "${BOLD}Your choice:${NC} "
+            read -r refresh_choice
+            ;;
+        16)
             echo -e "\n${YELLOW}Checking Security Score...${NC}\n"
             sudo health-control security-score
             echo ""
@@ -936,7 +1116,31 @@ execute_profile() {
             echo -ne "${BOLD}Your choice:${NC} "
             read -r refresh_choice
             ;;
-        13)
+        17)
+            echo -e "\n${YELLOW}Reboot System${NC}"
+            echo -ne "${RED}Are you sure you want to reboot? [y/N]:${NC} "
+            read -r confirm
+            if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
+                echo -e "${GREEN}Rebooting system...${NC}"
+                sudo reboot
+            else
+                echo -e "${YELLOW}Reboot cancelled.${NC}"
+                sleep 1
+            fi
+            ;;
+        18)
+            echo -e "\n${YELLOW}Shutdown System${NC}"
+            echo -ne "${RED}Are you sure you want to shutdown? [y/N]:${NC} "
+            read -r confirm
+            if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
+                echo -e "${GREEN}Shutting down system...${NC}"
+                sudo shutdown -h now
+            else
+                echo -e "${YELLOW}Shutdown cancelled.${NC}"
+                sleep 1
+            fi
+            ;;
+        19)
             echo -e "\n${GREEN}Exiting to shell...${NC}\n"
             return 1
             ;;
@@ -952,19 +1156,53 @@ main() {
     # Display header
     show_header
 
+    # Print build signature once at start
+    echo -e "${CYAN}▸ Welcome Script v${SCRIPT_VERSION} | Build: ${BUILD_DATE} | Runtime: $(date '+%Y-%m-%d %H:%M:%S')${NC}"
+    echo -e "${CYAN}▸ You can stop this script anytime by pressing ${BOLD}Ctrl+C${NC}${CYAN} keys${NC}"
+    echo ""
+
+    # Ensure installed GRUB menu shows Kodachi branding
+    ensure_grub_theme
+
     # Deploy binaries (detect_hooks_dir will print status)
     deploy_binaries
 
-    # Authenticate
-    echo -e "${CYAN}▸ Authenticating...${NC}"
-    if ! authenticate; then
-        echo -e "${YELLOW}! Authentication failed - continuing with limited functionality${NC}"
-        # Don't exit - allow script to continue
+    # Sleep to ensure internet connectivity is established
+    echo -e "${CYAN}▸ Waiting for network (5s)...${NC}"
+    sleep 5
+
+    # Authenticate BEFORE DNS setup
+    # First check if already logged in
+    LOGIN_CHECK=$(sudo online-auth check-login --json 2>/dev/null)
+    IS_LOGGED_IN=$(parse_json "$LOGIN_CHECK" ".data.is_logged_in")
+
+    if [ "$IS_LOGGED_IN" = "true" ]; then
+        echo -e "${CYAN}▸ Already authenticated - skipping${NC}"
+        AUTH_STATUS="${GREEN}[Auth:+]${NC}"
+    else
+        echo -e "${CYAN}▸ Not authenticated - authenticating now...${NC}"
+        if ! authenticate; then
+            echo -e "${YELLOW}! Authentication failed - continuing anyway${NC}"
+        fi
     fi
 
     # Setup DNSCrypt
     echo -e "${CYAN}▸ Configuring DNS...${NC}"
     setup_dnscrypt
+
+    # Check authentication status after DNSCrypt setup
+    if [ "${AUTH_STATUS}" = "${GREEN}[Auth:+]${NC}" ]; then
+        # Already authenticated from initial attempt
+        echo -e "${GREEN}✓ Authentication verified - already logged in${NC}"
+    else
+        # Not authenticated - retry now that DNS is configured
+        echo -e "${CYAN}▸ Retrying authentication after DNS setup...${NC}"
+        if authenticate; then
+            echo -e "${GREEN}✓ Authentication successful${NC}"
+        else
+            echo -e "${YELLOW}! Authentication failed - continuing with limited functionality${NC}"
+        fi
+    fi
 
     # Fetch system information
     echo -e "${CYAN}▸ Fetching system data...${NC}"
