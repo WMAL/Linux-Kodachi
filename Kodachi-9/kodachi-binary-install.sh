@@ -565,9 +565,29 @@ print_highlight "======= Deploying Binaries Globally ======="
 echo ""
 
 deploy_binaries_globally() {
-    # Check if we're in live-build chroot environment
+    # Multi-layered chroot detection for ISO build environments
+
+    # Method 1: Check for explicit live-build chroot indicator (most reliable)
     if [[ -f "/tmp/live-build-chroot" ]]; then
-        print_info "Detected live-build chroot environment"
+        print_info "Detected chroot environment (live-build indicator)"
+        print_info "Skipping global deployment - binaries will be deployed on first ISO boot"
+        print_info "Binaries installed to: $INSTALL_PATH"
+        return 0
+    fi
+
+    # Method 2: Check for live-build environment markers
+    if [[ -d "/usr/lib/live" ]] || [[ -n "$LB_BASE" ]]; then
+        print_info "Detected live-build environment"
+        print_info "Skipping global deployment - binaries will be deployed on first ISO boot"
+        print_info "Binaries installed to: $INSTALL_PATH"
+        return 0
+    fi
+
+    # Method 3: Stat-based comparison (fallback for other chroot types)
+    local root_stat=$(stat -c %d:%i / 2>/dev/null)
+    local proc_stat=$(stat -c %d:%i /proc/1/root/. 2>/dev/null)
+    if [[ -n "$root_stat" && -n "$proc_stat" && "$root_stat" != "$proc_stat" ]]; then
+        print_info "Detected chroot environment (stat comparison)"
         print_info "Skipping global deployment - binaries will be deployed on first ISO boot"
         print_info "Binaries installed to: $INSTALL_PATH"
         return 0
