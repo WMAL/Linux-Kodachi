@@ -2,16 +2,16 @@
 
 <div align="center">
 
-### ![Announcement](https://img.shields.io/badge/-ANNOUNCEMENT-success?style=for-the-badge) **Kodachi 9 Binaries Backend Released!** ![Announcement](https://img.shields.io/badge/-ANNOUNCEMENT-success?style=for-the-badge)
+### ![Announcement](https://img.shields.io/badge/-ANNOUNCEMENT-success?style=for-the-badge) **Kodachi 9 Terminal Version Released!** ![Announcement](https://img.shields.io/badge/-ANNOUNCEMENT-success?style=for-the-badge)
 
-[![Release](https://img.shields.io/badge/Kodachi%209-Backend%20Released-success?style=for-the-badge&logo=debian&logoColor=white)](https://www.kodachi.cloud/wiki/bina/installation.html)
-[![Test Now](https://img.shields.io/badge/Test%20Now-Get%20Started-blue?style=for-the-badge&logo=rocket&logoColor=white)](https://www.kodachi.cloud/wiki/bina/installation.html)
-[![Security](https://img.shields.io/badge/Privacy%20%26%20Anonymity-Guaranteed-red?style=for-the-badge&logo=shield&logoColor=white)](https://www.kodachi.cloud/wiki/bina/installation.html)
+[![Release](https://img.shields.io/badge/Kodachi%209-Terminal%20Version-success?style=for-the-badge&logo=debian&logoColor=white)](https://www.kodachi.cloud/wiki/bina/terminal-version.html)
+[![Test Now](https://img.shields.io/badge/Test%20Now-Get%20Started-blue?style=for-the-badge&logo=rocket&logoColor=white)](https://www.kodachi.cloud/wiki/bina/terminal-version.html)
+[![Security](https://img.shields.io/badge/Privacy%20%26%20Anonymity-Guaranteed-red?style=for-the-badge&logo=shield&logoColor=white)](https://www.kodachi.cloud/wiki/bina/terminal-version.html)
 
-**The Kodachi 9 binaries backend is now available for testing!**
-Feel free to test them and enjoy enhanced anonymity and security.
+**The Kodachi 9 Terminal Version is now available as the latest release!**
+Experience command-line anonymity and security with full privacy protection.
 
-![Documentation](https://img.shields.io/badge/-Documentation-blue?style=flat-square&logo=book) **[Installation Guide & Documentation](https://www.kodachi.cloud/wiki/bina/installation.html)**
+![Documentation](https://img.shields.io/badge/-Documentation-blue?style=flat-square&logo=book) **[Installation Guide & Documentation](https://www.kodachi.cloud/wiki/bina/terminal-version.html)**
 
 ---
 
@@ -20,6 +20,16 @@ Feel free to test them and enjoy enhanced anonymity and security.
 # Linux Kodachi - Kodachi 9
 
 **Linux Kodachi** is a **privacy-focused Linux distribution built on Debian**. It provides a hardened, privacy-preserving desktop designed to balance security with usability, delivering a pre-wired anonymity stack (failover VPN, Tor routing, DNSCrypt, and anti-forensic tooling) that most operating systems leave you to assemble yourself. **Kodachi 9** features a modular architecture that breaks traditional barriers, enabling deployment across any Debian-based Linux distribution through **standalone binaries**, a **command-line terminal version**, or the upcoming **complete desktop experience**. Each deployment option provides the same robust security and privacy protection that Kodachi is known for.
+
+### Deployment Options - Built on the Same Foundation
+
+All Kodachi 9 editions are built on the same core security foundation:
+
+- **Standalone Binaries**: Individual privacy and security tools that can be installed on any Debian-based system. Perfect for adding Kodachi security features to your existing Linux installation.
+- **Terminal Version**: Lightweight ISO with all binaries pre-configured and optimized terminal interface. Ideal for dedicated privacy systems, servers, and headless deployments.
+- **Desktop Edition** (Coming Feb 2026): Complete experience with GUI dashboard built on the Terminal Version foundation. Provides the full Kodachi experience with intuitive graphical controls.
+
+**All three options share the same core binaries and security features** - choose based on your deployment needs and preferences.
 
 ---
 
@@ -34,7 +44,7 @@ This roadmap provides an overview of the current status of key components in the
 | **Kodachi Master VPS**                                                             | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square) | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **[Kodachi Anonymity Verifier](https://www.kodachi.cloud/)**                       | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square) | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **[Kodachi Binary Documentation](https://www.kodachi.cloud/wiki/bina/index.html)** | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square) | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
-| **[Kodachi Client Binary Backend](https://www.kodachi.cloud/wiki/bina/installation.html)**                                                  | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square) | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **[Kodachi Standalone Binaries](https://www.kodachi.cloud/wiki/bina/installation.html)**                                                  | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square) | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **[Kodachi Terminal Version](https://www.kodachi.cloud/wiki/bina/terminal-version.html)** | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square) | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **Kodachi Dashboard GUI**                                                          | ![In Progress](https://img.shields.io/badge/Status-In%20Progress-orange?style=flat-square) | ![65%](https://img.shields.io/badge/Progress-65%25-orange?style=flat-square)        |
 
@@ -112,30 +122,47 @@ Kodachi has been critically acclaimed by global publications and consistently re
 
 ## Getting Started
 
-You don't need to be a cybersecurity expert to use Kodachi. Simply follow these steps:
+You don't need to be a cybersecurity expert to use Kodachi. Choose the deployment option that best fits your needs:
 
-1. **[Download Kodachi](https://sourceforge.net/projects/linuxkodachi/files/latest/download)** from the official site.
+### Option A: Terminal Version (Recommended for Full System)
 
-### Option 1: Use with Virtual Machine
+The Terminal Version provides a complete Kodachi installation with all binaries pre-configured in a lightweight terminal interface.
 
-2. **VMware Workstation:**
-   1. Open VMware Workstation and create a new virtual machine.
-   2. Select "Installer disc image file (iso)" and browse to the Kodachi ISO file you downloaded.
-   3. Follow the prompts to configure the virtual machine settings (e.g., memory, disk size).
-   4. Finish the setup and start the virtual machine.
-   5. Kodachi will boot in live mode, allowing you to start using it immediately.
-3. **VirtualBox:**
-   1. Open VirtualBox and create a new virtual machine.
-   2. Select "Linux" as the type and "Debian (64-bit)" as the version.
-   3. Follow the prompts to configure the virtual machine settings (e.g., memory, disk size).
-   4. In the "Storage" settings, add the Kodachi ISO file as a virtual optical disk.
-   5. Start the virtual machine and Kodachi will boot in live mode.
+1. **[Download Terminal Version ISO](https://www.kodachi.cloud/wiki/bina/terminal-version.html)**
+2. **Create Bootable Media:** Use **Rufus** (Windows) or **Etcher** (Linux/Mac) to create a bootable USB drive
+3. **Boot and Install:** Restart your computer, boot from USB, and follow the installation wizard
+4. **Full Documentation:** [Terminal Version Guide](https://www.kodachi.cloud/wiki/bina/terminal-version.html)
 
-### Option 2: Create Bootable Media
+**Perfect for:** Dedicated privacy systems, servers, headless deployments, and users who want everything pre-configured.
 
-4. **Create Bootable Media:** Use a USB stick or DVD to create bootable media. Tools like **Rufus** (for Windows) or **Etcher** (for Linux/Mac) can help.
-5. **Boot Your System:** Restart your computer and boot from the USB/DVD. You may need to adjust your BIOS settings.
-6. **Start Using Kodachi:** The operating system will load in live mode, allowing you to immediately start browsing and working securely.
+### Option B: Standalone Binaries (For Existing Systems)
+
+Install individual Kodachi tools on your current Debian-based Linux distribution.
+
+1. **[Installation Guide for Standalone Binaries](https://www.kodachi.cloud/wiki/bina/installation.html)**
+2. **Choose Your Tools:** Install all binaries or select specific privacy tools you need
+3. **Works On:** Any Debian-based distribution (Ubuntu, Debian, Linux Mint, etc.)
+
+**Perfect for:** Users who want to add Kodachi privacy features to their existing Linux system.
+
+### Option C: Virtual Machine Testing
+
+Test the Terminal Version in a virtual environment before full installation:
+
+**VMware Workstation:**
+1. Open VMware Workstation and create a new virtual machine
+2. Select "Installer disc image file (iso)" and browse to the Kodachi Terminal Version ISO
+3. Configure VM settings (recommended: 2GB+ RAM, 20GB+ disk)
+4. Start the VM and Kodachi will boot in live mode
+
+**VirtualBox:**
+1. Open VirtualBox and create a new virtual machine
+2. Select "Linux" as the type and "Debian (64-bit)" as the version
+3. Configure VM settings (recommended: 2GB+ RAM, 20GB+ disk)
+4. In "Storage" settings, add the Kodachi ISO as a virtual optical disk
+5. Start the VM and Kodachi will boot in live mode
+
+**Perfect for:** Testing, learning, or running Kodachi alongside your current operating system.
 
 ---
 

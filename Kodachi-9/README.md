@@ -8,7 +8,7 @@ This roadmap provides an overview of the current status of key components in the
 | **Kodachi Master VPS**                                                             | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square) | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **[Kodachi Anonymity Verifier](https://www.kodachi.cloud/)**                       | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square) | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **[Kodachi Binary Documentation](https://www.kodachi.cloud/wiki/bina/index.html)** | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square) | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
-| **[Kodachi Client Binary Backend](https://www.kodachi.cloud/wiki/bina/installation.html)**                                                  | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square) | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **[Kodachi Standalone Binaries](https://www.kodachi.cloud/wiki/bina/installation.html)**                                                  | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square) | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **[Kodachi Terminal Version](https://www.kodachi.cloud/wiki/bina/terminal-version.html)** | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square) | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **Kodachi Dashboard GUI**                                                          | ![In Progress](https://img.shields.io/badge/Status-In%20Progress-orange?style=flat-square) | ![65%](https://img.shields.io/badge/Progress-65%25-orange?style=flat-square)        |
 
@@ -106,13 +106,17 @@ This roadmap provides an overview of the current status of key components in the
 **Status:** ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)
 **Documentation:** [Terminal Version Guide](https://www.kodachi.cloud/wiki/bina/terminal-version.html)
 **Description:** Terminal-based edition with lightweight CLI interface and full backend integration
+**Technical Foundation:** Built on all standalone binaries from Phase 1 with optimized system integration
+
 **Benefits:**
 
+- All Phase 1 binaries pre-installed and configured
 - Smaller attack surface for security hardening
 - Network and security module stabilization
 - Core system testing without GUI overhead
 - Foundation for desktop edition
 - Perfect for servers and headless systems
+- Same privacy tools as standalone binaries, but with seamless integration
 
 ### Phase 3: Kodachi Desktop Edition (Coming Soon)
 
@@ -133,6 +137,16 @@ This roadmap provides an overview of the current status of key components in the
 
 **• Desktop Last** ![In Progress](https://img.shields.io/badge/-In%20Progress-orange?style=flat-square) = Integrate user feedback, polish UX, and ship the full experience. **Target: Feb 2026**
 
+### Technical Progression
+
+Each phase builds upon the previous, ensuring maximum stability and security:
+
+**Phase 1 (Standalone Binaries)** = Individual tools → Modular testing and development
+**Phase 2 (Terminal Version)** = Binaries + System Integration → Hardened foundation
+**Phase 3 (Desktop Edition)** = Terminal + GUI Dashboard → Complete user experience
+
+This progression ensures that each layer is thoroughly tested and hardened before the next is built on top of it.
+
 ### What This Means for Users:
 
 • **Available Now**: Binaries and Terminal Version are ready for immediate use
@@ -142,10 +156,13 @@ This roadmap provides an overview of the current status of key components in the
 
 ### Current Status:
 
-• ![Available](https://img.shields.io/badge/-Available-brightgreen?style=flat-square) **Binaries Available**: [Install on any Linux distribution](https://www.kodachi.cloud/wiki/bina/installation.html)
-• ![Available](https://img.shields.io/badge/-Available-brightgreen?style=flat-square) **Terminal Version Available**: [Perfect for servers and headless systems](https://www.kodachi.cloud/wiki/bina/terminal-version.html)
-• ![Coming Soon](https://img.shields.io/badge/-Coming%20Soon-yellow?style=flat-square) **Desktop Edition**: Coming February 2026 with complete GUI dashboard
-• All editions share the same core security and privacy features
+• ![Available](https://img.shields.io/badge/-Available-brightgreen?style=flat-square) **Standalone Binaries**: [Install individual tools on any Linux distribution](https://www.kodachi.cloud/wiki/bina/installation.html) - Perfect for adding Kodachi privacy tools to your existing system
+
+• ![Available](https://img.shields.io/badge/-Available-brightgreen?style=flat-square) **Terminal Version**: [Complete system with all binaries pre-integrated](https://www.kodachi.cloud/wiki/bina/terminal-version.html) - Perfect for dedicated privacy systems, servers, and headless deployments
+
+• ![Coming Soon](https://img.shields.io/badge/-Coming%20Soon-yellow?style=flat-square) **Desktop Edition**: Coming February 2026 with complete GUI dashboard built on Terminal Version foundation
+
+• **All editions share the same core binaries and security features** - Choose based on your deployment needs
 
 ---
 
