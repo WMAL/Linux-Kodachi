@@ -160,6 +160,22 @@ if ! command -v curl &>/dev/null; then
     exit 1
 fi
 
+# ============================================================================
+# TIME SYNCHRONIZATION - Critical for HTTPS certificate validation
+# ============================================================================
+print_step "Checking system time synchronization..."
+if command -v timedatectl >/dev/null 2>&1; then
+    ntp_status=$(timedatectl status 2>/dev/null | awk -F': ' '/System clock synchronized/ {print tolower($2)}' || true)
+    if [[ "$ntp_status" == "yes" ]]; then
+        print_success "System clock already synchronized"
+    else
+        print_warning "System clock not yet synchronized; run 'sudo timedatectl set-ntp true' after installing dependencies"
+    fi
+else
+    print_warning "timedatectl not found; skipping automatic time sync check"
+fi
+echo ""
+
 # Check if we can write to the installation path
 if [[ -e "$INSTALL_PATH" ]] && [[ ! -w "$INSTALL_PATH" ]]; then
     print_error "Cannot write to $INSTALL_PATH"
@@ -559,99 +575,14 @@ if [[ "$SKIP_PATH_UPDATE" != "true" ]]; then
     fi
 fi
 
-# Step 10: Deploy binaries globally using global-launcher
+# Step 10: Global deployment reminder
 echo ""
-print_highlight "======= Deploying Binaries Globally ======="
+print_highlight "======= Global Deployment ======="
 echo ""
-
-deploy_binaries_globally() {
-    # Multi-layered chroot detection for ISO build environments
-
-    # Method 1: Check for explicit live-build chroot indicator (most reliable)
-    if [[ -f "/tmp/live-build-chroot" ]]; then
-        print_info "Detected chroot environment (live-build indicator)"
-        print_info "Skipping global deployment - binaries will be deployed on first ISO boot"
-        print_info "Binaries installed to: $INSTALL_PATH"
-        return 0
-    fi
-
-    # Method 2: Check for live-build environment markers
-    if [[ -d "/usr/lib/live" ]] || [[ -n "$LB_BASE" ]]; then
-        print_info "Detected live-build environment"
-        print_info "Skipping global deployment - binaries will be deployed on first ISO boot"
-        print_info "Binaries installed to: $INSTALL_PATH"
-        return 0
-    fi
-
-    # Method 3: Stat-based comparison (fallback for other chroot types)
-    local root_stat=$(stat -c %d:%i / 2>/dev/null)
-    local proc_stat=$(stat -c %d:%i /proc/1/root/. 2>/dev/null)
-    if [[ -n "$root_stat" && -n "$proc_stat" && "$root_stat" != "$proc_stat" ]]; then
-        print_info "Detected chroot environment (stat comparison)"
-        print_info "Skipping global deployment - binaries will be deployed on first ISO boot"
-        print_info "Binaries installed to: $INSTALL_PATH"
-        return 0
-    fi
-
-    # Check if global-launcher exists in installation path
-    local gl_binary="$INSTALL_PATH/global-launcher"
-
-    if [[ ! -f "$gl_binary" ]]; then
-        print_warning "global-launcher not found at $gl_binary"
-        print_info "Skipping global deployment - binaries are only available in $INSTALL_PATH"
-        print_info "You can deploy globally later with: sudo $INSTALL_PATH/global-launcher deploy"
-        return 0
-    fi
-
-    print_step "Deploying binaries to /usr/local/bin..."
-
-    # Try deployment with sudo (non-interactive)
-    # NOTE: Not using --save-hashes flag to avoid permission errors in chroot/restricted environments
-    # Users can manually save hash reports later with: global-launcher verify --save-hashes
-    local deploy_output
-    if deploy_output=$(sudo -n "$gl_binary" deploy --force --json 2>&1); then
-        print_success "Successfully deployed binaries globally"
-
-        # Parse and display deployment stats
-        local symlink_count=$(echo "$deploy_output" | grep -o '"symlinks_created":[0-9]*' | grep -o '[0-9]*' || echo "0")
-        if [[ "$symlink_count" -gt 0 ]]; then
-            print_info "Created $symlink_count symlinks in /usr/local/bin"
-        fi
-
-        # Verify deployment
-        print_step "Verifying global deployment..."
-        if "$gl_binary" verify --json &>/dev/null; then
-            print_success "Global deployment verified successfully"
-            print_info "All binaries are now accessible system-wide"
-        else
-            print_warning "Verification completed with warnings"
-            print_info "Run 'global-launcher verify --detailed' for more information"
-        fi
-
-        return 0
-    else
-        # Deployment failed - check if it's a permission issue
-        if echo "$deploy_output" | grep -qi "permission denied\|operation not permitted"; then
-            print_warning "Global deployment requires sudo privileges"
-            print_info "Binaries are installed in $INSTALL_PATH but not globally accessible yet"
-            echo ""
-            print_highlight "To deploy globally, run:"
-            echo -e "  ${BOLD}sudo $INSTALL_PATH/global-launcher deploy${NC}"
-            echo ""
-            print_info "Or authenticate with online-auth which automatically deploys globally:"
-            echo -e "  ${BOLD}sudo $INSTALL_PATH/online-auth authenticate --relogin${NC}"
-        else
-            print_error "Global deployment failed with error:"
-            echo "$deploy_output" | head -5
-            print_info "Binaries are still available in $INSTALL_PATH"
-            print_info "You can retry deployment later with: sudo $INSTALL_PATH/global-launcher deploy"
-        fi
-
-        return 1
-    fi
-}
-
-deploy_binaries_globally
+print_info "System-wide deployment requires root privileges and now runs as part of the dependency installer."
+print_info "To finish setup, install dependencies and publish binaries to /usr/local/bin with:"
+echo -e "  ${BOLD}sudo bash $INSTALL_PATH/binaries-update-scripts/kodachi-deps-install.sh${NC}"
+print_info "Until then, binaries remain available locally in $INSTALL_PATH"
 
 # Final summary
 echo ""
@@ -681,23 +612,13 @@ check_sudoers_status() {
 
     if [[ "$in_sudo_group" == "true" ]]; then
         print_success "User '$current_user' is in the sudoers group"
-        print_info "You can proceed to run the dependency installer with sudo"
         echo ""
-        print_highlight "Next Steps:"
+        print_highlight "Next Step (runs as root):"
         echo ""
-        echo "1. Install system dependencies (requires sudo):"
+        echo "  Install dependencies and deploy binaries system-wide:"
         echo -e "   ${BOLD}sudo bash $INSTALL_PATH/binaries-update-scripts/kodachi-deps-install.sh${NC}"
         echo ""
-
-        # Check if global deployment was successful
-        if command -v health-control &>/dev/null; then
-            print_success "Binaries are already deployed globally - system-wide access enabled"
-        else
-            echo "2. Deploy binaries globally (if not already done):"
-            echo -e "   ${BOLD}sudo $INSTALL_PATH/global-launcher deploy${NC}"
-            echo "   This creates symlinks in /usr/local/bin for system-wide access"
-            echo "   Note: This step is automatically performed when you authenticate with 'sudo online-auth authenticate --relogin'"
-        fi
+        print_info "This command installs required packages and creates /usr/local/bin symlinks."
     else
         print_warning "User '$current_user' is NOT in the sudoers group"
         echo ""
@@ -718,18 +639,8 @@ check_sudoers_status() {
         echo ""
         print_highlight "After adding to sudoers, you can:"
         echo ""
-        echo "1. Install system dependencies:"
+        echo "1. Install dependencies and deploy globally:"
         echo -e "   ${BOLD}sudo bash $INSTALL_PATH/binaries-update-scripts/kodachi-deps-install.sh${NC}"
-        echo ""
-
-        # Check if global deployment was successful
-        if command -v health-control &>/dev/null; then
-            print_success "Binaries are already deployed globally - system-wide access enabled"
-        else
-            echo "2. Deploy binaries globally:"
-            echo -e "   ${BOLD}sudo $INSTALL_PATH/global-launcher deploy${NC}"
-            echo "   Note: This step is automatically performed when you authenticate with 'sudo online-auth authenticate --relogin'"
-        fi
     fi
 }
 

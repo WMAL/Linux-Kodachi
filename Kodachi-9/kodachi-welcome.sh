@@ -103,6 +103,7 @@ AUTH_STATUS=""
 DNS_STATUS_MSG=""
 INFO_STATUS=""
 PERM_GUARD_STATUS=""
+TIME_SYNC_STATUS=""
 PROFILE_COUNT=""
 LOGS_COUNT=""
 BINARIES_COUNT=""
@@ -183,11 +184,18 @@ parse_json() {
     if check_jq; then
         echo "$json" | jq -r "$key" 2>/dev/null | head -1
     else
-        # Fallback to grep/sed
-        echo "$json" | grep -o "\"$key\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" | sed 's/.*"\([^"]*\)"$/\1/' | head -1
+        # Fallback to grep/sed (strip leading dot from jq-style path)
+        local clean_key="${key#.}"
+        # Match numeric values for time, or quoted strings for other data
+        if echo "$json" | grep -q "\"$clean_key\"[[:space:]]*:[[:space:]]*[0-9]"; then
+            # Numeric value
+            echo "$json" | grep -o "\"$clean_key\"[[:space:]]*:[[:space:]]*[0-9]*" | grep -o "[0-9]*$" | head -1
+        else
+            # String value
+            echo "$json" | grep -o "\"$clean_key\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" | sed 's/.*"\([^"]*\)"$/\1/' | head -1
+        fi
     fi
 }
-
 
 # Function to display compact header
 show_header() {
@@ -1382,37 +1390,100 @@ main() {
     echo -e "${YELLOW}▸ Waiting for network (5s)...${NC}"
     sleep 5
 
-    # Authenticate BEFORE DNS setup
-    # First check if already logged in (50s timeout)
+    # Setup DNSCrypt (gives network more time to stabilize)
+    echo -e "${YELLOW}▸ Configuring DNS...${NC}"
+    setup_dnscrypt
+
+    # First authentication attempt (may fail if time is wrong)
+    echo -e "${YELLOW}▸ Authenticating...${NC}"
     LOGIN_CHECK=$(run_command online-auth 50 check-login --json 2>/dev/null)
     IS_LOGGED_IN=$(parse_json "$LOGIN_CHECK" ".data.is_logged_in")
 
     if [ "$IS_LOGGED_IN" = "true" ]; then
-        echo -e "${GREEN}▸ Already authenticated - skipping${NC}"
+        echo -e "${GREEN}✓ Already authenticated${NC}"
         AUTH_STATUS="${GREEN}[Auth:+]${NC}"
     else
-        echo -e "${YELLOW}▸ Not authenticated - authenticating now...${NC}"
-        if ! authenticate; then
-            echo -e "${YELLOW}! Authentication failed - continuing anyway${NC}"
+        if authenticate; then
+            echo -e "${GREEN}✓ Authentication successful${NC}"
+        else
+            echo -e "${YELLOW}! Authentication failed (may be due to time sync issues)${NC}"
         fi
     fi
 
-    # Setup DNSCrypt
-    echo -e "${YELLOW}▸ Configuring DNS...${NC}"
-    setup_dnscrypt
+    # Synchronize system time using multiple methods
+    echo -e "${YELLOW}▸ Synchronizing system time...${NC}"
 
-    # Check authentication status after DNSCrypt setup
-    if [ "${AUTH_STATUS}" = "${GREEN}[Auth:+]${NC}" ]; then
-        # Already authenticated from initial attempt
-        echo -e "${GREEN}✓ Authentication verified - already logged in${NC}"
+    # Track if at least one sync succeeded
+    any_sync_succeeded=false
+
+    # Method 1: timedatectl (enable NTP service) - passwordless only (no blocking)
+    if sudo -n timedatectl set-ntp true 2>/dev/null; then
+        any_sync_succeeded=true
+    fi
+
+    # Method 2: Run ALL available NTP sync commands (don't stop after first success)
+    # Multiple syncs = better accuracy and redundancy
+
+    # Try sntp (if installed in future) - passwordless only
+    if command -v sntp >/dev/null 2>&1; then
+        if sudo -n sntp -S pool.ntp.org >/dev/null 2>&1; then
+            any_sync_succeeded=true
+        fi
+    fi
+
+    # Try ntpdate with pool.ntp.org - passwordless first, then WITH prompt (PRIMARY SYNC)
+    if command -v ntpdate >/dev/null 2>&1; then
+        if sudo -n ntpdate pool.ntp.org >/dev/null 2>&1 || sudo ntpdate pool.ntp.org >/dev/null 2>&1; then
+            any_sync_succeeded=true
+        fi
+    elif [ -x /usr/sbin/ntpdate ]; then
+        if sudo -n /usr/sbin/ntpdate pool.ntp.org >/dev/null 2>&1 || sudo /usr/sbin/ntpdate pool.ntp.org >/dev/null 2>&1; then
+            any_sync_succeeded=true
+        fi
+    fi
+
+    # Try ntpdate with time.nist.gov - passwordless only (sudo already cached above)
+    if command -v ntpdate >/dev/null 2>&1; then
+        if sudo -n ntpdate time.nist.gov >/dev/null 2>&1; then
+            any_sync_succeeded=true
+        fi
+    elif [ -x /usr/sbin/ntpdate ]; then
+        if sudo -n /usr/sbin/ntpdate time.nist.gov >/dev/null 2>&1; then
+            any_sync_succeeded=true
+        fi
+    fi
+
+    # Try ntpd one-shot sync - passwordless only (sudo already cached above)
+    if [ -x /usr/sbin/ntpd ]; then
+        if sudo -n /usr/sbin/ntpd -gq >/dev/null 2>&1; then
+            any_sync_succeeded=true
+        fi
+    fi
+
+    # Report accurate status based on actual results
+    if [ "$any_sync_succeeded" = "true" ]; then
+        echo -e "${GREEN}✓ Time sync completed${NC}"
+        TIME_SYNC_STATUS="${GREEN}[TSync:+]${NC}"
     else
-        # Not authenticated - retry now that DNS is configured
-        echo -e "${YELLOW}▸ Retrying authentication after DNS setup...${NC}"
+        echo -e "${YELLOW}! Time sync attempted (may need manual verification)${NC}"
+        TIME_SYNC_STATUS="${YELLOW}[TSync:~]${NC}"
+    fi
+
+    # Retry authentication ONLY if time sync succeeded (otherwise retry is pointless)
+    if [ "$any_sync_succeeded" = "true" ] && [ "${AUTH_STATUS}" != "${GREEN}[Auth:+]${NC}" ]; then
+        # Time synced and auth failed earlier - retry now
+        echo -e "${YELLOW}▸ Retrying authentication after time sync...${NC}"
         if authenticate; then
             echo -e "${GREEN}✓ Authentication successful${NC}"
         else
             echo -e "${RED}! Authentication failed - continuing with limited functionality${NC}"
         fi
+    elif [ "${AUTH_STATUS}" = "${GREEN}[Auth:+]${NC}" ]; then
+        # Already authenticated successfully - just confirm
+        echo -e "${GREEN}✓ Authentication verified${NC}"
+    else
+        # Auth failed earlier and time sync also failed - cannot retry
+        echo -e "${YELLOW}! Cannot retry authentication (time sync failed)${NC}"
     fi
 
     # Fetch system information
@@ -1441,7 +1512,7 @@ main() {
     show_header
 
     # Print consolidated status line
-    echo -e "${DEPLOY_STATUS} | ${AUTH_STATUS} | ${DNS_STATUS_MSG} | ${INFO_STATUS} | ${PERM_GUARD_STATUS}"
+    echo -e "${DEPLOY_STATUS} | ${AUTH_STATUS} | ${TIME_SYNC_STATUS} | ${DNS_STATUS_MSG} | ${INFO_STATUS} | ${PERM_GUARD_STATUS}"
 
     # Build counts line only if we have hooks directory info
     local counts_line=""
@@ -1487,7 +1558,7 @@ main() {
             # Clear and redisplay everything
             clear
             show_header
-            echo -e "${DEPLOY_STATUS} | ${AUTH_STATUS} | ${DNS_STATUS_MSG} | ${INFO_STATUS} | ${PERM_GUARD_STATUS}"
+            echo -e "${DEPLOY_STATUS} | ${AUTH_STATUS} | ${TIME_SYNC_STATUS} | ${DNS_STATUS_MSG} | ${INFO_STATUS} | ${PERM_GUARD_STATUS}"
 
             # Build counts line
             local counts_line=""
@@ -1543,7 +1614,7 @@ main() {
         # Clear and redisplay header with status
         clear
         show_header
-        echo -e "${DEPLOY_STATUS} | ${AUTH_STATUS} | ${DNS_STATUS_MSG} | ${INFO_STATUS} | ${PERM_GUARD_STATUS}"
+        echo -e "${DEPLOY_STATUS} | ${AUTH_STATUS} | ${TIME_SYNC_STATUS} | ${DNS_STATUS_MSG} | ${INFO_STATUS} | ${PERM_GUARD_STATUS}"
 
         # Build counts line only if we have hooks directory info
         local counts_line=""
