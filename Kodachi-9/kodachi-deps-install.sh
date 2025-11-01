@@ -93,7 +93,7 @@ KLOAK_VERSION="0.2"
 
 # Package categories - Reorganized for interactive installation
 # Essential - Core system requirements
-ESSENTIAL_PACKAGES="curl wget openssl ca-certificates coreutils findutils grep procps psmisc systemd sudo dmidecode lsof acl util-linux mount uuid-runtime inotify-tools ntpsec isc-dhcp-client pass pwgen xkcdpass"
+ESSENTIAL_PACKAGES="curl wget openssl ca-certificates coreutils findutils grep procps psmisc systemd sudo dmidecode lsof acl util-linux mount uuid-runtime inotify-tools ntpsec ntpsec-ntpdate isc-dhcp-client pass pwgen xkcdpass"
 
 # Networking - Network and VPN tools
 NETWORK_PACKAGES="tor torsocks obfs4proxy openvpn wireguard-tools iptables nftables arptables ebtables iproute2 iputils-ping net-tools nyx apt-transport-tor shadowsocks-libev redsocks microsocks haproxy"
@@ -755,6 +755,15 @@ fi
 
 echo ""
 print_success "Service state detection complete"
+echo ""
+
+# ============================================================================
+# TIME SYNCHRONIZATION - Critical for HTTPS certificate validation
+# ============================================================================
+print_step "Synchronizing system time..."
+timedatectl set-ntp true 2>/dev/null || true
+sleep 2
+print_success "Time sync enabled"
 echo ""
 
 # Kill any stuck apt/dpkg processes
@@ -3165,7 +3174,7 @@ stop_and_disable_service() {
 
         # Try systemctl but don't rely on it in chroot
         if command -v systemctl >/dev/null 2>&1; then
-            systemctl disable "$service_name" >/dev/null 2>&1 && disabled_service=true
+            echo -e "  ${BLUE}ℹ${NC} Skipping systemctl disable for ${service_name} (chroot environment)"
         fi
     else
         # Normal system: use systemctl properly
@@ -3324,14 +3333,20 @@ else
     stop_and_disable_service "dnscrypt-proxy.socket" "DNSCrypt Proxy Socket" ""
 fi
 
-# Stop and disable NTP time sync services - time sync can be used for fingerprinting
-echo ""
-print_step "Processing NTP services (time synchronization)..."
-echo -e "  ${CYAN}Note:${NC} NTP requests can be used for fingerprinting - use Kodachi's time sync"
-stop_and_disable_service "ntp.service" "NTP Daemon" "ntpd"
-stop_and_disable_service "ntpd.service" "NTP Daemon Alt" "ntpd"
-stop_and_disable_service "ntpsec.service" "NTPsec Daemon" "ntpd"
-stop_and_disable_service "systemd-timesyncd.service" "Systemd Time Sync" "systemd-timesyncd"
+# NTP time sync services - ENABLED for proper time synchronization
+# NOTE: Previously disabled due to fingerprinting concerns, but this caused critical issues:
+# - Physical hardware boots with incorrect clock (VMware syncs to host, USB media does not)
+# - SSL/TLS certificates appear invalid until the user fixes time manually
+# - curl/HTTPS requests and time-based authentication tokens fail on first boot
+# - An obviously wrong clock is itself a fingerprinting risk
+# DECISION: Leave NTP services managed by systemd presets so the clock syncs automatically.
+# Users who want to disable NTP can still do so manually after boot:
+#   sudo systemctl disable systemd-timesyncd.service
+# echo ""
+# print_step "Processing NTP services (time synchronization)..."
+# echo -e "  ${CYAN}Note:${NC} NTP enabled for proper time synchronization (required for SSL/TLS)"
+# NTP services are now managed by systemd preset: /etc/systemd/system-preset/90-kodachi-services.preset
+# systemd-timesyncd.service is ENABLED by default for automatic time synchronization
 
 # Stop and disable kloak - keystroke anonymization (manual start when needed)
 echo ""
@@ -3608,6 +3623,82 @@ else
 fi
 echo ""
 
+# ============================================================================
+# GLOBAL LAUNCHER DEPLOYMENT
+# ============================================================================
+
+echo ""
+print_highlight "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+print_highlight "Global Launcher Deployment"
+print_highlight "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+
+# Try to find the global-launcher binary
+HOOKS_DIR=""
+GLOBAL_LAUNCHER_PATH=""
+
+# Search for hooks directory in common locations
+for search_dir in \
+    "/home/*/k900/dashboard/hooks" \
+    "/home/*/dashboard/hooks" \
+    "/home/*/Desktop/k900/dashboard/hooks" \
+    "$HOME/k900/dashboard/hooks" \
+    "$HOME/dashboard/hooks" \
+    "$HOME/Desktop/k900/dashboard/hooks"; do
+
+    # Expand glob pattern
+    for dir in $search_dir; do
+        if [[ -d "$dir" ]] && [[ -f "$dir/global-launcher" ]]; then
+            HOOKS_DIR="$dir"
+            GLOBAL_LAUNCHER_PATH="$dir/global-launcher"
+            break 2
+        fi
+    done
+done
+
+# If not found, check current directory
+if [[ -z "$GLOBAL_LAUNCHER_PATH" ]] && [[ -f "./global-launcher" ]]; then
+    HOOKS_DIR="$(pwd)"
+    GLOBAL_LAUNCHER_PATH="./global-launcher"
+fi
+
+if [[ -n "$GLOBAL_LAUNCHER_PATH" ]] && [[ -x "$GLOBAL_LAUNCHER_PATH" ]]; then
+    print_step "Found global-launcher at: $HOOKS_DIR"
+
+    # Deploy global launcher
+    print_step "Deploying Kodachi binaries to /usr/local/bin..."
+
+    # Change to hooks directory for deployment
+    pushd "$HOOKS_DIR" > /dev/null 2>&1
+
+    if ./global-launcher deploy 2>&1; then
+        echo -e "  ${GREEN}✓${NC} Global launcher deployed successfully"
+
+        # Verify deployment
+        print_step "Verifying deployment..."
+        if ./global-launcher verify 2>&1 | grep -q "SUCCESS"; then
+            VERIFY_OUTPUT=$(./global-launcher verify 2>&1)
+            echo -e "  ${GREEN}✓${NC} $VERIFY_OUTPUT"
+        else
+            echo -e "  ${YELLOW}!${NC} Verification completed with warnings"
+        fi
+    else
+        echo -e "  ${YELLOW}!${NC} Global launcher deployment failed (non-critical)"
+        print_info "You can manually deploy later with: sudo $GLOBAL_LAUNCHER_PATH deploy"
+    fi
+
+    popd > /dev/null 2>&1
+
+else
+    print_info "Global launcher not found - skipping deployment"
+    print_info "This is normal if Kodachi binaries are not yet compiled"
+    print_info "To deploy later:"
+    echo -e "  ${CYAN}1. Build Kodachi binaries: cd dashboard/hooks/rust && cargo build --release${NC}"
+    echo -e "  ${CYAN}2. Deploy global launcher: cd dashboard/hooks && sudo ./global-launcher deploy${NC}"
+fi
+
+echo ""
+
 # Final port check
 print_step "Checking open ports after cleanup..."
 echo ""
@@ -3694,6 +3785,89 @@ if ! systemctl is-active --quiet pihole-FTL 2>/dev/null && ! command -v pihole &
     echo "  • Web interface settings"
     echo ""
 fi
+
+# =========================================================================
+# GLOBAL BINARY DEPLOYMENT (requires sudo)
+# =========================================================================
+
+deploy_kodachi_binaries_globally() {
+    echo ""
+    print_highlight "======= Deploying Kodachi Binaries Globally ======="
+    echo ""
+
+    local candidates=()
+    if [[ -n "$SUDO_USER" ]]; then
+        local sudo_home
+        sudo_home=$(eval echo "~$SUDO_USER" 2>/dev/null)
+        if [[ -n "$sudo_home" && "$sudo_home" != "~$SUDO_USER" ]]; then
+            candidates+=("$sudo_home/dashboard/hooks" "$sudo_home/Desktop/dashboard/hooks")
+        fi
+    fi
+    candidates+=("$HOME/dashboard/hooks" "$HOME/Desktop/dashboard/hooks" "/home/kodachi/dashboard/hooks")
+
+    local install_path=""
+    for path in "${candidates[@]}"; do
+        if [[ -x "$path/global-launcher" ]]; then
+            install_path="$path"
+            break
+        fi
+    done
+
+    if [[ -z "$install_path" ]]; then
+        print_warning "Kodachi binaries not found; skipping global deployment"
+        return 0
+    fi
+
+    if [[ -f "/tmp/live-build-chroot" ]]; then
+        print_info "Live-build chroot detected - deferring deployment to first boot"
+        print_info "Binaries staged at $install_path"
+        return 0
+    fi
+
+    if [[ -d "/usr/lib/live" ]] || [[ -n "${LB_BASE:-}" ]]; then
+        print_info "Live-build environment detected - skipping global deployment"
+        print_info "Binaries staged at $install_path"
+        return 0
+    fi
+
+    local root_stat=$(stat -c %d:%i / 2>/dev/null)
+    local proc_stat=$(stat -c %d:%i /proc/1/root/. 2>/dev/null)
+    if [[ -n "$root_stat" && -n "$proc_stat" && "$root_stat" != "$proc_stat" ]]; then
+        print_info "Chroot environment detected - skipping global deployment"
+        print_info "Binaries staged at $install_path"
+        return 0
+    fi
+
+    local gl_binary="$install_path/global-launcher"
+
+    print_step "Deploying binaries from $install_path to /usr/local/bin..."
+
+    local deploy_output
+    if deploy_output=$("$gl_binary" deploy --force --json 2>&1); then
+        print_success "Successfully deployed binaries globally"
+
+        local symlink_count
+        symlink_count=$(echo "$deploy_output" | grep -o '"symlinks_created":[0-9]*' | grep -o '[0-9]*' || echo "0")
+        if [[ "$symlink_count" -gt 0 ]]; then
+            print_info "Created $symlink_count symlink(s) in /usr/local/bin"
+        fi
+
+        print_step "Verifying global deployment..."
+        if "$gl_binary" verify --json &>/dev/null; then
+            print_success "Global deployment verified successfully"
+        else
+            print_warning "Verification reported warnings"
+            print_info "Run '$gl_binary verify --detailed' for more information"
+        fi
+    else
+        print_error "Global deployment failed"
+        echo "$deploy_output" | head -5
+        print_warning "Binaries remain available in $install_path"
+        print_info "You can retry later with: $gl_binary deploy --force"
+    fi
+}
+
+deploy_kodachi_binaries_globally
 
 # ============================================================================
 # CLEANUP TEMPORARY FILES
