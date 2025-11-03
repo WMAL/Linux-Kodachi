@@ -47,11 +47,24 @@
 #   - Cryptocurrency prices and news headlines
 #   - Interactive profile menu for system workflows
 
+# Parse command-line arguments
+FORCE_DNS_SETUP=false
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --force-dns-setup)
+            FORCE_DNS_SETUP=true
+            shift
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
 
 # Build signature - UPDATE BUILD_NUM BEFORE CREATING ISO
 BUILD_VERSION="9.0.1"
-BUILD_NUM="2"  # Change this number before each build (1, 2, 3, etc.)
-BUILD_DATE="2025-10-29"  # Auto-updated during ISO creation
+BUILD_NUM="3"  # Change this number before each build (1, 2, 3, etc.)
+BUILD_DATE="2025-11-02"  # Auto-updated during ISO creation
 SCRIPT_VERSION="${BUILD_VERSION}.${BUILD_NUM}"
 
 # Color codes for compact display (optimized for black terminal)
@@ -87,6 +100,9 @@ TOR_DNS_DIRECT_STATUS="unknown"
 TOR_DNS_PORT_STATUS="unknown"
 TOR_DNS_OVERALL_STATUS="false"
 TOR_DNS_DETAILED=""
+TOR_DNS_FIREWALL_STATUS="unknown"      # Firewall confirmation status
+TOR_DNS_FIREWALL_BACKEND="none"        # Which firewall is managing (iptables/nftables)
+TOR_DNS_FIREWALL_VERIFIED="false"      # Boolean for firewall confirmation
 
 # Global variables for consolidated status display
 DEPLOY_STATUS=""
@@ -541,120 +557,314 @@ authenticate() {
 
 # Function to configure DNSCrypt
 setup_dnscrypt() {
-    # CRITICAL: Reset ALL DNS variables to ensure fresh detection after profile changes
-    ACTUAL_DNS_MODE="Unknown"
-    DNS_STATUS_MSG=""
-    TOR_DNS_DIRECT_STATUS="unknown"
-    TOR_DNS_PORT_STATUS="unknown"
-    TOR_DNS_OVERALL_STATUS="false"
-    TOR_DNS_DETAILED=""
+    # Check if this is first run - only force configuration on first boot
+    # Detect hooks directory silently (function prints output, we just need the path)
+    detect_hooks_dir >/dev/null 2>&1
+    local HOOKS_DIR="${HOOKS_BASE_DIR:-$HOME/k900/dashboard/hooks}"
+    local DNS_MARKER="$HOOKS_DIR/results/dns-configured"
+    local IS_FIRST_RUN=false
 
-    # STEP 1: Check ACTUAL current DNS (always, no caching)
-    DNS_STATUS=$(run_command dns-switch 50 status --json 2>/dev/null)
-
-    # Parse nameservers array
-    if check_jq; then
-        NAMESERVERS=$(echo "$DNS_STATUS" | jq -r '.data.nameservers[]' 2>/dev/null | tr '\n' ', ' | sed 's/, $//')
-    else
-        # Fallback parsing without jq
-        NAMESERVERS=$(echo "$DNS_STATUS" | grep -o '"nameservers":\[[^]]*\]' | sed 's/.*\[\(.*\)\].*/\1/' | tr -d '"' | sed 's/,/, /g')
-    fi
-
-    # Handle empty nameservers
-    if [ -z "$NAMESERVERS" ]; then
-        echo -e "${RED}  ✗ Failed to detect DNS servers${NC}"
-        ACTUAL_DNS_MODE="Unknown"
-        DNS_STATUS_MSG="${RED}[SDNS:✗]${NC}"
-        return 1
-    fi
-
-    # STEP 2: Smart DNSCrypt verification and auto-fix
-    # Check if DNSCrypt is running but being bypassed by systemd-resolved
-
-    # Get DNSCrypt service status
-    DNSCRYPT_CHECK=$(run_command dns-switch 50 dnscrypt --json 2>/dev/null)
-    SERVICE_ACTIVE=$(parse_json "$DNSCRYPT_CHECK" ".data.service_active")
-    LISTENING=$(parse_json "$DNSCRYPT_CHECK" ".data.listening")
-    CONFIGURED_AS_RESOLVER=$(parse_json "$DNSCRYPT_CHECK" ".data.configured_as_resolver")
-
-    # Check if DNSCrypt is running AND listening but NOT configured as resolver - HIJACKED!
-    if [ "$SERVICE_ACTIVE" = "true" ] && [ "$LISTENING" = "true" ] && [ "$CONFIGURED_AS_RESOLVER" != "true" ]; then
-        # DNSCrypt is running but NOT configured as resolver - HIJACKED!
-        echo -e "${YELLOW}! DNSCrypt is running but NOT configured as resolver (current DNS: $NAMESERVERS)${NC}"
-        echo -e "${YELLOW}! Fixing DNSCrypt configuration...${NC}"
-
-        # Re-configure DNSCrypt as resolver (dns-switch handles systemd-resolved automatically)
-        echo "  • Configuring DNSCrypt as DNS resolver..."
-        run_command dns-switch 50 switch --names dnscrypt >/dev/null 2>&1
-        sleep 2
-
-        # Verify fix worked
-        DNSCRYPT_CHECK=$(run_command dns-switch 50 dnscrypt --json 2>/dev/null)
-        CONFIGURED_AS_RESOLVER=$(parse_json "$DNSCRYPT_CHECK" ".data.configured_as_resolver")
-
-        if [ "$CONFIGURED_AS_RESOLVER" = "true" ]; then
-            echo -e "${GREEN}  ✓ DNSCrypt successfully configured as resolver${NC}"
+    if [ ! -f "$DNS_MARKER" ] || [ "$FORCE_DNS_SETUP" = "true" ]; then
+        IS_FIRST_RUN=true
+        if [ "$FORCE_DNS_SETUP" = "true" ]; then
+            echo -e "${GREEN}✓ Force DNS setup enabled - reconfiguring DNSCrypt${NC}"
         else
-            echo -e "${RED}  ✗ Failed to configure DNSCrypt as resolver${NC}"
+            echo -e "${GREEN}✓ First boot detected - will configure DNSCrypt if needed${NC}"
+        fi
+    else
+        echo -e "${CYAN}  • Not first boot - skipping DNSCrypt auto-configuration${NC}"
+    fi
+
+    local max_retries=3
+    local retry_delay=5
+    local attempt=1
+
+    while [ $attempt -le $max_retries ]; do
+        if [ $attempt -gt 1 ]; then
+            echo -e "${YELLOW}▸ Retrying DNS configuration (attempt $attempt/$max_retries)...${NC}"
+            sleep $retry_delay
         fi
 
-        # Update NAMESERVERS for display
+        # CRITICAL: Reset ALL DNS variables to ensure fresh detection after profile changes
+        ACTUAL_DNS_MODE="Unknown"
+        DNS_STATUS_MSG=""
+        TOR_DNS_DIRECT_STATUS="unknown"
+        TOR_DNS_PORT_STATUS="unknown"
+        TOR_DNS_OVERALL_STATUS="false"
+        TOR_DNS_DETAILED=""
+
+        # STEP 1: Check ACTUAL current DNS (always, no caching)
         DNS_STATUS=$(run_command dns-switch 50 status --json 2>/dev/null)
+
+        # Parse nameservers array
         if check_jq; then
             NAMESERVERS=$(echo "$DNS_STATUS" | jq -r '.data.nameservers[]' 2>/dev/null | tr '\n' ', ' | sed 's/, $//')
         else
+            # Fallback parsing without jq
             NAMESERVERS=$(echo "$DNS_STATUS" | grep -o '"nameservers":\[[^]]*\]' | sed 's/.*\[\(.*\)\].*/\1/' | tr -d '"' | sed 's/,/, /g')
         fi
+
+        # DEBUG: Show what nameservers we detected
+        echo -e "${CYAN}  • Current nameservers: ${NAMESERVERS}${NC}"
+
+        # Handle empty nameservers
+        if [ -z "$NAMESERVERS" ]; then
+            echo -e "${RED}  ✗ Failed to detect DNS servers${NC}"
+            ACTUAL_DNS_MODE="Unknown"
+            DNS_STATUS_MSG="${RED}[SDNS:✗]${NC}"
+            # Don't return yet - will retry
+            attempt=$((attempt + 1))
+            continue
+        fi
+
+        # STEP 2: Smart DNSCrypt verification and auto-fix
+        # Check if DNSCrypt is running but being bypassed by systemd-resolved
+
+        # Get DNSCrypt service status
+        DNSCRYPT_CHECK=$(run_command dns-switch 50 dnscrypt --json 2>/dev/null)
+        SERVICE_ACTIVE=$(parse_json "$DNSCRYPT_CHECK" ".data.service_active")
+        LISTENING=$(parse_json "$DNSCRYPT_CHECK" ".data.listening")
+        CONFIGURED_AS_RESOLVER=$(parse_json "$DNSCRYPT_CHECK" ".data.configured_as_resolver")
+
+        # Check if DNSCrypt is running AND listening but NOT configured as resolver - HIJACKED!
+        if [ "$SERVICE_ACTIVE" = "true" ] && [ "$LISTENING" = "true" ] && [ "$CONFIGURED_AS_RESOLVER" != "true" ]; then
+            # DNSCrypt is running but NOT configured as resolver - HIJACKED!
+            echo -e "${YELLOW}! DNSCrypt is running but NOT configured as resolver (current DNS: $NAMESERVERS)${NC}"
+            echo -e "${YELLOW}! Fixing DNSCrypt configuration...${NC}"
+
+            # Re-configure DNSCrypt as resolver (dns-switch handles systemd-resolved automatically)
+            echo "  • Configuring DNSCrypt as DNS resolver..."
+            run_command dns-switch 50 switch --names dnscrypt >/dev/null 2>&1
+            sleep 2
+
+            # Verify fix worked
+            DNSCRYPT_CHECK=$(run_command dns-switch 50 dnscrypt --json 2>/dev/null)
+            CONFIGURED_AS_RESOLVER=$(parse_json "$DNSCRYPT_CHECK" ".data.configured_as_resolver")
+
+            if [ "$CONFIGURED_AS_RESOLVER" = "true" ]; then
+                echo -e "${GREEN}  ✓ DNSCrypt successfully configured as resolver${NC}"
+            else
+                echo -e "${RED}  ✗ Failed to configure DNSCrypt as resolver${NC}"
+            fi
+
+            # Update NAMESERVERS for display
+            DNS_STATUS=$(run_command dns-switch 50 status --json 2>/dev/null)
+            if check_jq; then
+                NAMESERVERS=$(echo "$DNS_STATUS" | jq -r '.data.nameservers[]' 2>/dev/null | tr '\n' ', ' | sed 's/, $//')
+            else
+                NAMESERVERS=$(echo "$DNS_STATUS" | grep -o '"nameservers":\[[^]]*\]' | sed 's/.*\[\(.*\)\].*/\1/' | tr -d '"' | sed 's/,/, /g')
+            fi
+        fi
+
+        # STEP 3: Report actual DNS based on verification (always truthful, no caching)
+        # This always runs, even on refresh, to detect DNS changes
+        # Check for 127.0.0.1 and determine if it's Tor DNS or DNSCrypt
+        if echo "$NAMESERVERS" | grep -q "127.0.0.1"; then
+            echo -e "${CYAN}  • Detected 127.0.0.1 - checking if Tor DNS or DNSCrypt${NC}"
+            # First check if this is Tor DNS by trying to verify it
+            # Tor DNS uses port 9053, so verify-tor-dns will succeed if Tor DNS is active
+            verify_tor_dns
+
+            if [ "$TOR_DNS_OVERALL_STATUS" = "true" ]; then
+                # Tor DNS is active and both methods successful - GREEN
+                # Show detailed status only when fully working
+                ACTUAL_DNS_MODE="(Tor DNS) ${TOR_DNS_DETAILED}"
+                DNS_STATUS_MSG="${GREEN}[SDNS:Tor:✓✓]${NC}"
+                return 0
+            fi
+
+            # Tor DNS failed - don't show detailed breakdown, just show it's not working
+
+            # Not Tor DNS or Tor DNS failed - check if it's DNSCrypt
+            DNSCRYPT_CHECK=$(run_command dns-switch 50 dnscrypt --json 2>/dev/null)
+            DNSCRYPT_STATUS=$(parse_json "$DNSCRYPT_CHECK" ".data.status")
+            SERVICE_ACTIVE=$(parse_json "$DNSCRYPT_CHECK" ".data.service_active")
+            CONFIGURED_AS_RESOLVER=$(parse_json "$DNSCRYPT_CHECK" ".data.configured_as_resolver")
+            LISTENING=$(parse_json "$DNSCRYPT_CHECK" ".data.listening")
+
+            # DEBUG: Show DNSCrypt status
+            echo -e "${CYAN}  • DNSCrypt: status=$DNSCRYPT_STATUS, active=$SERVICE_ACTIVE, set_as_resolver=$CONFIGURED_AS_RESOLVER, listening=$LISTENING${NC}"
+
+            if [ "$DNSCRYPT_STATUS" = "success" ] && \
+               [ "$SERVICE_ACTIVE" = "true" ] && \
+               [ "$CONFIGURED_AS_RESOLVER" = "true" ] && \
+               [ "$LISTENING" = "true" ]; then
+                # DNSCrypt is fully operational
+                echo -e "${GREEN}  ✓ DNSCrypt is fully operational${NC}"
+
+                # Create marker file if it doesn't exist
+                if [ ! -f "$DNS_MARKER" ]; then
+                    mkdir -p "$(dirname "$DNS_MARKER")"
+                    touch "$DNS_MARKER"
+                fi
+
+                ACTUAL_DNS_MODE="127.0.0.1 (DNSCrypt)"
+                DNS_STATUS_MSG="${GREEN}[SDNS:+]${NC}"
+                return 0
+            else
+                # 127.0.0.1 configured but neither Tor DNS nor DNSCrypt working
+                ACTUAL_DNS_MODE="127.0.0.1 (service not running)"
+                DNS_STATUS_MSG="${RED}[SDNS:✗]${NC}"
+                # Don't return yet - will retry
+                attempt=$((attempt + 1))
+                continue
+            fi
+        else
+            # NAMESERVERS is not 127.0.0.1 - check if DNSCrypt service is running
+            echo -e "${CYAN}  • Nameservers NOT 127.0.0.1 - checking if DNSCrypt service is running${NC}"
+
+            # If DNSCrypt is running but not configured as resolver yet, RETRY
+            DNSCRYPT_CHECK=$(run_command dns-switch 30 dnscrypt --json 2>/dev/null)
+            SERVICE_ACTIVE=$(parse_json "$DNSCRYPT_CHECK" ".data.service_active")
+            LISTENING=$(parse_json "$DNSCRYPT_CHECK" ".data.listening")
+            CONFIGURED_AS_RESOLVER=$(parse_json "$DNSCRYPT_CHECK" ".data.configured_as_resolver")
+
+            echo -e "${CYAN}  • DNSCrypt: active=$SERVICE_ACTIVE, listening=$LISTENING, set_as_resolver=$CONFIGURED_AS_RESOLVER${NC}"
+
+            if [ "$SERVICE_ACTIVE" = "false" ]; then
+                if [ "$IS_FIRST_RUN" = "true" ]; then
+                    # FIRST RUN - START service and set as resolver
+                    echo -e "${YELLOW}! DNSCrypt service is not running - starting and setting as resolver (first boot)...${NC}"
+
+                    # Start DNSCrypt service
+                    run_command dns-switch 50 dnscrypt-set >/dev/null 2>&1
+                    sleep 3
+
+                    # Set DNSCrypt as system resolver
+                    run_command dns-switch 50 switch --names dnscrypt >/dev/null 2>&1
+                    sleep 2
+
+                    # Create marker file to indicate DNS has been configured
+                    mkdir -p "$(dirname "$DNS_MARKER")"
+                    touch "$DNS_MARKER"
+
+                    # Retry to verify it worked
+                    attempt=$((attempt + 1))
+                    continue
+                else
+                    # SUBSEQUENT RUN - just report, don't auto-configure DNSCrypt
+                    echo -e "${CYAN}  • Skipping DNSCrypt auto-configuration (not first boot)${NC}"
+                    echo -e "${YELLOW}! DNSCrypt service is not running${NC}"
+
+                    # Always check if Tor DNS is available as alternative
+                    echo -e "${CYAN}  • Checking if Tor DNS is available...${NC}"
+                    verify_tor_dns
+
+                    if [ "$TOR_DNS_OVERALL_STATUS" = "true" ]; then
+                        # Tor DNS is working - show it with green status
+                        ACTUAL_DNS_MODE="(Tor DNS) ${TOR_DNS_DETAILED}"
+                        DNS_STATUS_MSG="${GREEN}[SDNS:Tor:✓✓]${NC}"
+                        return 0
+                    else
+                        # No Tor DNS - show actual DNS servers
+                        ACTUAL_DNS_MODE="$NAMESERVERS"
+                        DNS_STATUS_MSG="${YELLOW}[SDNS:Direct]${NC}"
+                        return 0
+                    fi
+                fi
+            elif [ "$SERVICE_ACTIVE" = "true" ] && [ "$LISTENING" = "true" ] && [ "$CONFIGURED_AS_RESOLVER" != "true" ]; then
+                if [ "$IS_FIRST_RUN" = "true" ]; then
+                    # FIRST RUN - DNSCrypt running but not set as resolver - SET IT!
+                    echo -e "${YELLOW}! DNSCrypt running but not set as resolver (DNS: $NAMESERVERS)${NC}"
+                    echo -e "${YELLOW}! Setting DNSCrypt as system resolver (first boot)...${NC}"
+
+                    # Set DNSCrypt as system resolver
+                    run_command dns-switch 50 switch --names dnscrypt >/dev/null 2>&1
+                    sleep 2
+
+                    # Create marker file
+                    mkdir -p "$(dirname "$DNS_MARKER")"
+                    touch "$DNS_MARKER"
+
+                    # Retry to verify it worked
+                    attempt=$((attempt + 1))
+                    continue
+                else
+                    # SUBSEQUENT RUN - just report
+                    echo -e "${CYAN}  • Skipping DNSCrypt auto-configuration (not first boot)${NC}"
+                    echo -e "${YELLOW}! DNSCrypt running but not set as resolver${NC}"
+
+                    # Always check if Tor DNS is available as alternative
+                    echo -e "${CYAN}  • Checking if Tor DNS is available...${NC}"
+                    verify_tor_dns
+
+                    if [ "$TOR_DNS_OVERALL_STATUS" = "true" ]; then
+                        # Tor DNS is working - show it with green status
+                        ACTUAL_DNS_MODE="(Tor DNS) ${TOR_DNS_DETAILED}"
+                        DNS_STATUS_MSG="${GREEN}[SDNS:Tor:✓✓]${NC}"
+                        return 0
+                    else
+                        # No Tor DNS - show actual DNS servers
+                        ACTUAL_DNS_MODE="$NAMESERVERS"
+                        DNS_STATUS_MSG="${YELLOW}[SDNS:Direct]${NC}"
+                        return 0
+                    fi
+                fi
+            elif [ "$SERVICE_ACTIVE" = "true" ] && [ "$LISTENING" = "true" ] && [ "$CONFIGURED_AS_RESOLVER" = "true" ]; then
+                # Service running, listening, AND set as resolver but nameservers not 127.0.0.1 yet - wait and retry
+                echo -e "${YELLOW}! DNSCrypt set as resolver but nameservers not updated yet - retrying...${NC}"
+                sleep 2
+                attempt=$((attempt + 1))
+                continue
+            else
+                # Something else wrong - retry
+                echo -e "${YELLOW}! DNSCrypt in unexpected state - retrying...${NC}"
+                attempt=$((attempt + 1))
+                continue
+            fi
+        fi
+    done
+
+    # All retries exhausted - DNSCrypt configuration failed
+    echo -e "${RED}✗ DNSCrypt configuration failed after $max_retries attempts${NC}"
+    ACTUAL_DNS_MODE="Unknown"
+    DNS_STATUS_MSG="${RED}[SDNS:✗]${NC}"
+    return 1
+}
+
+# Function to verify Tor DNS at firewall level using which-is-active
+verify_tor_dns_firewall() {
+    # Reset firewall verification variables
+    TOR_DNS_FIREWALL_STATUS="unknown"
+    TOR_DNS_FIREWALL_BACKEND="none"
+    TOR_DNS_FIREWALL_VERIFIED="false"
+
+    # Call tor-switch which-is-active with 60s timeout
+    local FIREWALL_JSON=$(run_command tor-switch 60 which-is-active --json 2>/dev/null)
+
+    # Parse firewall status
+    local ACTIVE_FIREWALL="none"
+    local TOR_DNS_IPTABLES="false"
+    local TOR_DNS_NFTABLES="false"
+
+    if check_jq; then
+        ACTIVE_FIREWALL=$(echo "$FIREWALL_JSON" | jq -r '.data.active_firewall // "none"' 2>/dev/null)
+        TOR_DNS_IPTABLES=$(echo "$FIREWALL_JSON" | jq -r '.data.tor_dns_iptables // false' 2>/dev/null)
+        TOR_DNS_NFTABLES=$(echo "$FIREWALL_JSON" | jq -r '.data.tor_dns_nftables // false' 2>/dev/null)
+    else
+        # Fallback parsing without jq
+        ACTIVE_FIREWALL=$(parse_json "$FIREWALL_JSON" ".data.active_firewall" || echo "none")
+        TOR_DNS_IPTABLES=$(parse_json "$FIREWALL_JSON" ".data.tor_dns_iptables" || echo "false")
+        TOR_DNS_NFTABLES=$(parse_json "$FIREWALL_JSON" ".data.tor_dns_nftables" || echo "false")
     fi
 
-    # STEP 3: Report actual DNS based on verification (always truthful, no caching)
-    # This always runs, even on refresh, to detect DNS changes
-    # Check for 127.0.0.1 and determine if it's Tor DNS or DNSCrypt
-    if echo "$NAMESERVERS" | grep -q "127.0.0.1"; then
-        # First check if this is Tor DNS by trying to verify it
-        # Tor DNS uses port 9053, so verify-tor-dns will succeed if Tor DNS is active
-        verify_tor_dns
+    # Store firewall backend
+    TOR_DNS_FIREWALL_BACKEND="$ACTIVE_FIREWALL"
 
-        if [ "$TOR_DNS_OVERALL_STATUS" = "true" ]; then
-            # Tor DNS is active and both methods successful - GREEN
-            # Show detailed status only when fully working
-            ACTUAL_DNS_MODE="127.0.0.1:9053 (Tor DNS) ${TOR_DNS_DETAILED}"
-            DNS_STATUS_MSG="${GREEN}[SDNS:Tor:✓✓]${NC}"
-            return 0
-        fi
-
-        # Tor DNS failed - don't show detailed breakdown, just show it's not working
-
-        # Not Tor DNS or Tor DNS failed - check if it's DNSCrypt
-        DNSCRYPT_CHECK=$(run_command dns-switch 50 dnscrypt --json 2>/dev/null)
-        DNSCRYPT_STATUS=$(parse_json "$DNSCRYPT_CHECK" ".data.status")
-        SERVICE_ACTIVE=$(parse_json "$DNSCRYPT_CHECK" ".data.service_active")
-        CONFIGURED_AS_RESOLVER=$(parse_json "$DNSCRYPT_CHECK" ".data.configured_as_resolver")
-        LISTENING=$(parse_json "$DNSCRYPT_CHECK" ".data.listening")
-
-        if [ "$DNSCRYPT_STATUS" = "success" ] && \
-           [ "$SERVICE_ACTIVE" = "true" ] && \
-           [ "$CONFIGURED_AS_RESOLVER" = "true" ] && \
-           [ "$LISTENING" = "true" ]; then
-            # DNSCrypt is fully operational
-            ACTUAL_DNS_MODE="127.0.0.1 (DNSCrypt)"
-            DNS_STATUS_MSG="${GREEN}[SDNS:+]${NC}"
-            return 0
-        else
-            # 127.0.0.1 configured but neither Tor DNS nor DNSCrypt working
-            ACTUAL_DNS_MODE="127.0.0.1 (service not running)"
-            DNS_STATUS_MSG="${RED}[SDNS:✗]${NC}"
-            return 1
-        fi
-    else
-        # Using direct DNS servers (not DNSCrypt/Tor) - WARNING state
-        ACTUAL_DNS_MODE="$NAMESERVERS"
-        DNS_STATUS_MSG="${YELLOW}[SDNS:Direct]${NC}"
+    # Check if either iptables or nftables has Tor DNS active
+    if [ "$TOR_DNS_IPTABLES" = "true" ] || [ "$TOR_DNS_NFTABLES" = "true" ]; then
+        TOR_DNS_FIREWALL_VERIFIED="true"
+        TOR_DNS_FIREWALL_STATUS="active"
         return 0
+    else
+        TOR_DNS_FIREWALL_VERIFIED="false"
+        TOR_DNS_FIREWALL_STATUS="inactive"
+        return 1
     fi
 }
 
 # Function to verify Tor DNS with both direct and port methods
+# Enhanced with dual-layer verification: functional + firewall confirmation
 verify_tor_dns() {
     echo -e "${YELLOW}  • Verifying Tor DNS configuration...${NC}"
 
@@ -664,48 +874,90 @@ verify_tor_dns() {
     TOR_DNS_OVERALL_STATUS="false"
     TOR_DNS_DETAILED=""
 
-    # Call tor-switch verify-tor-dns with 60s timeout
-    local TOR_DNS_JSON=$(run_command tor-switch 60 verify-tor-dns --json 2>/dev/null)
+    local max_retries=3
+    local retry_count=0
+    local functional_verified=false
+    local firewall_verified=false
 
-    # Parse direct_method and port_method (boolean values)
-    if check_jq; then
-        TOR_DNS_DIRECT_STATUS=$(echo "$TOR_DNS_JSON" | jq -r '.data.direct_method // "unknown"' 2>/dev/null)
-        TOR_DNS_PORT_STATUS=$(echo "$TOR_DNS_JSON" | jq -r '.data.port_method // "unknown"' 2>/dev/null)
+    # First, check firewall status (quick check)
+    verify_tor_dns_firewall
+    if [ "$TOR_DNS_FIREWALL_VERIFIED" = "true" ]; then
+        firewall_verified=true
+        echo -e "${GREEN}  ✓ Firewall confirms Tor DNS is configured ($TOR_DNS_FIREWALL_BACKEND)${NC}"
     else
-        # Fallback parsing without jq
-        TOR_DNS_DIRECT_STATUS=$(parse_json "$TOR_DNS_JSON" ".data.direct_method" || echo "unknown")
-        TOR_DNS_PORT_STATUS=$(parse_json "$TOR_DNS_JSON" ".data.port_method" || echo "unknown")
+        echo -e "${CYAN}  • Firewall shows Tor DNS is not configured${NC}"
     fi
 
-    # Convert boolean values to consistent format
-    # Expected values: true, false, or unknown
-    if [ "$TOR_DNS_DIRECT_STATUS" = "true" ]; then
-        TOR_DNS_DIRECT_STATUS="success"
-    elif [ "$TOR_DNS_DIRECT_STATUS" = "false" ]; then
-        TOR_DNS_DIRECT_STATUS="failed"
-    else
-        TOR_DNS_DIRECT_STATUS="failed"
-    fi
+    # Perform functional verification with retry logic if firewall shows it should work
+    while [ $retry_count -lt $max_retries ]; do
+        # Call tor-switch verify-tor-dns with 60s timeout
+        local TOR_DNS_JSON=$(run_command tor-switch 60 verify-tor-dns --json 2>/dev/null)
 
-    if [ "$TOR_DNS_PORT_STATUS" = "true" ]; then
-        TOR_DNS_PORT_STATUS="success"
-    elif [ "$TOR_DNS_PORT_STATUS" = "false" ]; then
-        TOR_DNS_PORT_STATUS="failed"
-    else
-        TOR_DNS_PORT_STATUS="failed"
-    fi
+        # Parse direct_method and port_method (boolean values)
+        if check_jq; then
+            TOR_DNS_DIRECT_STATUS=$(echo "$TOR_DNS_JSON" | jq -r '.data.direct_method // "unknown"' 2>/dev/null)
+            TOR_DNS_PORT_STATUS=$(echo "$TOR_DNS_JSON" | jq -r '.data.port_method // "unknown"' 2>/dev/null)
+        else
+            # Fallback parsing without jq
+            TOR_DNS_DIRECT_STATUS=$(parse_json "$TOR_DNS_JSON" ".data.direct_method" || echo "unknown")
+            TOR_DNS_PORT_STATUS=$(parse_json "$TOR_DNS_JSON" ".data.port_method" || echo "unknown")
+        fi
 
-    # Determine overall status (both must succeed for GREEN, direct is critical)
-    if [ "$TOR_DNS_DIRECT_STATUS" = "success" ] && [ "$TOR_DNS_PORT_STATUS" = "success" ]; then
+        # Convert boolean values to consistent format
+        if [ "$TOR_DNS_DIRECT_STATUS" = "true" ]; then
+            TOR_DNS_DIRECT_STATUS="success"
+        else
+            TOR_DNS_DIRECT_STATUS="failed"
+        fi
+
+        if [ "$TOR_DNS_PORT_STATUS" = "true" ]; then
+            TOR_DNS_PORT_STATUS="success"
+        else
+            TOR_DNS_PORT_STATUS="failed"
+        fi
+
+        # Check if functional verification passed
+        if [ "$TOR_DNS_DIRECT_STATUS" = "success" ] && [ "$TOR_DNS_PORT_STATUS" = "success" ]; then
+            functional_verified=true
+            break
+        fi
+
+        # Retry logic: only retry if firewall shows Tor DNS should be working
+        if [ "$firewall_verified" = true ]; then
+            retry_count=$((retry_count + 1))
+            if [ $retry_count -lt $max_retries ]; then
+                echo -e "${YELLOW}  • Functional verification failed, retrying ($retry_count/$max_retries)...${NC}"
+                sleep 2
+            fi
+        else
+            # No point retrying if firewall doesn't show Tor DNS configured
+            break
+        fi
+    done
+
+    # CONSERVATIVE APPROACH: Both functional and firewall verification must pass
+    if [ "$functional_verified" = true ] && [ "$firewall_verified" = true ]; then
         TOR_DNS_OVERALL_STATUS="true"
         TOR_DNS_DETAILED="[Direct:✓ Port:✓]"
-        echo -e "${GREEN}  ✓ Tor DNS is active (both methods verified)${NC}"
+        echo -e "${GREEN}  ✓ Tor DNS is active (dual-layer verified)${NC}"
         return 0
-    else
-        # Tor DNS is not enabled or not fully configured
+    elif [ "$functional_verified" = true ] && [ "$firewall_verified" = false ]; then
+        # Functional test passed but firewall doesn't confirm - likely false positive
         TOR_DNS_OVERALL_STATUS="false"
-        TOR_DNS_DETAILED=""  # Don't show details when not enabled
-        echo -e "${CYAN}  • Tor DNS not detected (rules not set)${NC}"
+        TOR_DNS_DETAILED=""
+        echo -e "${YELLOW}  ⚠ Tor DNS functional test passed but firewall not configured${NC}"
+        return 1
+    elif [ "$functional_verified" = false ] && [ "$firewall_verified" = true ]; then
+        # Firewall configured but functional test failed - service may not be ready
+        TOR_DNS_OVERALL_STATUS="false"
+        TOR_DNS_DETAILED=""
+        echo -e "${YELLOW}  ⚠ Tor DNS firewall configured but functional test failed${NC}"
+        return 1
+    else
+        # Both failed - Tor DNS is definitely not active
+        TOR_DNS_OVERALL_STATUS="false"
+        TOR_DNS_DETAILED=""
+        echo -e "${CYAN}  • Tor DNS not detected (both verifications failed)${NC}"
         return 1
     fi
 }
@@ -1381,73 +1633,108 @@ main() {
     echo -e "${YELLOW}▸ Waiting for network (5s)...${NC}"
     sleep 5
 
-    # Setup DNSCrypt (gives network more time to stabilize)
-    echo -e "${YELLOW}▸ Configuring DNS...${NC}"
-    setup_dnscrypt
-
-    # First authentication attempt (may fail if time is wrong)
-    echo -e "${YELLOW}▸ Authenticating...${NC}"
+    # Check authentication status and attempt login if needed
+    echo -e "${YELLOW}▸ Checking authentication status...${NC}"
     LOGIN_CHECK=$(run_command online-auth 50 check-login --json 2>/dev/null)
     IS_LOGGED_IN=$(parse_json "$LOGIN_CHECK" ".data.is_logged_in")
 
     if [ "$IS_LOGGED_IN" = "true" ]; then
         echo -e "${GREEN}✓ Already authenticated${NC}"
         AUTH_STATUS="${GREEN}[Auth:+]${NC}"
+
+        # Authenticated - use DNSCrypt (requires auth)
+        echo -e "${YELLOW}▸ Configuring DNSCrypt...${NC}"
+        setup_dnscrypt
     else
+        echo -e "${YELLOW}! Not authenticated - attempting login...${NC}"
+
+        # Attempt authentication immediately
         if authenticate; then
             echo -e "${GREEN}✓ Authentication successful${NC}"
+            AUTH_STATUS="${GREEN}[Auth:+]${NC}"
+
+            # Authenticated - use DNSCrypt (requires auth)
+            echo -e "${YELLOW}▸ Configuring DNSCrypt...${NC}"
+            setup_dnscrypt
         else
-            echo -e "${YELLOW}! Authentication failed (may be due to time sync issues)${NC}"
+            echo -e "${RED}! Authentication failed - using fallback DNS${NC}"
+            AUTH_STATUS="${RED}[Auth:✗]${NC}"
+
+            # Not authenticated - use fallback DNS (no auth required)
+            echo -e "${YELLOW}▸ Configuring fallback DNS...${NC}"
+            run_command dns-switch 50 fallback >/dev/null 2>&1
+
+            # Set DNS status message for fallback
+            DNS_STATUS_MSG="${YELLOW}[SDNS:Fallback]${NC}"
         fi
     fi
 
-    # Synchronize system time using multiple methods
+    # Synchronize system time using multiple methods (first success wins)
     echo -e "${YELLOW}▸ Synchronizing system time...${NC}"
 
     # Track if at least one sync succeeded
     any_sync_succeeded=false
 
-    # Method 1: timedatectl (enable NTP service) - passwordless only (no blocking)
-    if sudo -n timedatectl set-ntp true 2>/dev/null; then
-        any_sync_succeeded=true
-    fi
-
-    # Method 2: Run ALL available NTP sync commands (don't stop after first success)
-    # Multiple syncs = better accuracy and redundancy
-
-    # Try sntp (if installed in future) - passwordless only
-    if command -v sntp >/dev/null 2>&1; then
-        if sudo -n sntp -S pool.ntp.org >/dev/null 2>&1; then
+    # Method 1: ntpdig with time.cloudflare.com (PRIORITY - privacy-focused, most accurate)
+    if ! $any_sync_succeeded; then
+        if sudo -n ntpdig -S time.cloudflare.com >/dev/null 2>&1 || sudo ntpdig -S time.cloudflare.com >/dev/null 2>&1; then
             any_sync_succeeded=true
         fi
     fi
 
-    # Try ntpdate with pool.ntp.org - passwordless first, then WITH prompt (PRIMARY SYNC)
-    if command -v ntpdate >/dev/null 2>&1; then
-        if sudo -n ntpdate pool.ntp.org >/dev/null 2>&1 || sudo ntpdate pool.ntp.org >/dev/null 2>&1; then
-            any_sync_succeeded=true
-        fi
-    elif [ -x /usr/sbin/ntpdate ]; then
-        if sudo -n /usr/sbin/ntpdate pool.ntp.org >/dev/null 2>&1 || sudo /usr/sbin/ntpdate pool.ntp.org >/dev/null 2>&1; then
+    # Method 2: ntpdig with pool.ntp.org (if Cloudflare fails)
+    if ! $any_sync_succeeded; then
+        if sudo -n ntpdig -S pool.ntp.org >/dev/null 2>&1; then
             any_sync_succeeded=true
         fi
     fi
 
-    # Try ntpdate with time.nist.gov - passwordless only (sudo already cached above)
-    if command -v ntpdate >/dev/null 2>&1; then
-        if sudo -n ntpdate time.nist.gov >/dev/null 2>&1; then
-            any_sync_succeeded=true
-        fi
-    elif [ -x /usr/sbin/ntpdate ]; then
-        if sudo -n /usr/sbin/ntpdate time.nist.gov >/dev/null 2>&1; then
+    # Method 3: ntpdig with time.nist.gov (if both above fail)
+    if ! $any_sync_succeeded; then
+        if sudo -n ntpdig -S time.nist.gov >/dev/null 2>&1; then
             any_sync_succeeded=true
         fi
     fi
 
-    # Try ntpd one-shot sync - passwordless only (sudo already cached above)
-    if [ -x /usr/sbin/ntpd ]; then
-        if sudo -n /usr/sbin/ntpd -gq >/dev/null 2>&1; then
+    # Method 4: timedatectl (if all ntpdig fail)
+    if ! $any_sync_succeeded; then
+        if sudo -n timedatectl set-ntp true 2>/dev/null; then
             any_sync_succeeded=true
+        fi
+    fi
+
+    # Method 5: ntpdate with pool.ntp.org (legacy fallback)
+    if ! $any_sync_succeeded; then
+        if command -v ntpdate >/dev/null 2>&1; then
+            if sudo -n ntpdate pool.ntp.org >/dev/null 2>&1 || sudo ntpdate pool.ntp.org >/dev/null 2>&1; then
+                any_sync_succeeded=true
+            fi
+        elif [ -x /usr/sbin/ntpdate ]; then
+            if sudo -n /usr/sbin/ntpdate pool.ntp.org >/dev/null 2>&1 || sudo /usr/sbin/ntpdate pool.ntp.org >/dev/null 2>&1; then
+                any_sync_succeeded=true
+            fi
+        fi
+    fi
+
+    # Method 6: ntpdate with time.nist.gov (legacy fallback)
+    if ! $any_sync_succeeded; then
+        if command -v ntpdate >/dev/null 2>&1; then
+            if sudo -n ntpdate time.nist.gov >/dev/null 2>&1; then
+                any_sync_succeeded=true
+            fi
+        elif [ -x /usr/sbin/ntpdate ]; then
+            if sudo -n /usr/sbin/ntpdate time.nist.gov >/dev/null 2>&1; then
+                any_sync_succeeded=true
+            fi
+        fi
+    fi
+
+    # Method 7: ntpd one-shot sync (final fallback)
+    if ! $any_sync_succeeded; then
+        if [ -x /usr/sbin/ntpd ]; then
+            if sudo -n /usr/sbin/ntpd -gq >/dev/null 2>&1; then
+                any_sync_succeeded=true
+            fi
         fi
     fi
 
@@ -1460,22 +1747,7 @@ main() {
         TIME_SYNC_STATUS="${YELLOW}[TSync:~]${NC}"
     fi
 
-    # Retry authentication ONLY if time sync succeeded (otherwise retry is pointless)
-    if [ "$any_sync_succeeded" = "true" ] && [ "${AUTH_STATUS}" != "${GREEN}[Auth:+]${NC}" ]; then
-        # Time synced and auth failed earlier - retry now
-        echo -e "${YELLOW}▸ Retrying authentication after time sync...${NC}"
-        if authenticate; then
-            echo -e "${GREEN}✓ Authentication successful${NC}"
-        else
-            echo -e "${RED}! Authentication failed - continuing with limited functionality${NC}"
-        fi
-    elif [ "${AUTH_STATUS}" = "${GREEN}[Auth:+]${NC}" ]; then
-        # Already authenticated successfully - just confirm
-        echo -e "${GREEN}✓ Authentication verified${NC}"
-    else
-        # Auth failed earlier and time sync also failed - cannot retry
-        echo -e "${YELLOW}! Cannot retry authentication (time sync failed)${NC}"
-    fi
+    # Authentication already attempted before time sync - no retry needed
 
     # Fetch system information
     echo -e "${YELLOW}▸ Fetching system data...${NC}"
