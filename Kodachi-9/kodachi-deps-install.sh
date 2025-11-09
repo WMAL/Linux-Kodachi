@@ -84,12 +84,100 @@ print_step() { echo -e "${CYAN}[→]${NC} $1"; }
 print_highlight() { echo -e "${MAGENTA}${BOLD}$1${NC}"; }
 
 # Version configuration
-MIERU_VERSION="3.20.1"
-HYSTERIA2_VERSION="2.6.3"
+MIERU_VERSION="3.22.1"
+HYSTERIA2_VERSION="2.6.5"
 V2RAY_PLUGIN_VERSION="1.3.2"
 DNSCRYPT_VERSION="2.1.14"
 QRENCODE_VERSION="4.1.1"
 KLOAK_VERSION="0.2"
+
+# ============================================================================
+# Version Comparison Functions
+# ============================================================================
+
+# Get installed version of a binary
+get_installed_version() {
+    local binary="$1"
+    local version_flag="${2:---version}"  # Default flag
+
+    if ! command -v "$binary" &>/dev/null; then
+        echo ""
+        return 1
+    fi
+
+    # Try different version extraction methods
+    local version=""
+
+    # Method 1: Direct version command
+    version=$("$binary" $version_flag 2>&1 | grep -oP '([0-9]+\.)+[0-9]+' | head -1)
+
+    # Method 2: For binaries that don't follow standard patterns
+    if [[ -z "$version" ]]; then
+        version=$("$binary" version 2>&1 | grep -oP '([0-9]+\.)+[0-9]+' | head -1)
+    fi
+
+    # Method 3: For dpkg packages
+    if [[ -z "$version" ]] && dpkg -l "$binary" 2>/dev/null | grep -q "^ii"; then
+        version=$(dpkg -l "$binary" | grep "^ii" | awk '{print $3}' | grep -oP '([0-9]+\.)+[0-9]+' | head -1)
+    fi
+
+    echo "$version"
+}
+
+# Compare two version strings
+# Returns: 0 if v1 == v2, 1 if v1 > v2, 2 if v1 < v2
+compare_versions() {
+    local v1="$1"
+    local v2="$2"
+
+    # Remove 'v' prefix if present
+    v1="${v1#v}"
+    v2="${v2#v}"
+
+    if [[ "$v1" == "$v2" ]]; then
+        return 0  # Equal
+    fi
+
+    # Use sort -V for version comparison
+    local sorted=$(printf '%s\n%s' "$v1" "$v2" | sort -V | head -1)
+
+    if [[ "$sorted" == "$v1" ]]; then
+        return 2  # v1 < v2
+    else
+        return 1  # v1 > v2
+    fi
+}
+
+# Check if binary needs upgrade
+needs_upgrade() {
+    local binary="$1"
+    local target_version="$2"
+    local version_flag="${3:---version}"
+
+    local installed_version=$(get_installed_version "$binary" "$version_flag")
+
+    if [[ -z "$installed_version" ]]; then
+        # Not installed
+        return 0  # Needs install
+    fi
+
+    compare_versions "$installed_version" "$target_version"
+    local result=$?
+
+    if [[ $result -eq 2 ]]; then
+        # Installed version < target version
+        echo "upgrade|$installed_version|$target_version"
+        return 0  # Needs upgrade
+    elif [[ $result -eq 0 ]]; then
+        # Versions are equal
+        echo "current|$installed_version|$target_version"
+        return 1  # No upgrade needed
+    else
+        # Installed version > target version (downgrade scenario)
+        echo "newer|$installed_version|$target_version"
+        return 1  # Don't downgrade
+    fi
+}
 
 # Package categories - Reorganized for interactive installation
 # Essential - Core system requirements
@@ -99,13 +187,13 @@ ESSENTIAL_PACKAGES="curl wget openssl ca-certificates coreutils findutils grep p
 NETWORK_PACKAGES="tor torsocks obfs4proxy openvpn wireguard-tools iptables nftables arptables ebtables iproute2 iputils-ping net-tools nyx apt-transport-tor shadowsocks-libev redsocks microsocks haproxy"
 
 # Security - Protection and hardening tools
-SECURITY_PACKAGES="ufw macchanger firejail apparmor apparmor-utils apparmor-profiles aide lynis rkhunter chkrootkit usbguard ecryptfs-utils cryptsetup-nuke-password fail2ban unattended-upgrades auditd libpam-pwquality libpam-google-authenticator secure-delete wipe nwipe"
+SECURITY_PACKAGES="ufw macchanger firejail apparmor apparmor-utils apparmor-profiles aide lynis rkhunter chkrootkit usbguard ecryptfs-utils cryptsetup cryptsetup-initramfs cryptsetup-nuke-password fail2ban unattended-upgrades auditd libpam-pwquality libpam-google-authenticator secure-delete wipe nwipe"
 
-# Privacy - DNS and anonymity tools  
-PRIVACY_PACKAGES="dnsutils"
+# Privacy - DNS and anonymity tools
+PRIVACY_PACKAGES="dnsutils bind9-dnsutils"
 
 # Advanced - Specialized tools and utilities (non-GUI)
-ADVANCED_PACKAGES="jq git build-essential rng-tools-debian haveged ccze yamllint smartmontools lm-sensors hdparm htop iotop vnstat efibootmgr rfkill"
+ADVANCED_PACKAGES="jq git build-essential rng-tools-debian haveged ccze yamllint smartmontools lm-sensors hdparm htop iotop vnstat efibootmgr rfkill ethtool lsb-release pciutils"
 
 # GUI-only packages - only installed on systems with desktop environments
 GUI_PACKAGES="bleachbit kitty fontconfig fonts-noto-color-emoji alsa-utils pulseaudio pulseaudio-utils libnotify-bin"
@@ -421,10 +509,16 @@ check_contrib_nonfree() {
 
 # Function to install DNSCrypt Proxy from GitHub
 install_dnscrypt_github() {
-    print_step "Installing DNSCrypt Proxy from GitHub..."
+    print_step "Checking DNSCrypt Proxy installation..."
 
-    if command -v dnscrypt-proxy &>/dev/null; then
-        print_success "DNSCrypt Proxy is already installed"
+    # Check if upgrade is needed
+    local check_result=$(needs_upgrade "dnscrypt-proxy" "$DNSCRYPT_VERSION" "-version")
+    local status=$(echo "$check_result" | cut -d'|' -f1)
+    local installed=$(echo "$check_result" | cut -d'|' -f2)
+    local target=$(echo "$check_result" | cut -d'|' -f3)
+
+    if [[ "$status" == "current" ]]; then
+        print_success "DNSCrypt Proxy is already up to date (v$installed)"
 
         # ALWAYS ensure config file exists
         setup_dnscrypt_config
@@ -448,6 +542,17 @@ install_dnscrypt_github() {
         fi
 
         return 0
+    elif [[ "$status" == "newer" ]]; then
+        print_success "DNSCrypt Proxy is already installed (v$installed, newer than target v$target)"
+
+        # ALWAYS ensure config file exists
+        setup_dnscrypt_config
+
+        return 0
+    elif [[ "$status" == "upgrade" ]]; then
+        print_warning "DNSCrypt Proxy found (v$installed) - upgrading to v$target..."
+    else
+        print_step "Installing DNSCrypt Proxy v$DNSCRYPT_VERSION..."
     fi
 
     local arch=""
@@ -515,11 +620,24 @@ install_dnscrypt_github() {
 
 # Function to install QRencode with apt-first strategy
 install_qrencode_github() {
-    print_step "Installing QRencode..."
+    print_step "Checking QRencode installation..."
 
-    if command -v qrencode &>/dev/null; then
-        print_success "QRencode is already installed"
+    # Check if upgrade is needed
+    local check_result=$(needs_upgrade "qrencode" "$QRENCODE_VERSION" "--version")
+    local status=$(echo "$check_result" | cut -d'|' -f1)
+    local installed=$(echo "$check_result" | cut -d'|' -f2)
+    local target=$(echo "$check_result" | cut -d'|' -f3)
+
+    if [[ "$status" == "current" ]]; then
+        print_success "QRencode is already up to date (v$installed)"
         return 0
+    elif [[ "$status" == "newer" ]]; then
+        print_success "QRencode is already installed (v$installed, newer than target v$target)"
+        return 0
+    elif [[ "$status" == "upgrade" ]]; then
+        print_warning "QRencode found (v$installed) - upgrading to v$target..."
+    else
+        print_step "Installing QRencode v$QRENCODE_VERSION..."
     fi
 
     # QRencode Installation Strategy:
@@ -590,11 +708,27 @@ install_qrencode_github() {
 
 # Function to install v2ray-plugin from GitHub
 install_v2ray_plugin_github() {
-    print_step "Installing v2ray-plugin from GitHub..."
+    print_step "Checking v2ray-plugin installation..."
 
-    if command -v v2ray-plugin &>/dev/null; then
-        print_success "v2ray-plugin is already installed"
+    # Check if upgrade is needed
+    local check_result=$(needs_upgrade "v2ray-plugin" "$V2RAY_PLUGIN_VERSION" "--version")
+    local status=$(echo "$check_result" | cut -d'|' -f1)
+    local installed=$(echo "$check_result" | cut -d'|' -f2)
+    local target=$(echo "$check_result" | cut -d'|' -f3)
+
+    if [[ "$status" == "current" ]]; then
+        print_success "v2ray-plugin is already up to date (v$installed)"
         return 0
+    elif [[ "$status" == "newer" ]]; then
+        print_success "v2ray-plugin is already installed (v$installed, newer than target v$target)"
+        return 0
+    elif [[ "$status" == "upgrade" ]]; then
+        print_warning "v2ray-plugin found (v$installed) - upgrading to v$target..."
+        # Remove old binary before installing new version
+        rm -f /usr/local/bin/v2ray-plugin 2>/dev/null || true
+        rm -f /usr/local/bin/ss-v2ray-plugin 2>/dev/null || true
+    else
+        print_step "Installing v2ray-plugin v$V2RAY_PLUGIN_VERSION..."
     fi
 
     local arch=""
@@ -1341,11 +1475,26 @@ install_xray() {
 
 # Function to install mieru
 install_mieru() {
-    print_step "Installing mieru client..."
+    print_step "Checking mieru installation..."
 
-    if command -v mieru &>/dev/null || dpkg -l mieru 2>/dev/null | grep -q "^ii"; then
-        print_success "mieru client is already installed"
+    # Check if upgrade is needed
+    local check_result=$(needs_upgrade "mieru" "$MIERU_VERSION" "--version")
+    local status=$(echo "$check_result" | cut -d'|' -f1)
+    local installed=$(echo "$check_result" | cut -d'|' -f2)
+    local target=$(echo "$check_result" | cut -d'|' -f3)
+
+    if [[ "$status" == "current" ]]; then
+        print_success "mieru is already up to date (v$installed)"
         return 0
+    elif [[ "$status" == "newer" ]]; then
+        print_success "mieru is already installed (v$installed, newer than target v$target)"
+        return 0
+    elif [[ "$status" == "upgrade" ]]; then
+        print_warning "mieru found (v$installed) - upgrading to v$target..."
+        # Remove old version before upgrading
+        apt-get remove -y mieru 2>/dev/null || true
+    else
+        print_step "Installing mieru v$MIERU_VERSION..."
     fi
 
     local temp_file="/tmp/mieru_${MIERU_VERSION}_amd64.deb"
@@ -1380,11 +1529,24 @@ install_mieru() {
 
 # Function to install hysteria2
 install_hysteria2() {
-    print_step "Installing hysteria2..."
+    print_step "Checking hysteria2 installation..."
 
-    if command -v hysteria &>/dev/null; then
-        print_success "hysteria2 is already installed"
+    # Check if upgrade is needed
+    local check_result=$(needs_upgrade "hysteria" "$HYSTERIA2_VERSION" "version")
+    local status=$(echo "$check_result" | cut -d'|' -f1)
+    local installed=$(echo "$check_result" | cut -d'|' -f2)
+    local target=$(echo "$check_result" | cut -d'|' -f3)
+
+    if [[ "$status" == "current" ]]; then
+        print_success "hysteria2 is already up to date (v$installed)"
         return 0
+    elif [[ "$status" == "newer" ]]; then
+        print_success "hysteria2 is already installed (v$installed, newer than target v$target)"
+        return 0
+    elif [[ "$status" == "upgrade" ]]; then
+        print_warning "hysteria2 found (v$installed) - upgrading to v$target..."
+    else
+        print_step "Installing hysteria2 v$HYSTERIA2_VERSION..."
     fi
 
     local arch=""
@@ -1416,13 +1578,17 @@ install_hysteria2() {
 
 # Function to install kloak (keystroke anonymization)
 install_kloak() {
-    print_step "Installing kloak (keystroke anonymization)..."
+    print_step "Checking kloak installation..."
 
+    # Special handling for kloak - it doesn't support version reporting
+    # kloak v0.2 has no --version flag, so we just check if binary exists
     if command -v kloak &>/dev/null; then
-        print_success "kloak is already installed"
+        print_success "kloak is already installed (v$KLOAK_VERSION assumed - no version reporting)"
         setup_kloak_service
         return 0
     fi
+
+    print_step "Installing kloak v$KLOAK_VERSION..."
 
     # Try compilation first (preferred method for control)
     print_info "Attempting to compile kloak from source..."
@@ -3695,6 +3861,129 @@ else
     print_info "To deploy later:"
     echo -e "  ${CYAN}1. Build Kodachi binaries: cd dashboard/hooks/rust && cargo build --release${NC}"
     echo -e "  ${CYAN}2. Deploy global launcher: cd dashboard/hooks && sudo ./global-launcher deploy${NC}"
+fi
+
+echo ""
+
+# =============================================================================
+# Install Kodachi Welcome Commands
+# =============================================================================
+# This function installs the Kodachi welcome script and commands system-wide
+# to match the live ISO behavior. It handles version comparison and ensures
+# no conflicts when the deps installer runs during ISO build.
+#
+# Installed files:
+#   - /etc/profile.d/kodachi-welcome.sh (profile.d script with skip logic)
+#   - /usr/local/bin/welcome (wrapper script)
+#   - /usr/local/bin/kodachi (symlink to welcome)
+#   - /usr/local/bin/Kodachi (symlink to welcome)
+# =============================================================================
+
+install_welcome_commands() {
+    echo ""
+    print_highlight "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    print_highlight "Installing Kodachi Welcome Commands"
+    print_highlight "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+
+    # Search for packaged scripts in multiple locations
+    local PROFILE_SCRIPT=""
+    local WRAPPER_SCRIPT=""
+
+    # Search paths in priority order
+    local search_paths=(
+        "$HOOKS_DIR/binaries-update-scripts"
+        "$HOME/dashboard/hooks/binaries-update-scripts"
+    )
+
+    # Add glob pattern for other users' dashboard/hooks
+    for user_home in /home/*; do
+        if [[ -d "$user_home/dashboard/hooks/binaries-update-scripts" ]]; then
+            search_paths+=("$user_home/dashboard/hooks/binaries-update-scripts")
+        fi
+    done
+
+    # Find the scripts
+    for base_dir in "${search_paths[@]}"; do
+        if [[ -f "$base_dir/kodachi-welcome.sh" ]]; then
+            PROFILE_SCRIPT="$base_dir/kodachi-welcome.sh"
+            WRAPPER_SCRIPT="$base_dir/welcome"
+            break
+        fi
+    done
+
+    if [[ -z "$PROFILE_SCRIPT" ]]; then
+        print_warning "Welcome scripts not found in package, skipping..."
+        return 0
+    fi
+
+    # Extract version from new script
+    local NEW_BUILD_NUM=$(grep '^BUILD_NUM=' "$PROFILE_SCRIPT" 2>/dev/null | cut -d'"' -f2)
+    local NEW_VERSION=$(grep '^BUILD_VERSION=' "$PROFILE_SCRIPT" 2>/dev/null | cut -d'"' -f2)
+
+    # Check existing installation
+    local INSTALLED_SCRIPT="/etc/profile.d/kodachi-welcome.sh"
+    local SHOULD_INSTALL=true
+
+    if [[ -f "$INSTALLED_SCRIPT" ]]; then
+        local INSTALLED_BUILD_NUM=$(grep '^BUILD_NUM=' "$INSTALLED_SCRIPT" 2>/dev/null | cut -d'"' -f2)
+
+        if [[ -n "$NEW_BUILD_NUM" ]] && [[ -n "$INSTALLED_BUILD_NUM" ]]; then
+            if (( NEW_BUILD_NUM > INSTALLED_BUILD_NUM )); then
+                print_info "Updating Kodachi welcome script ($NEW_VERSION.$INSTALLED_BUILD_NUM → $NEW_VERSION.$NEW_BUILD_NUM)..."
+            elif (( NEW_BUILD_NUM == INSTALLED_BUILD_NUM )); then
+                print_info "Kodachi welcome script already current (version $NEW_VERSION.$NEW_BUILD_NUM), verifying commands..."
+                SHOULD_INSTALL=false
+            else
+                print_info "Installed version ($INSTALLED_BUILD_NUM) is newer than package ($NEW_BUILD_NUM), skipping..."
+                SHOULD_INSTALL=false
+            fi
+        fi
+    else
+        print_info "Installing Kodachi welcome commands (version $NEW_VERSION.$NEW_BUILD_NUM)..."
+    fi
+
+    # Install profile.d script if needed
+    if [[ "$SHOULD_INSTALL" == true ]]; then
+        cp "$PROFILE_SCRIPT" "$INSTALLED_SCRIPT"
+        chmod 644 "$INSTALLED_SCRIPT"
+    fi
+
+    # Always verify/recreate wrapper and symlinks (idempotent)
+    if [[ -f "$WRAPPER_SCRIPT" ]]; then
+        cp "$WRAPPER_SCRIPT" /usr/local/bin/welcome
+        chmod 755 /usr/local/bin/welcome
+    else
+        # Fallback: create wrapper if not in package
+        cat > /usr/local/bin/welcome << 'EOF'
+#!/bin/bash
+# Kodachi Welcome Command Wrapper
+export KODACHI_SKIP_WELCOME=0
+
+if [[ -f /etc/profile.d/kodachi-welcome.sh ]]; then
+    source /etc/profile.d/kodachi-welcome.sh
+else
+    echo "Error: Kodachi welcome script not found at /etc/profile.d/kodachi-welcome.sh" >&2
+    exit 1
+fi
+EOF
+        chmod 755 /usr/local/bin/welcome
+    fi
+
+    # Create symlinks (force to handle existing)
+    ln -sf /usr/local/bin/welcome /usr/local/bin/kodachi
+    ln -sf /usr/local/bin/welcome /usr/local/bin/Kodachi
+
+    print_success "Kodachi commands verified: kodachi, welcome, Kodachi"
+    echo ""
+}
+
+# Call the installation function
+if [[ "$EUID" -eq 0 ]]; then
+    install_welcome_commands
+else
+    print_warning "Skipping welcome commands installation (requires sudo)"
+    print_info "Run with sudo to install system-wide welcome commands"
 fi
 
 echo ""
