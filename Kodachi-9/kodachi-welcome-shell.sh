@@ -37,6 +37,7 @@
 # Usage:
 #   Automatically runs on login for interactive shell sessions.
 #   To skip: export KODACHI_SKIP_WELCOME=1 before login
+#   To force DNSCrypt configuration: ./kodachi-welcome-shell.sh --force-dns-setup
 #
 # Features:
 #   - Binary deployment verification
@@ -61,10 +62,12 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Build signature - UPDATE BUILD_NUM BEFORE CREATING ISO
-BUILD_VERSION="9.0.1"
-BUILD_NUM="3"  # Change this number before each build (1, 2, 3, etc.)
-BUILD_DATE="2025-11-02"  # Auto-updated during ISO creation
+# Build signature - AUTO-UPDATED BY pack-kodachi.sh
+# Source: main-info.json (terminal section)
+# DO NOT EDIT MANUALLY - Run pack-kodachi.sh to update these values
+BUILD_VERSION="9.0.1"  # From: terminal.main_version
+BUILD_NUM="4"          # From: terminal.build_number (auto-incremented)
+BUILD_DATE="2025-11-09"  # From: terminal.last_build_date
 SCRIPT_VERSION="${BUILD_VERSION}.${BUILD_NUM}"
 
 # Color codes for compact display (optimized for black terminal)
@@ -117,6 +120,7 @@ BINARIES_COUNT=""
 LATEST_VERSION=""
 CRYPTO_PRICES=""
 NEWS_HEADLINES=""
+HAS_INTERNET=false
 
 # Hooks directory
 HOOKS_DIR=""
@@ -211,6 +215,31 @@ show_header() {
     echo -e "${CYAN}║${NC}${BOLD}  Linux Kodachi ${KODACHI_VERSION} - Privacy & Security OS - ${KODACHI_WEBSITE} | digi77.com    ${NC}${CYAN}║${NC}"
     echo -e "${CYAN}╚══════════════════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
+}
+
+# Simple timing utility - stores duration in OPERATION_TIME global variable
+start_timer() {
+    TIMER_START=$(date +%s 2>/dev/null || echo "0")
+}
+
+end_timer() {
+    local end_time=$(date +%s 2>/dev/null || echo "0")
+    OPERATION_TIME=$((end_time - TIMER_START))
+}
+
+format_duration() {
+    local seconds="$1"
+    if [ "$seconds" -lt 1 ]; then
+        echo "<1s"
+    else
+        echo "${seconds}s"
+    fi
+}
+
+# Function to display section headers
+print_section_header() {
+    local section_name="$1"
+    echo -e "\n${CYAN}═══ ${section_name} ═══${NC}"
 }
 
 # Function to verify hooks directory structure
@@ -633,8 +662,12 @@ setup_dnscrypt() {
             echo -e "${YELLOW}! Fixing DNSCrypt configuration...${NC}"
 
             # Re-configure DNSCrypt as resolver (dns-switch handles systemd-resolved automatically)
-            echo "  • Configuring DNSCrypt as DNS resolver..."
-            run_command dns-switch 50 switch --names dnscrypt >/dev/null 2>&1
+            echo -e "${YELLOW}  • Configuring DNSCrypt as DNS resolver...${NC}"
+            if run_command dns-switch 120 switch --names dnscrypt 2>&1 | tee /tmp/dns-switch.log; then
+                echo -e "${GREEN}  ✓ DNSCrypt configuration fixed${NC}"
+            else
+                echo -e "${RED}  ✗ Failed to fix DNSCrypt (see /tmp/dns-switch.log)${NC}"
+            fi
             sleep 2
 
             # Verify fix worked
@@ -726,13 +759,14 @@ setup_dnscrypt() {
                     # FIRST RUN - START service and set as resolver
                     echo -e "${YELLOW}! DNSCrypt service is not running - starting and setting as resolver (first boot)...${NC}"
 
-                    # Start DNSCrypt service
-                    run_command dns-switch 50 dnscrypt-set >/dev/null 2>&1
+                    # Start and configure DNSCrypt service
+                    echo -e "${YELLOW}  • Starting DNSCrypt service and setting as resolver...${NC}"
+                    if run_command dns-switch 120 switch --names dnscrypt 2>&1 | tee -a /tmp/dns-switch.log; then
+                        echo -e "${GREEN}  ✓ DNSCrypt service started and configured${NC}"
+                    else
+                        echo -e "${RED}  ✗ Failed to start DNSCrypt (see /tmp/dns-switch.log)${NC}"
+                    fi
                     sleep 3
-
-                    # Set DNSCrypt as system resolver
-                    run_command dns-switch 50 switch --names dnscrypt >/dev/null 2>&1
-                    sleep 2
 
                     # Create marker file to indicate DNS has been configured
                     mkdir -p "$(dirname "$DNS_MARKER")"
@@ -769,7 +803,12 @@ setup_dnscrypt() {
                     echo -e "${YELLOW}! Setting DNSCrypt as system resolver (first boot)...${NC}"
 
                     # Set DNSCrypt as system resolver
-                    run_command dns-switch 50 switch --names dnscrypt >/dev/null 2>&1
+                    echo -e "${YELLOW}  • Configuring DNSCrypt resolver...${NC}"
+                    if run_command dns-switch 120 switch --names dnscrypt 2>&1 | tee -a /tmp/dns-switch.log; then
+                        echo -e "${GREEN}  ✓ DNSCrypt resolver configured${NC}"
+                    else
+                        echo -e "${RED}  ✗ Failed to configure DNSCrypt resolver (see /tmp/dns-switch.log)${NC}"
+                    fi
                     sleep 2
 
                     # Create marker file
@@ -886,6 +925,12 @@ verify_tor_dns() {
         echo -e "${GREEN}  ✓ Firewall confirms Tor DNS is configured ($TOR_DNS_FIREWALL_BACKEND)${NC}"
     else
         echo -e "${CYAN}  • Firewall shows Tor DNS is not configured${NC}"
+        # OPTIMIZATION: Skip functional verification if no firewall rules exist
+        # No point running expensive DNS queries when rules aren't configured
+        echo -e "${CYAN}  • Skipping functional verification (no firewall rules detected)${NC}"
+        TOR_DNS_OVERALL_STATUS="false"
+        TOR_DNS_DETAILED=""
+        return 1
     fi
 
     # Perform functional verification with retry logic if firewall shows it should work
@@ -1014,22 +1059,44 @@ check_permission_guard() {
     fi
 }
 
-# Function to fetch latest version
+# Function to fetch latest version and compare with local build
 fetch_latest_version() {
     local RELEASE_JSON=$(run_command online-info-switch 60 releases --json 2>/dev/null)
     local MAIN_VERSION=$(parse_json "$RELEASE_JSON" ".terminal.main_version" || echo "N/A")
     local NIGHTLY_VERSION=$(parse_json "$RELEASE_JSON" ".terminal.nightly_version" || echo "")
 
-    # Build version string - title white, value GREEN (same as PermG:+)
-    if [ "$MAIN_VERSION" != "N/A" ] && [ -n "$MAIN_VERSION" ]; then
-        LATEST_VERSION="Main: ${GREEN}${MAIN_VERSION}${NC}"
+    # Local vs Remote comparison
+    local LOCAL_BUILD="${SCRIPT_VERSION}"  # e.g., "9.0.1.4" (embedded in script)
+    local REMOTE_BUILD="${NIGHTLY_VERSION:-$MAIN_VERSION}"  # Prefer nightly, fallback to main
 
-        # Add nightly version if available
-        if [ -n "$NIGHTLY_VERSION" ] && [ "$NIGHTLY_VERSION" != "null" ]; then
-            LATEST_VERSION="${LATEST_VERSION} | Nbuild: ${GREEN}${NIGHTLY_VERSION}${NC}"
+    # Version comparison and status
+    local VERSION_STATUS=""
+    local VERSION_COLOR="${GREEN}"
+
+    # Compare versions if remote data is available
+    if [ "$REMOTE_BUILD" != "N/A" ] && [ -n "$REMOTE_BUILD" ] && [ "$REMOTE_BUILD" != "null" ]; then
+        # Extract build numbers for comparison (assumes format X.X.X.Y)
+        local LOCAL_NUM=$(echo "$LOCAL_BUILD" | awk -F'.' '{print $4}')
+        local REMOTE_NUM=$(echo "$REMOTE_BUILD" | awk -F'.' '{print $4}')
+
+        if [ -n "$LOCAL_NUM" ] && [ -n "$REMOTE_NUM" ]; then
+            if [ "$LOCAL_NUM" -ge "$REMOTE_NUM" ]; then
+                VERSION_STATUS="✓"  # Up-to-date or ahead
+                VERSION_COLOR="${GREEN}"
+            else
+                VERSION_STATUS="↑"  # Update available
+                VERSION_COLOR="${YELLOW}"
+            fi
+        else
+            VERSION_STATUS="•"  # Cannot compare (fallback)
+            VERSION_COLOR="${GREEN}"
         fi
+
+        # Build comparison display string - compact format to save space
+        LATEST_VERSION="${VERSION_COLOR}${VERSION_STATUS} Build: ${LOCAL_BUILD} | ${REMOTE_BUILD}${NC}"
     else
-        LATEST_VERSION="Main: ${GREEN}N/A${NC}"
+        # Offline or API unavailable
+        LATEST_VERSION="Build: ${GREEN}${LOCAL_BUILD}${NC} | ${RED}Offline${NC}"
     fi
 }
 
@@ -1111,34 +1178,68 @@ fetch_news_headlines() {
 
 # Function to fetch and parse system information
 fetch_system_info() {
-    # Fetch IP information (60s timeout for Tor-friendly operation)
-    IP_JSON=$(run_command ip-fetch 60 --json 2>/dev/null | tail -1)
-    IP_ADDR=$(parse_json "$IP_JSON" ".data.records[0].ip" || echo "N/A")
-    COUNTRY=$(parse_json "$IP_JSON" ".data.records[0].country_name" || echo "N/A")
-    CITY=$(parse_json "$IP_JSON" ".data.records[0].city" || echo "N/A")
-    FLAG=$(parse_json "$IP_JSON" ".data.records[0].flag" || echo "")
+    # SYSTEM INFORMATION section
+    print_section_header "SYSTEM INFORMATION"
 
-    # Fetch Tor status with dynamic color (60s timeout)
-    TOR_CHECK=$(run_command ip-fetch 60 check-tor --json 2>/dev/null)
-    IS_TOR=$(parse_json "$TOR_CHECK" ".IsTor" || echo "false")
-    if [ "$IS_TOR" = "true" ]; then
-        TOR_STATUS="${GREEN}✓ Tor${NC}"       # Bright green when using Tor
+    if [ "$HAS_INTERNET" = "true" ]; then
+        # Fetch IP information (60s timeout for Tor-friendly operation)
+        echo -ne "${YELLOW}▸ Fetching IP geolocation...${NC}"
+        start_timer
+        IP_JSON=$(run_command ip-fetch 60 --json 2>/dev/null | tail -1)
+        IP_ADDR=$(parse_json "$IP_JSON" ".data.records[0].ip" || echo "N/A")
+        COUNTRY=$(parse_json "$IP_JSON" ".data.records[0].country_name" || echo "N/A")
+        CITY=$(parse_json "$IP_JSON" ".data.records[0].city" || echo "N/A")
+        FLAG=$(parse_json "$IP_JSON" ".data.records[0].flag" || echo "")
+        end_timer
+        echo -e " ${GREEN}✓ IP location retrieved${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+
+        # Fetch Tor status with dynamic color (60s timeout)
+        echo -ne "${YELLOW}▸ Checking Tor connection...${NC}"
+        start_timer
+        TOR_CHECK=$(run_command ip-fetch 60 check-tor --json 2>/dev/null)
+        IS_TOR=$(parse_json "$TOR_CHECK" ".IsTor" || echo "false")
+        if [ "$IS_TOR" = "true" ]; then
+            TOR_STATUS="${GREEN}✓ Tor${NC}"       # Bright green when using Tor
+        else
+            TOR_STATUS="${RED}✗ Direct${NC}"      # Red when NOT using Tor
+        fi
+        end_timer
+        echo -e " ${GREEN}✓ Tor status confirmed${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+
+        # Fetch network connection status (50s timeout)
+        # Bright green for VPN, RED for no VPN
+        echo -ne "${YELLOW}▸ Checking VPN status...${NC}"
+        start_timer
+        ROUTING_JSON=$(run_command routing-switch 50 status --json 2>/dev/null)
+        CONNECTED=$(parse_json "$ROUTING_JSON" ".data.connected" || echo "false")
+        PROTOCOL=$(parse_json "$ROUTING_JSON" ".data.protocol" || echo "none")
+        if [ "$CONNECTED" = "true" ]; then
+            NET_STATUS="${GREEN}${PROTOCOL}${NC}"  # Bright green for VPN
+        else
+            NET_STATUS="${RED}No VPN${NC}"
+        fi
+        end_timer
+        echo -e " ${GREEN}✓ VPN status retrieved${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
     else
-        TOR_STATUS="${RED}✗ Direct${NC}"      # Red when NOT using Tor
+        # Offline mode - set placeholders
+        echo -e "${YELLOW}⊘ Skipping IP geolocation (offline mode)${NC}"
+        echo -e "${YELLOW}⊘ Skipping Tor connection check (offline mode)${NC}"
+        echo -e "${YELLOW}⊘ Skipping VPN status check (offline mode)${NC}"
+
+        IP_ADDR="${YELLOW}Offline${NC}"
+        COUNTRY="${YELLOW}N/A${NC}"
+        CITY="${YELLOW}N/A${NC}"
+        FLAG=""
+        TOR_STATUS="${YELLOW}⊘ N/A${NC}"
+        NET_STATUS="${YELLOW}Offline${NC}"
     fi
 
-    # Fetch network connection status (50s timeout)
-    # Bright green for VPN, RED for no VPN
-    ROUTING_JSON=$(run_command routing-switch 50 status --json 2>/dev/null)
-    CONNECTED=$(parse_json "$ROUTING_JSON" ".data.connected" || echo "false")
-    PROTOCOL=$(parse_json "$ROUTING_JSON" ".data.protocol" || echo "none")
-    if [ "$CONNECTED" = "true" ]; then
-        NET_STATUS="${GREEN}${PROTOCOL}${NC}"  # Bright green for VPN
-    else
-        NET_STATUS="${RED}No VPN${NC}"
-    fi
+    # SECURITY VERIFICATION section (always runs - local operations)
+    print_section_header "SECURITY VERIFICATION"
 
     # Fetch hardening verification (50s timeout)
+    echo -ne "${YELLOW}▸ Verifying system hardening...${NC}"
+    start_timer
     HARDENING_JSON=$(run_command health-control 50 security-verify --json 2>/dev/null)
     if check_jq; then
         HARDENED=$(echo "$HARDENING_JSON" | jq '[.data.modules[] | select(.hardening_status == "hardened")] | length' 2>/dev/null || echo "?")
@@ -1148,23 +1249,31 @@ fetch_system_info() {
         TOTAL="?"
     fi
     HARDENING_STATUS="${HARDENED}/${TOTAL} Modules"
+    end_timer
+    echo -e " ${GREEN}✓ Hardening verified${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
 
     # Fetch security score (50s timeout)
+    echo -ne "${YELLOW}▸ Calculating security score...${NC}"
+    start_timer
     SCORE_JSON=$(run_command health-control 50 security-score --json 2>/dev/null)
     SEC_SCORE=$(parse_json "$SCORE_JSON" ".data.total_score" || echo "N/A")
     SEC_STATUS=$(parse_json "$SCORE_JSON" ".data.security_level" || echo "UNKNOWN")
+    end_timer
+    echo -e " ${GREEN}✓ Score calculated${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
 
-    # Fetch hostname (30s timeout - local call)
+    # Fetch hostname, timezone, and MAC (30s timeout - local calls)
+    echo -ne "${YELLOW}▸ Reading system configuration...${NC}"
+    start_timer
     HOST_JSON=$(run_command health-control 30 get-hostname --json 2>/dev/null)
     HOSTNAME=$(parse_json "$HOST_JSON" ".data.hostname" || echo "N/A")
 
-    # Fetch timezone (30s timeout - local call)
     TZ_JSON=$(run_command health-control 30 show-timezone --json 2>/dev/null)
     TIMEZONE=$(parse_json "$TZ_JSON" ".data.timezone" || echo "N/A")
 
-    # Fetch MAC address (30s timeout - local call)
     MAC_JSON=$(run_command health-control 30 mac-show-macs --json 2>/dev/null)
     MAC_ADDR=$(parse_json "$MAC_JSON" ".data.interfaces[0].mac_address" || echo "N/A")
+    end_timer
+    echo -e " ${GREEN}✓ Configuration loaded${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
 
     # Store status
     INFO_STATUS="${GREEN}[Net:+]${NC}"
@@ -1621,59 +1730,141 @@ main() {
     # Print build signature once at start
     echo -e "${CYAN}▸ Welcome Script v${SCRIPT_VERSION} | Build: ${BUILD_DATE} | Runtime: $(date '+%Y-%m-%d %H:%M:%S')${NC}"
     echo -e "${CYAN}▸ You can stop this script anytime by pressing ${BOLD}Ctrl+C${NC}${CYAN} keys${NC}"
-    echo ""
+
+    # SYSTEM INITIALIZATION section
+    print_section_header "SYSTEM INITIALIZATION"
 
     # Ensure installed GRUB menu shows Kodachi branding
+    echo -ne "${YELLOW}▸ Ensuring GRUB theme...${NC}"
+    start_timer
     ensure_grub_theme
+    end_timer
+    echo -e " ${GREEN}✓ Theme configured${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
 
     # Deploy binaries (detect_hooks_dir will print status)
+    echo -ne "${YELLOW}▸ Deploying binaries...${NC}"
+    start_timer
     deploy_binaries
+    end_timer
+    echo -e " ${GREEN}✓ Deployed successfully${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
 
     # Sleep to ensure internet connectivity is established
-    echo -e "${YELLOW}▸ Waiting for network (5s)...${NC}"
+    echo -ne "${YELLOW}▸ Waiting for network (5s)...${NC}"
+    start_timer
     sleep 5
+    end_timer
+    echo -e " ${GREEN}✓ Network ready${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+
+    # Check internet connectivity using health-control
+    echo -ne "${YELLOW}▸ Checking internet connectivity...${NC}"
+    start_timer
+    CONNECTIVITY_CHECK=$(run_command health-control 30 net-check --domain-only --json 2>/dev/null)
+    DOMAIN_CONNECTIVITY=$(parse_json "$CONNECTIVITY_CHECK" ".domain_connectivity")
+    end_timer
+
+    if [ "$DOMAIN_CONNECTIVITY" = "true" ]; then
+        echo -e " ${GREEN}✓ Internet available${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+        HAS_INTERNET=true
+    else
+        echo -e " ${YELLOW}⊘ Offline mode detected${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+        HAS_INTERNET=false
+    fi
 
     # Check authentication status and attempt login if needed
-    echo -e "${YELLOW}▸ Checking authentication status...${NC}"
-    LOGIN_CHECK=$(run_command online-auth 50 check-login --json 2>/dev/null)
-    IS_LOGGED_IN=$(parse_json "$LOGIN_CHECK" ".data.is_logged_in")
+    if [ "$HAS_INTERNET" = "true" ]; then
+        echo -ne "${YELLOW}▸ Checking authentication status...${NC}"
+        start_timer
+        LOGIN_CHECK=$(run_command online-auth 50 check-login --json 2>/dev/null)
+        IS_LOGGED_IN=$(parse_json "$LOGIN_CHECK" ".data.is_logged_in")
+        end_timer
 
-    if [ "$IS_LOGGED_IN" = "true" ]; then
-        echo -e "${GREEN}✓ Already authenticated${NC}"
-        AUTH_STATUS="${GREEN}[Auth:+]${NC}"
-
-        # Authenticated - use DNSCrypt (requires auth)
-        echo -e "${YELLOW}▸ Configuring DNSCrypt...${NC}"
-        setup_dnscrypt
-    else
-        echo -e "${YELLOW}! Not authenticated - attempting login...${NC}"
-
-        # Attempt authentication immediately
-        if authenticate; then
-            echo -e "${GREEN}✓ Authentication successful${NC}"
+        if [ "$IS_LOGGED_IN" = "true" ]; then
+            echo -e " ${GREEN}✓ Already authenticated${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
             AUTH_STATUS="${GREEN}[Auth:+]${NC}"
 
             # Authenticated - use DNSCrypt (requires auth)
-            echo -e "${YELLOW}▸ Configuring DNSCrypt...${NC}"
+            echo -ne "${YELLOW}▸ Configuring DNSCrypt...${NC}"
+            start_timer
             setup_dnscrypt
+            end_timer
+            echo -e " ${GREEN}✓ DNSCrypt configured${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
         else
-            echo -e "${RED}! Authentication failed - using fallback DNS${NC}"
-            AUTH_STATUS="${RED}[Auth:✗]${NC}"
+            echo -e " ${YELLOW}! Not authenticated${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+            echo -e "${YELLOW}  Attempting login...${NC}"
 
-            # Not authenticated - use fallback DNS (no auth required)
-            echo -e "${YELLOW}▸ Configuring fallback DNS...${NC}"
-            run_command dns-switch 50 fallback >/dev/null 2>&1
+            # Attempt authentication immediately
+            start_timer
+            if authenticate; then
+                end_timer
+                echo -e "${GREEN}✓ Authentication successful${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+                AUTH_STATUS="${GREEN}[Auth:+]${NC}"
 
-            # Set DNS status message for fallback
-            DNS_STATUS_MSG="${YELLOW}[SDNS:Fallback]${NC}"
+                # Authenticated - use DNSCrypt (requires auth)
+                echo -ne "${YELLOW}▸ Configuring DNSCrypt...${NC}"
+                start_timer
+                setup_dnscrypt
+                end_timer
+                echo -e " ${GREEN}✓ DNSCrypt configured${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+            else
+                end_timer
+                echo -e "${RED}! Authentication failed - using fallback DNS${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+                AUTH_STATUS="${RED}[Auth:✗]${NC}"
+
+                # Not authenticated - use fallback DNS (no auth required)
+                run_command dns-switch 50 fallback >/dev/null 2>&1
+
+                # Set DNS status message for fallback
+                DNS_STATUS_MSG="${YELLOW}[SDNS:Fallback]${NC}"
+            fi
         fi
+    else
+        # Offline mode - skip authentication
+        echo -e "${YELLOW}⊘ Skipping authentication (offline mode)${NC}"
+        echo -e "${CYAN}  • Using local DNS configuration${NC}"
+        AUTH_STATUS="${YELLOW}[Auth:⊘]${NC}"
+        DNS_STATUS_MSG="${YELLOW}[DNS:Local]${NC}"
+
+        # Query local DNS (doesn't require internet)
+        echo -ne "${YELLOW}▸ Detecting DNS configuration...${NC}"
+        start_timer
+        DNS_STATUS=$(run_command dns-switch 30 status --json 2>/dev/null)
+
+        if check_jq; then
+            NAMESERVERS=$(echo "$DNS_STATUS" | jq -r '.data.nameservers[]' 2>/dev/null | tr '\n' ', ' | sed 's/, $//')
+        else
+            NAMESERVERS="Unknown"
+        fi
+
+        # Detect DNS type (simplified for offline mode)
+        if echo "$NAMESERVERS" | grep -q "127.0.0.1"; then
+            # Check if DNSCrypt or Tor DNS
+            DNSCRYPT_CHECK=$(run_command dns-switch 30 dnscrypt --json 2>/dev/null)
+            DNSCRYPT_ACTIVE=$(parse_json "$DNSCRYPT_CHECK" ".data.service_active" || echo "false")
+
+            if [ "$DNSCRYPT_ACTIVE" = "true" ]; then
+                ACTUAL_DNS_MODE="127.0.0.1 (DNSCrypt)"
+            else
+                # Could be Tor DNS - simplified check without full verification
+                ACTUAL_DNS_MODE="127.0.0.1 (Local)"
+            fi
+        else
+            ACTUAL_DNS_MODE="$NAMESERVERS"
+        fi
+
+        end_timer
+        echo -e " ${GREEN}✓ DNS detected${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
     fi
 
-    # Synchronize system time using multiple methods (first success wins)
-    echo -e "${YELLOW}▸ Synchronizing system time...${NC}"
+    # TIME SYNCHRONIZATION section
+    print_section_header "TIME SYNCHRONIZATION"
 
-    # Track if at least one sync succeeded
-    any_sync_succeeded=false
+    if [ "$HAS_INTERNET" = "true" ]; then
+        # Synchronize system time using multiple methods (first success wins)
+        echo -ne "${YELLOW}▸ Synchronizing system time...${NC}"
+        start_timer
+
+        # Track if at least one sync succeeded
+        any_sync_succeeded=false
 
     # Method 1: ntpdig with time.cloudflare.com (PRIORITY - privacy-focused, most accurate)
     if ! $any_sync_succeeded; then
@@ -1738,34 +1929,68 @@ main() {
         fi
     fi
 
-    # Report accurate status based on actual results
-    if [ "$any_sync_succeeded" = "true" ]; then
-        echo -e "${GREEN}✓ Time sync completed${NC}"
-        TIME_SYNC_STATUS="${GREEN}[TSync:+]${NC}"
+        # Report accurate status based on actual results
+        end_timer
+        if [ "$any_sync_succeeded" = "true" ]; then
+            echo -e " ${GREEN}✓ Time sync completed${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+            TIME_SYNC_STATUS="${GREEN}[TSync:+]${NC}"
+        else
+            echo -e " ${YELLOW}! Time sync attempted (may need manual verification)${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+            TIME_SYNC_STATUS="${YELLOW}[TSync:~]${NC}"
+        fi
     else
-        echo -e "${YELLOW}! Time sync attempted (may need manual verification)${NC}"
-        TIME_SYNC_STATUS="${YELLOW}[TSync:~]${NC}"
+        # Offline mode - skip time synchronization
+        echo -e "${YELLOW}⊘ Skipping time synchronization (offline mode)${NC}"
+        echo -e "${CYAN}  • System time: $(date '+%Y-%m-%d %H:%M:%S')${NC}"
+        TIME_SYNC_STATUS="${YELLOW}[TSync:⊘]${NC}"
     fi
 
     # Authentication already attempted before time sync - no retry needed
 
-    # Fetch system information
-    echo -e "${YELLOW}▸ Fetching system data...${NC}"
+    # Fetch system information (individual operations show their own timing)
     fetch_system_info
 
-    # Count profiles, logs, and binaries
+    # Count profiles, logs, and binaries (silent operation)
+    start_timer
     count_profiles
     count_logs
     count_binaries
+    end_timer
 
     # Check permission guard status
     check_permission_guard
 
-    # Fetch online data
-    echo -e "${YELLOW}▸ Fetching online data...${NC}"
-    fetch_latest_version
-    fetch_crypto_prices
-    fetch_news_headlines
+    # ONLINE DATA RETRIEVAL section
+    print_section_header "ONLINE DATA RETRIEVAL"
+
+    if [ "$HAS_INTERNET" = "true" ]; then
+        # Fetch online data (show each item being fetched)
+        echo -ne "${YELLOW}▸ Fetching latest version info...${NC}"
+        start_timer
+        fetch_latest_version
+        end_timer
+        echo -e " ${GREEN}✓ Version retrieved${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+
+        echo -ne "${YELLOW}▸ Fetching cryptocurrency prices...${NC}"
+        start_timer
+        fetch_crypto_prices
+        end_timer
+        echo -e " ${GREEN}✓ Prices retrieved${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+
+        echo -ne "${YELLOW}▸ Fetching news headlines...${NC}"
+        start_timer
+        fetch_news_headlines
+        end_timer
+        echo -e " ${GREEN}✓ Headlines retrieved${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+    else
+        # Offline mode - skip online data retrieval
+        echo -e "${YELLOW}⊘ Skipping online data retrieval (offline mode)${NC}"
+
+        # Set offline placeholders
+        LATEST_VERSION="Build: ${GREEN}${SCRIPT_VERSION}${NC} | ${YELLOW}Offline${NC}"
+        CRYPTO_PRICES="${YELLOW}Crypto prices unavailable (offline)${NC}"
+        NEWS_HEADLINES="${YELLOW}No news available (offline)${NC}"
+    fi
 
     echo -e "${GREEN}✓ All checks complete!${NC}"
     sleep 0.5
@@ -1805,15 +2030,30 @@ main() {
             echo -e "${CYAN}▸ Auto-refresh triggered (${timeout_minutes} minutes elapsed)${NC}"
             echo -e "${CYAN}▸ Refreshing system data...${NC}"
 
-            # Re-fetch all dynamic data
+            # Re-check internet connectivity
+            CONNECTIVITY_CHECK=$(run_command health-control 30 net-check --domain-only --json 2>/dev/null)
+            DOMAIN_CONNECTIVITY=$(parse_json "$CONNECTIVITY_CHECK" ".domain_connectivity")
+            if [ "$DOMAIN_CONNECTIVITY" = "true" ]; then
+                HAS_INTERNET=true
+            else
+                HAS_INTERNET=false
+            fi
+
+            # Re-fetch dynamic data (respects offline mode)
             fetch_system_info
             count_profiles
             count_logs
             count_binaries
             check_permission_guard
-            fetch_latest_version
-            fetch_crypto_prices
-            fetch_news_headlines
+
+            # Only fetch online data if internet is available
+            if [ "$HAS_INTERNET" = "true" ]; then
+                fetch_latest_version
+                fetch_crypto_prices
+                fetch_news_headlines
+            else
+                echo -e "${YELLOW}⊘ Still offline - skipping online operations${NC}"
+            fi
 
             echo -e "${GREEN}+ Auto-refresh complete!${NC}"
             sleep 0.5
@@ -1854,16 +2094,33 @@ main() {
             echo ""
             echo -e "${CYAN}▸ Refreshing system data...${NC}"
 
-            # Re-fetch all dynamic data
-            setup_dnscrypt  # Re-detect DNS configuration
+            # Re-check internet connectivity
+            CONNECTIVITY_CHECK=$(run_command health-control 30 net-check --domain-only --json 2>/dev/null)
+            DOMAIN_CONNECTIVITY=$(parse_json "$CONNECTIVITY_CHECK" ".domain_connectivity")
+            if [ "$DOMAIN_CONNECTIVITY" = "true" ]; then
+                HAS_INTERNET=true
+            else
+                HAS_INTERNET=false
+            fi
+
+            # Re-fetch dynamic data (respects offline mode)
+            if [ "$HAS_INTERNET" = "true" ]; then
+                setup_dnscrypt  # Re-detect DNS configuration (requires internet)
+            fi
             fetch_system_info
             count_profiles
             count_logs
             count_binaries
             check_permission_guard
-            fetch_latest_version
-            fetch_crypto_prices
-            fetch_news_headlines
+
+            # Only fetch online data if internet is available
+            if [ "$HAS_INTERNET" = "true" ]; then
+                fetch_latest_version
+                fetch_crypto_prices
+                fetch_news_headlines
+            else
+                echo -e "${YELLOW}⊘ Still offline - skipping online operations${NC}"
+            fi
 
             echo -e "${GREEN}+ Data refresh complete!${NC}"
             sleep 0.5
