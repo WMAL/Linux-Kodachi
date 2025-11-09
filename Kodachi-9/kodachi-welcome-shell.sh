@@ -67,7 +67,7 @@ done
 # DO NOT EDIT MANUALLY - Run pack-kodachi.sh to update these values
 BUILD_VERSION="9.0.1"  # From: terminal.main_version
 BUILD_NUM="4"          # From: terminal.build_number (auto-incremented)
-BUILD_DATE="2025-11-09"  # From: terminal.last_build_date
+BUILD_DATE="2025-11-10"  # From: terminal.last_build_date
 SCRIPT_VERSION="${BUILD_VERSION}.${BUILD_NUM}"
 
 # Color codes for compact display (optimized for black terminal)
@@ -173,12 +173,12 @@ ensure_grub_theme() {
     if [ $needs_fix -eq 1 ]; then
         echo -e "${CYAN}▸ Restoring Kodachi GRUB theme...${NC}"
         if sudo "$helper" >/tmp/kodachi-grub-theme.log 2>&1; then
-            echo -e "${GREEN}✓ GRUB theme synchronized${NC}"
+            echo -e "${GREEN}+ GRUB theme synchronized${NC}"
         else
             echo -e "${YELLOW}! Unable to apply GRUB theme (see /tmp/kodachi-grub-theme.log)${NC}"
         fi
     else
-        echo -e "${GREEN}✓ GRUB theme already applied${NC}"
+        echo -e "${GREEN}+ GRUB theme already applied${NC}"
     fi
 }
 
@@ -307,7 +307,7 @@ search_binaries_in_home() {
         # If we found a good match (5+ binaries), use it immediately
         if [ -n "$best_dir" ] && [ $best_count -ge 5 ]; then
             HOOKS_DIR="$best_dir"
-            echo -e "${GREEN}✓ Found binaries at: ${HOOKS_DIR}${NC}"
+            echo -e "${GREEN}+ Found binaries at: ${HOOKS_DIR}${NC}"
             return 0
         fi
     done
@@ -315,7 +315,7 @@ search_binaries_in_home() {
     # If we found any valid directory (even with fewer binaries), use it
     if [ -n "$best_dir" ] && [ $best_count -ge 3 ]; then
         HOOKS_DIR="$best_dir"
-        echo -e "${GREEN}✓ Found binaries at: ${HOOKS_DIR}${NC}"
+        echo -e "${GREEN}+ Found binaries at: ${HOOKS_DIR}${NC}"
         return 0
     fi
 
@@ -350,7 +350,7 @@ search_binaries_in_home() {
 
     if [ -n "$best_dir" ] && [ $best_count -ge 3 ]; then
         HOOKS_DIR="$best_dir"
-        echo -e "${GREEN}✓ Found binaries at: ${HOOKS_DIR}${NC}"
+        echo -e "${GREEN}+ Found binaries at: ${HOOKS_DIR}${NC}"
         return 0
     fi
 
@@ -371,7 +371,7 @@ search_binaries_in_home() {
 
             if verify_hooks_structure "$binary_dir"; then
                 HOOKS_DIR="$binary_dir"
-                echo -e "${GREEN}✓ Found binaries at: ${HOOKS_DIR}${NC}"
+                echo -e "${GREEN}+ Found binaries at: ${HOOKS_DIR}${NC}"
                 return 0
             fi
         fi
@@ -389,7 +389,7 @@ detect_hooks_dir() {
     # Check current directory first
     if [ -f "./global-launcher" ] && verify_hooks_structure "."; then
         HOOKS_DIR="$(pwd)"
-        echo -e "${GREEN}✓ Found binaries at: ${HOOKS_DIR}${NC}"
+        echo -e "${GREEN}+ Found binaries at: ${HOOKS_DIR}${NC}"
         return 0
     fi
 
@@ -437,7 +437,7 @@ deploy_binaries() {
     if ! detect_hooks_dir; then
         # No hooks directory found - this is normal for ISO users!
         # Binaries are installed system-wide in /usr/local/bin
-        echo -e "${GREEN}✓ Using system-wide binaries${NC}"
+        echo -e "${GREEN}+ Using system-wide binaries${NC}"
         DEPLOY_STATUS="${GREEN}[GDeploy:N/A]${NC}"
         return 0
     fi
@@ -466,7 +466,7 @@ deploy_binaries() {
 
             # Validate we got a count
             if [ -n "$count" ] && [ "$count" -gt 0 ]; then
-                echo -e "${GREEN}  ✓ Already deployed ($count binaries verified)${NC}"
+                echo -e "${GREEN}  + Already deployed ($count binaries verified)${NC}"
                 DEPLOY_STATUS="${GREEN}[GDeploy:+]${NC}"
                 rm -f /tmp/verify-check.json
                 return 0
@@ -493,12 +493,12 @@ deploy_binaries() {
                 # Check if jq actually returned values (not null/empty)
                 if [ -n "$verified" ] && [ -n "$count" ] && [ -n "$broken" ]; then
                     if [ "$verified" = "true" ] && [ "$count" -gt 0 ] && [ "$broken" = "0" ]; then
-                        echo -e "${GREEN}  ✓ Deployment successful ($count/$count binaries verified)${NC}"
+                        echo -e "${GREEN}  + Deployment successful ($count/$count binaries verified)${NC}"
                         DEPLOY_STATUS="${GREEN}[GDeploy:+]${NC}"
                         rm -f /tmp/verify-result.json /tmp/deploy-output.txt /tmp/verify-check.json
                         return 0
                     else
-                        echo -e "${RED}  ✗ Verification failed ($count verified, $broken broken)${NC}"
+                        echo -e "${RED}  - Verification failed ($count verified, $broken broken)${NC}"
                         echo -e "${YELLOW}  ! Falling back to local execution from hooks directory${NC}"
                         DEPLOY_STATUS="${YELLOW}[GDeploy:Local]${NC}"
                         rm -f /tmp/verify-result.json /tmp/deploy-output.txt /tmp/verify-check.json
@@ -507,12 +507,12 @@ deploy_binaries() {
                 else
                     # jq returned null/empty - fallback to grep
                     if grep -q '"verification_success":true' /tmp/verify-result.json 2>/dev/null; then
-                        echo -e "${GREEN}  ✓ Deployment successful (verified via grep)${NC}"
+                        echo -e "${GREEN}  + Deployment successful (verified via grep)${NC}"
                         DEPLOY_STATUS="${GREEN}[GDeploy:+]${NC}"
                         rm -f /tmp/verify-result.json /tmp/deploy-output.txt /tmp/verify-check.json
                         return 0
                     else
-                        echo -e "${RED}  ✗ Verification parsing failed${NC}"
+                        echo -e "${RED}  - Verification parsing failed${NC}"
                         echo -e "${YELLOW}  ! Falling back to local execution from hooks directory${NC}"
                         DEPLOY_STATUS="${YELLOW}[GDeploy:Local]${NC}"
                         rm -f /tmp/verify-result.json /tmp/deploy-output.txt /tmp/verify-check.json
@@ -522,12 +522,12 @@ deploy_binaries() {
             else
                 # No jq - check if verify command succeeded
                 if grep -q '"verification_success":true' /tmp/verify-result.json 2>/dev/null; then
-                    echo -e "${GREEN}  ✓ Deployment successful${NC}"
+                    echo -e "${GREEN}  + Deployment successful${NC}"
                     DEPLOY_STATUS="${GREEN}[GDeploy:+]${NC}"
                     rm -f /tmp/verify-result.json /tmp/deploy-output.txt /tmp/verify-check.json
                     return 0
                 else
-                    echo -e "${RED}  ✗ Verification failed${NC}"
+                    echo -e "${RED}  - Verification failed${NC}"
                     echo -e "${YELLOW}  ! Falling back to local execution from hooks directory${NC}"
                     DEPLOY_STATUS="${YELLOW}[GDeploy:Local]${NC}"
                     rm -f /tmp/verify-result.json /tmp/deploy-output.txt /tmp/verify-check.json
@@ -535,7 +535,7 @@ deploy_binaries() {
                 fi
             fi
         else
-            echo -e "${RED}  ✗ Verification command failed${NC}"
+            echo -e "${RED}  - Verification command failed${NC}"
             echo -e "${YELLOW}  ! Falling back to local execution from hooks directory${NC}"
             DEPLOY_STATUS="${YELLOW}[GDeploy:Local]${NC}"
             rm -f /tmp/verify-result.json /tmp/deploy-output.txt /tmp/verify-check.json
@@ -543,7 +543,7 @@ deploy_binaries() {
         fi
     else
         # Deployment failed
-        echo -e "${RED}  ✗ Deployment failed${NC}"
+        echo -e "${RED}  - Deployment failed${NC}"
         if [ -f /tmp/deploy-output.txt ]; then
             echo -e "${YELLOW}  ! Error: $(cat /tmp/deploy-output.txt | head -1)${NC}"
         fi
@@ -578,8 +578,8 @@ authenticate() {
         return 0
     else
         # Failed - print error immediately
-        echo -e "${RED}✗ Authentication FAILED - Not logged in${NC}"
-        AUTH_STATUS="${RED}[Auth:✗]${NC}"
+        echo -e "${RED}- Authentication FAILED - Not logged in${NC}"
+        AUTH_STATUS="${RED}[Auth:-]${NC}"
         return 1
     fi
 }
@@ -596,9 +596,9 @@ setup_dnscrypt() {
     if [ ! -f "$DNS_MARKER" ] || [ "$FORCE_DNS_SETUP" = "true" ]; then
         IS_FIRST_RUN=true
         if [ "$FORCE_DNS_SETUP" = "true" ]; then
-            echo -e "${GREEN}✓ Force DNS setup enabled - reconfiguring DNSCrypt${NC}"
+            echo -e "${GREEN}+ Force DNS setup enabled - reconfiguring DNSCrypt${NC}"
         else
-            echo -e "${GREEN}✓ First boot detected - will configure DNSCrypt if needed${NC}"
+            echo -e "${GREEN}+ First boot detected - will configure DNSCrypt if needed${NC}"
         fi
     else
         echo -e "${CYAN}  • Not first boot - skipping DNSCrypt auto-configuration${NC}"
@@ -638,9 +638,9 @@ setup_dnscrypt() {
 
         # Handle empty nameservers
         if [ -z "$NAMESERVERS" ]; then
-            echo -e "${RED}  ✗ Failed to detect DNS servers${NC}"
+            echo -e "${RED}  - Failed to detect DNS servers${NC}"
             ACTUAL_DNS_MODE="Unknown"
-            DNS_STATUS_MSG="${RED}[SDNS:✗]${NC}"
+            DNS_STATUS_MSG="${RED}[SDNS:-]${NC}"
             # Don't return yet - will retry
             attempt=$((attempt + 1))
             continue
@@ -664,9 +664,9 @@ setup_dnscrypt() {
             # Re-configure DNSCrypt as resolver (dns-switch handles systemd-resolved automatically)
             echo -e "${YELLOW}  • Configuring DNSCrypt as DNS resolver...${NC}"
             if run_command dns-switch 120 switch --names dnscrypt 2>&1 | tee /tmp/dns-switch.log; then
-                echo -e "${GREEN}  ✓ DNSCrypt configuration fixed${NC}"
+                echo -e "${GREEN}  + DNSCrypt configuration fixed${NC}"
             else
-                echo -e "${RED}  ✗ Failed to fix DNSCrypt (see /tmp/dns-switch.log)${NC}"
+                echo -e "${RED}  - Failed to fix DNSCrypt (see /tmp/dns-switch.log)${NC}"
             fi
             sleep 2
 
@@ -675,9 +675,9 @@ setup_dnscrypt() {
             CONFIGURED_AS_RESOLVER=$(parse_json "$DNSCRYPT_CHECK" ".data.configured_as_resolver")
 
             if [ "$CONFIGURED_AS_RESOLVER" = "true" ]; then
-                echo -e "${GREEN}  ✓ DNSCrypt successfully configured as resolver${NC}"
+                echo -e "${GREEN}  + DNSCrypt successfully configured as resolver${NC}"
             else
-                echo -e "${RED}  ✗ Failed to configure DNSCrypt as resolver${NC}"
+                echo -e "${RED}  - Failed to configure DNSCrypt as resolver${NC}"
             fi
 
             # Update NAMESERVERS for display
@@ -702,7 +702,7 @@ setup_dnscrypt() {
                 # Tor DNS is active and both methods successful - GREEN
                 # Show detailed status only when fully working
                 ACTUAL_DNS_MODE="(Tor DNS) ${TOR_DNS_DETAILED}"
-                DNS_STATUS_MSG="${GREEN}[SDNS:Tor:✓✓]${NC}"
+                DNS_STATUS_MSG="${GREEN}[SDNS:Tor:++]${NC}"
                 return 0
             fi
 
@@ -723,7 +723,7 @@ setup_dnscrypt() {
                [ "$CONFIGURED_AS_RESOLVER" = "true" ] && \
                [ "$LISTENING" = "true" ]; then
                 # DNSCrypt is fully operational
-                echo -e "${GREEN}  ✓ DNSCrypt is fully operational${NC}"
+                echo -e "${GREEN}  + DNSCrypt is fully operational${NC}"
 
                 # Create marker file if it doesn't exist
                 if [ ! -f "$DNS_MARKER" ]; then
@@ -735,12 +735,39 @@ setup_dnscrypt() {
                 DNS_STATUS_MSG="${GREEN}[SDNS:+]${NC}"
                 return 0
             else
-                # 127.0.0.1 configured but neither Tor DNS nor DNSCrypt working
-                ACTUAL_DNS_MODE="127.0.0.1 (service not running)"
-                DNS_STATUS_MSG="${RED}[SDNS:✗]${NC}"
-                # Don't return yet - will retry
-                attempt=$((attempt + 1))
-                continue
+                # 127.0.0.1 configured but DNSCrypt not fully operational
+                # Check if DNSCrypt is configured but service not running
+                if [ "$SERVICE_ACTIVE" = "false" ] && [ "$CONFIGURED_AS_RESOLVER" = "true" ]; then
+                    if [ "$IS_FIRST_RUN" = "true" ]; then
+                        # FIRST BOOT - Auto-start DNSCrypt
+                        echo -e "${YELLOW}! DNSCrypt configured but not running - starting service (first boot)...${NC}"
+                        echo -e "${YELLOW}  • Starting DNSCrypt service...${NC}"
+
+                        if run_command dns-switch 120 switch --names dnscrypt 2>&1 | tee -a /tmp/dns-switch.log; then
+                            echo -e "${GREEN}  + DNSCrypt service started${NC}"
+                        else
+                            echo -e "${RED}  - Failed to start DNSCrypt (see /tmp/dns-switch.log)${NC}"
+                        fi
+                        sleep 3
+
+                        # Retry to verify it worked
+                        attempt=$((attempt + 1))
+                        continue
+                    else
+                        # SUBSEQUENT BOOT - Do not auto-start, just report
+                        echo -e "${CYAN}  • DNSCrypt service is stopped (not first boot - skipping auto-start)${NC}"
+                        ACTUAL_DNS_MODE="127.0.0.1 (DNSCrypt stopped)"
+                        DNS_STATUS_MSG="${RED}[SDNS:Stopped]${NC}"
+                        return 0
+                    fi
+                else
+                    # Some other DNSCrypt issue (not just stopped service)
+                    ACTUAL_DNS_MODE="127.0.0.1 (service not running)"
+                    DNS_STATUS_MSG="${RED}[SDNS:-]${NC}"
+                    # Don't return yet - will retry
+                    attempt=$((attempt + 1))
+                    continue
+                fi
             fi
         else
             # NAMESERVERS is not 127.0.0.1 - check if DNSCrypt service is running
@@ -756,15 +783,15 @@ setup_dnscrypt() {
 
             if [ "$SERVICE_ACTIVE" = "false" ]; then
                 if [ "$IS_FIRST_RUN" = "true" ]; then
-                    # FIRST RUN - START service and set as resolver
-                    echo -e "${YELLOW}! DNSCrypt service is not running - starting and setting as resolver (first boot)...${NC}"
+                    # FIRST BOOT - Auto-start DNSCrypt
+                    echo -e "${YELLOW}! DNSCrypt service is not running - starting service (first boot)...${NC}"
 
                     # Start and configure DNSCrypt service
                     echo -e "${YELLOW}  • Starting DNSCrypt service and setting as resolver...${NC}"
                     if run_command dns-switch 120 switch --names dnscrypt 2>&1 | tee -a /tmp/dns-switch.log; then
-                        echo -e "${GREEN}  ✓ DNSCrypt service started and configured${NC}"
+                        echo -e "${GREEN}  + DNSCrypt service started and configured${NC}"
                     else
-                        echo -e "${RED}  ✗ Failed to start DNSCrypt (see /tmp/dns-switch.log)${NC}"
+                        echo -e "${RED}  - Failed to start DNSCrypt (see /tmp/dns-switch.log)${NC}"
                     fi
                     sleep 3
 
@@ -776,18 +803,17 @@ setup_dnscrypt() {
                     attempt=$((attempt + 1))
                     continue
                 else
-                    # SUBSEQUENT RUN - just report, don't auto-configure DNSCrypt
-                    echo -e "${CYAN}  • Skipping DNSCrypt auto-configuration (not first boot)${NC}"
-                    echo -e "${YELLOW}! DNSCrypt service is not running${NC}"
+                    # SUBSEQUENT BOOT - Do not auto-start, just report and check alternatives
+                    echo -e "${CYAN}  • DNSCrypt service is stopped (not first boot - skipping auto-start)${NC}"
 
-                    # Always check if Tor DNS is available as alternative
+                    # Check if Tor DNS is available as alternative
                     echo -e "${CYAN}  • Checking if Tor DNS is available...${NC}"
                     verify_tor_dns
 
                     if [ "$TOR_DNS_OVERALL_STATUS" = "true" ]; then
                         # Tor DNS is working - show it with green status
                         ACTUAL_DNS_MODE="(Tor DNS) ${TOR_DNS_DETAILED}"
-                        DNS_STATUS_MSG="${GREEN}[SDNS:Tor:✓✓]${NC}"
+                        DNS_STATUS_MSG="${GREEN}[SDNS:Tor:++]${NC}"
                         return 0
                     else
                         # No Tor DNS - show actual DNS servers
@@ -797,48 +823,26 @@ setup_dnscrypt() {
                     fi
                 fi
             elif [ "$SERVICE_ACTIVE" = "true" ] && [ "$LISTENING" = "true" ] && [ "$CONFIGURED_AS_RESOLVER" != "true" ]; then
-                if [ "$IS_FIRST_RUN" = "true" ]; then
-                    # FIRST RUN - DNSCrypt running but not set as resolver - SET IT!
-                    echo -e "${YELLOW}! DNSCrypt running but not set as resolver (DNS: $NAMESERVERS)${NC}"
-                    echo -e "${YELLOW}! Setting DNSCrypt as system resolver (first boot)...${NC}"
+                # DNSCrypt running but not set as resolver - AUTO-RECOVER by setting it
+                echo -e "${YELLOW}! DNSCrypt running but not set as resolver (DNS: $NAMESERVERS)${NC}"
+                echo -e "${YELLOW}! Auto-recovering by setting DNSCrypt as system resolver...${NC}"
 
-                    # Set DNSCrypt as system resolver
-                    echo -e "${YELLOW}  • Configuring DNSCrypt resolver...${NC}"
-                    if run_command dns-switch 120 switch --names dnscrypt 2>&1 | tee -a /tmp/dns-switch.log; then
-                        echo -e "${GREEN}  ✓ DNSCrypt resolver configured${NC}"
-                    else
-                        echo -e "${RED}  ✗ Failed to configure DNSCrypt resolver (see /tmp/dns-switch.log)${NC}"
-                    fi
-                    sleep 2
-
-                    # Create marker file
-                    mkdir -p "$(dirname "$DNS_MARKER")"
-                    touch "$DNS_MARKER"
-
-                    # Retry to verify it worked
-                    attempt=$((attempt + 1))
-                    continue
+                # Set DNSCrypt as system resolver
+                echo -e "${YELLOW}  • Configuring DNSCrypt resolver...${NC}"
+                if run_command dns-switch 120 switch --names dnscrypt 2>&1 | tee -a /tmp/dns-switch.log; then
+                    echo -e "${GREEN}  + DNSCrypt resolver configured${NC}"
                 else
-                    # SUBSEQUENT RUN - just report
-                    echo -e "${CYAN}  • Skipping DNSCrypt auto-configuration (not first boot)${NC}"
-                    echo -e "${YELLOW}! DNSCrypt running but not set as resolver${NC}"
-
-                    # Always check if Tor DNS is available as alternative
-                    echo -e "${CYAN}  • Checking if Tor DNS is available...${NC}"
-                    verify_tor_dns
-
-                    if [ "$TOR_DNS_OVERALL_STATUS" = "true" ]; then
-                        # Tor DNS is working - show it with green status
-                        ACTUAL_DNS_MODE="(Tor DNS) ${TOR_DNS_DETAILED}"
-                        DNS_STATUS_MSG="${GREEN}[SDNS:Tor:✓✓]${NC}"
-                        return 0
-                    else
-                        # No Tor DNS - show actual DNS servers
-                        ACTUAL_DNS_MODE="$NAMESERVERS"
-                        DNS_STATUS_MSG="${YELLOW}[SDNS:Direct]${NC}"
-                        return 0
-                    fi
+                    echo -e "${RED}  - Failed to configure DNSCrypt resolver (see /tmp/dns-switch.log)${NC}"
                 fi
+                sleep 2
+
+                # Create marker file
+                mkdir -p "$(dirname "$DNS_MARKER")"
+                touch "$DNS_MARKER"
+
+                # Retry to verify it worked
+                attempt=$((attempt + 1))
+                continue
             elif [ "$SERVICE_ACTIVE" = "true" ] && [ "$LISTENING" = "true" ] && [ "$CONFIGURED_AS_RESOLVER" = "true" ]; then
                 # Service running, listening, AND set as resolver but nameservers not 127.0.0.1 yet - wait and retry
                 echo -e "${YELLOW}! DNSCrypt set as resolver but nameservers not updated yet - retrying...${NC}"
@@ -855,9 +859,9 @@ setup_dnscrypt() {
     done
 
     # All retries exhausted - DNSCrypt configuration failed
-    echo -e "${RED}✗ DNSCrypt configuration failed after $max_retries attempts${NC}"
+    echo -e "${RED}- DNSCrypt configuration failed after $max_retries attempts${NC}"
     ACTUAL_DNS_MODE="Unknown"
-    DNS_STATUS_MSG="${RED}[SDNS:✗]${NC}"
+    DNS_STATUS_MSG="${RED}[SDNS:-]${NC}"
     return 1
 }
 
@@ -922,7 +926,7 @@ verify_tor_dns() {
     verify_tor_dns_firewall
     if [ "$TOR_DNS_FIREWALL_VERIFIED" = "true" ]; then
         firewall_verified=true
-        echo -e "${GREEN}  ✓ Firewall confirms Tor DNS is configured ($TOR_DNS_FIREWALL_BACKEND)${NC}"
+        echo -e "${GREEN}  + Firewall confirms Tor DNS is configured ($TOR_DNS_FIREWALL_BACKEND)${NC}"
     else
         echo -e "${CYAN}  • Firewall shows Tor DNS is not configured${NC}"
         # OPTIMIZATION: Skip functional verification if no firewall rules exist
@@ -983,20 +987,20 @@ verify_tor_dns() {
     # CONSERVATIVE APPROACH: Both functional and firewall verification must pass
     if [ "$functional_verified" = true ] && [ "$firewall_verified" = true ]; then
         TOR_DNS_OVERALL_STATUS="true"
-        TOR_DNS_DETAILED="[Direct:✓ Port:✓]"
-        echo -e "${GREEN}  ✓ Tor DNS is active (dual-layer verified)${NC}"
+        TOR_DNS_DETAILED="[Direct:+ Port:+]"
+        echo -e "${GREEN}  + Tor DNS is active (dual-layer verified)${NC}"
         return 0
     elif [ "$functional_verified" = true ] && [ "$firewall_verified" = false ]; then
         # Functional test passed but firewall doesn't confirm - likely false positive
         TOR_DNS_OVERALL_STATUS="false"
         TOR_DNS_DETAILED=""
-        echo -e "${YELLOW}  ⚠ Tor DNS functional test passed but firewall not configured${NC}"
+        echo -e "${YELLOW}  ! Tor DNS functional test passed but firewall not configured${NC}"
         return 1
     elif [ "$functional_verified" = false ] && [ "$firewall_verified" = true ]; then
         # Firewall configured but functional test failed - service may not be ready
         TOR_DNS_OVERALL_STATUS="false"
         TOR_DNS_DETAILED=""
-        echo -e "${YELLOW}  ⚠ Tor DNS firewall configured but functional test failed${NC}"
+        echo -e "${YELLOW}  ! Tor DNS firewall configured but functional test failed${NC}"
         return 1
     else
         # Both failed - Tor DNS is definitely not active
@@ -1055,7 +1059,7 @@ check_permission_guard() {
     if [ "$STATUS" = "ok" ]; then
         PERM_GUARD_STATUS="${GREEN}[PermG:+]${NC}"
     else
-        PERM_GUARD_STATUS="${RED}[PermG:✗]${NC}"
+        PERM_GUARD_STATUS="${RED}[PermG:-]${NC}"
     fi
 }
 
@@ -1081,10 +1085,10 @@ fetch_latest_version() {
 
         if [ -n "$LOCAL_NUM" ] && [ -n "$REMOTE_NUM" ]; then
             if [ "$LOCAL_NUM" -ge "$REMOTE_NUM" ]; then
-                VERSION_STATUS="✓"  # Up-to-date or ahead
+                VERSION_STATUS="+"  # Up-to-date or ahead
                 VERSION_COLOR="${GREEN}"
             else
-                VERSION_STATUS="↑"  # Update available
+                VERSION_STATUS="^"  # Update available
                 VERSION_COLOR="${YELLOW}"
             fi
         else
@@ -1191,7 +1195,7 @@ fetch_system_info() {
         CITY=$(parse_json "$IP_JSON" ".data.records[0].city" || echo "N/A")
         FLAG=$(parse_json "$IP_JSON" ".data.records[0].flag" || echo "")
         end_timer
-        echo -e " ${GREEN}✓ IP location retrieved${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+        echo -e " ${GREEN}+ IP location retrieved${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
 
         # Fetch Tor status with dynamic color (60s timeout)
         echo -ne "${YELLOW}▸ Checking Tor connection...${NC}"
@@ -1199,12 +1203,12 @@ fetch_system_info() {
         TOR_CHECK=$(run_command ip-fetch 60 check-tor --json 2>/dev/null)
         IS_TOR=$(parse_json "$TOR_CHECK" ".IsTor" || echo "false")
         if [ "$IS_TOR" = "true" ]; then
-            TOR_STATUS="${GREEN}✓ Tor${NC}"       # Bright green when using Tor
+            TOR_STATUS="${GREEN}+ Tor${NC}"       # Bright green when using Tor
         else
-            TOR_STATUS="${RED}✗ Direct${NC}"      # Red when NOT using Tor
+            TOR_STATUS="${RED}- Direct${NC}"      # Red when NOT using Tor
         fi
         end_timer
-        echo -e " ${GREEN}✓ Tor status confirmed${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+        echo -e " ${GREEN}+ Tor status confirmed${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
 
         # Fetch network connection status (50s timeout)
         # Bright green for VPN, RED for no VPN
@@ -1219,7 +1223,7 @@ fetch_system_info() {
             NET_STATUS="${RED}No VPN${NC}"
         fi
         end_timer
-        echo -e " ${GREEN}✓ VPN status retrieved${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+        echo -e " ${GREEN}+ VPN status retrieved${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
     else
         # Offline mode - set placeholders
         echo -e "${YELLOW}⊘ Skipping IP geolocation (offline mode)${NC}"
@@ -1250,7 +1254,7 @@ fetch_system_info() {
     fi
     HARDENING_STATUS="${HARDENED}/${TOTAL} Modules"
     end_timer
-    echo -e " ${GREEN}✓ Hardening verified${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+    echo -e " ${GREEN}+ Hardening verified${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
 
     # Fetch security score (50s timeout)
     echo -ne "${YELLOW}▸ Calculating security score...${NC}"
@@ -1259,7 +1263,7 @@ fetch_system_info() {
     SEC_SCORE=$(parse_json "$SCORE_JSON" ".data.total_score" || echo "N/A")
     SEC_STATUS=$(parse_json "$SCORE_JSON" ".data.security_level" || echo "UNKNOWN")
     end_timer
-    echo -e " ${GREEN}✓ Score calculated${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+    echo -e " ${GREEN}+ Score calculated${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
 
     # Fetch hostname, timezone, and MAC (30s timeout - local calls)
     echo -ne "${YELLOW}▸ Reading system configuration...${NC}"
@@ -1273,7 +1277,7 @@ fetch_system_info() {
     MAC_JSON=$(run_command health-control 30 mac-show-macs --json 2>/dev/null)
     MAC_ADDR=$(parse_json "$MAC_JSON" ".data.interfaces[0].mac_address" || echo "N/A")
     end_timer
-    echo -e " ${GREEN}✓ Configuration loaded${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+    echo -e " ${GREEN}+ Configuration loaded${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
 
     # Store status
     INFO_STATUS="${GREEN}[Net:+]${NC}"
@@ -1370,14 +1374,16 @@ display_info() {
     fi
 
     # Show ACTUAL DNS mode (verified, not hardcoded)
-    # Truncate DNS mode if too long (allow space for [Direct:✓ Port:✓])
+    # Truncate DNS mode if too long (allow space for [Direct:+ Port:+])
     DNS_DISPLAY=$(echo "$ACTUAL_DNS_MODE" | cut -c1-65)
 
     # Color DNS based on status
-    if [[ "$ACTUAL_DNS_MODE" == *"[Direct:✓ Port:✓]"* ]]; then
+    if [[ "$ACTUAL_DNS_MODE" == *"[Direct:+ Port:+]"* ]]; then
         DNS_COLOR="${GREEN}"  # Bright green for Tor DNS with both methods successful
+    elif [[ "$ACTUAL_DNS_MODE" == *"DNSCrypt stopped"* ]]; then
+        DNS_COLOR="${RED}"  # Red for DNSCrypt stopped (broken DNS)
     elif [[ "$ACTUAL_DNS_MODE" == *"DNSCrypt"* ]]; then
-        DNS_COLOR="${GREEN}"  # Bright green for DNSCrypt
+        DNS_COLOR="${GREEN}"  # Bright green for DNSCrypt working
     elif [[ "$ACTUAL_DNS_MODE" == *"service not running"* ]]; then
         DNS_COLOR="${RED}"  # Red for service not running
     else
@@ -1425,7 +1431,7 @@ show_menu() {
     echo -e " ${GREEN}[9]${NC} ${BOLD}Torrify: Round-Robin${NC} ${CYAN}→${NC} Load-balanced Tor (even distribution)"
     echo -e " ${GREEN}[10]${NC} ${BOLD}Torrify: Consistent-Hash${NC} ${CYAN}→${NC} Load-balanced Tor (stable per-connection)"
     echo -e " ${GREEN}[11]${NC} ${BOLD}Torrify: Weighted${NC} ${CYAN}→${NC} Load-balanced Tor (priority-based)"
-    echo -e " ${GREEN}[12]${NC} ${BOLD}Connect WireGuard + Torrify:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Harden ${CYAN}→${NC} Connect ${CYAN}→${NC} Torrify ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[12]${NC} ${BOLD}Connect WireGuard + Torrify Round-Robin:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Harden ${CYAN}→${NC} Connect ${CYAN}→${NC} Torrify RR ${CYAN}→${NC} Verify"
     echo -e " ${GREEN}[13]${NC} ${BOLD}Enable DNSCrypt:${NC} ${CYAN}→${NC} Set Cloudflare ${CYAN}→${NC} Enable ${CYAN}→${NC} Net Check ${CYAN}→${NC} Verify"
     echo -e " ${GREEN}[14]${NC} ${BOLD}Enable Tor DNS:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Torrify ${CYAN}→${NC} nftables ${CYAN}→${NC} DNS ${CYAN}→${NC} Verify"
     echo -e " ${GREEN}[15]${NC} ${BOLD}Disconnect Routing:${NC} ${CYAN}→${NC} Disconnect ${CYAN}→${NC} Status ${CYAN}→${NC} IP Fetch"
@@ -1597,8 +1603,10 @@ execute_profile() {
             read -r refresh_choice
             ;;
         12)
-            echo -e "\n${YELLOW}Connecting WireGuard + Torrifying...${NC}\n"
-            run_command workflow-manager 0 run initial_terminal_setup_wireguard_torrify
+            echo -e "\n${YELLOW}Connecting WireGuard...${NC}\n"
+            run_command workflow-manager 0 run initial_terminal_setup_wireguard_only
+            echo -e "\n${YELLOW}Torrifying System (Round-Robin)...${NC}\n"
+            run_command workflow-manager 0 run torrify-balance-nftables-roundrobin
             echo ""
             echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
             echo -e "${BOLD}Return to Menu Options:${NC}"
@@ -1739,21 +1747,21 @@ main() {
     start_timer
     ensure_grub_theme
     end_timer
-    echo -e " ${GREEN}✓ Theme configured${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+    echo -e " ${GREEN}+ Theme configured${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
 
     # Deploy binaries (detect_hooks_dir will print status)
     echo -ne "${YELLOW}▸ Deploying binaries...${NC}"
     start_timer
     deploy_binaries
     end_timer
-    echo -e " ${GREEN}✓ Deployed successfully${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+    echo -e " ${GREEN}+ Deployed successfully${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
 
     # Sleep to ensure internet connectivity is established
     echo -ne "${YELLOW}▸ Waiting for network (5s)...${NC}"
     start_timer
     sleep 5
     end_timer
-    echo -e " ${GREEN}✓ Network ready${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+    echo -e " ${GREEN}+ Network ready${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
 
     # Check internet connectivity using health-control
     echo -ne "${YELLOW}▸ Checking internet connectivity...${NC}"
@@ -1763,7 +1771,7 @@ main() {
     end_timer
 
     if [ "$DOMAIN_CONNECTIVITY" = "true" ]; then
-        echo -e " ${GREEN}✓ Internet available${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+        echo -e " ${GREEN}+ Internet available${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
         HAS_INTERNET=true
     else
         echo -e " ${YELLOW}⊘ Offline mode detected${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
@@ -1779,7 +1787,7 @@ main() {
         end_timer
 
         if [ "$IS_LOGGED_IN" = "true" ]; then
-            echo -e " ${GREEN}✓ Already authenticated${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+            echo -e " ${GREEN}+ Already authenticated${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
             AUTH_STATUS="${GREEN}[Auth:+]${NC}"
 
             # Authenticated - use DNSCrypt (requires auth)
@@ -1787,7 +1795,7 @@ main() {
             start_timer
             setup_dnscrypt
             end_timer
-            echo -e " ${GREEN}✓ DNSCrypt configured${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+            echo -e " ${GREEN}+ DNSCrypt configured${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
         else
             echo -e " ${YELLOW}! Not authenticated${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
             echo -e "${YELLOW}  Attempting login...${NC}"
@@ -1796,7 +1804,7 @@ main() {
             start_timer
             if authenticate; then
                 end_timer
-                echo -e "${GREEN}✓ Authentication successful${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+                echo -e "${GREEN}+ Authentication successful${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
                 AUTH_STATUS="${GREEN}[Auth:+]${NC}"
 
                 # Authenticated - use DNSCrypt (requires auth)
@@ -1804,11 +1812,11 @@ main() {
                 start_timer
                 setup_dnscrypt
                 end_timer
-                echo -e " ${GREEN}✓ DNSCrypt configured${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+                echo -e " ${GREEN}+ DNSCrypt configured${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
             else
                 end_timer
                 echo -e "${RED}! Authentication failed - using fallback DNS${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
-                AUTH_STATUS="${RED}[Auth:✗]${NC}"
+                AUTH_STATUS="${RED}[Auth:-]${NC}"
 
                 # Not authenticated - use fallback DNS (no auth required)
                 run_command dns-switch 50 fallback >/dev/null 2>&1
@@ -1852,7 +1860,7 @@ main() {
         fi
 
         end_timer
-        echo -e " ${GREEN}✓ DNS detected${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+        echo -e " ${GREEN}+ DNS detected${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
     fi
 
     # TIME SYNCHRONIZATION section
@@ -1932,7 +1940,7 @@ main() {
         # Report accurate status based on actual results
         end_timer
         if [ "$any_sync_succeeded" = "true" ]; then
-            echo -e " ${GREEN}✓ Time sync completed${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+            echo -e " ${GREEN}+ Time sync completed${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
             TIME_SYNC_STATUS="${GREEN}[TSync:+]${NC}"
         else
             echo -e " ${YELLOW}! Time sync attempted (may need manual verification)${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
@@ -1969,19 +1977,19 @@ main() {
         start_timer
         fetch_latest_version
         end_timer
-        echo -e " ${GREEN}✓ Version retrieved${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+        echo -e " ${GREEN}+ Version retrieved${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
 
         echo -ne "${YELLOW}▸ Fetching cryptocurrency prices...${NC}"
         start_timer
         fetch_crypto_prices
         end_timer
-        echo -e " ${GREEN}✓ Prices retrieved${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+        echo -e " ${GREEN}+ Prices retrieved${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
 
         echo -ne "${YELLOW}▸ Fetching news headlines...${NC}"
         start_timer
         fetch_news_headlines
         end_timer
-        echo -e " ${GREEN}✓ Headlines retrieved${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+        echo -e " ${GREEN}+ Headlines retrieved${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
     else
         # Offline mode - skip online data retrieval
         echo -e "${YELLOW}⊘ Skipping online data retrieval (offline mode)${NC}"
@@ -1992,7 +2000,7 @@ main() {
         NEWS_HEADLINES="${YELLOW}No news available (offline)${NC}"
     fi
 
-    echo -e "${GREEN}✓ All checks complete!${NC}"
+    echo -e "${GREEN}+ All checks complete!${NC}"
     sleep 0.5
 
     # Clear and redisplay header
