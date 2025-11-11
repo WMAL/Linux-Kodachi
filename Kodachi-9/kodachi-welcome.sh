@@ -76,8 +76,8 @@ fi
 # Source: main-info.json (terminal section)
 # DO NOT EDIT MANUALLY - Run pack-kodachi.sh to update these values
 BUILD_VERSION="9.0.1"  # From: terminal.main_version
-BUILD_NUM="4"          # From: terminal.build_number (auto-incremented)
-BUILD_DATE="2025-11-10"  # From: terminal.last_build_date
+BUILD_NUM="6"          # From: terminal.build_number (auto-incremented)
+BUILD_DATE="2025-11-11"  # From: terminal.last_build_date
 SCRIPT_VERSION="${BUILD_VERSION}.${BUILD_NUM}"
 
 # Color codes for compact display (optimized for black terminal)
@@ -131,6 +131,9 @@ LATEST_VERSION=""
 CRYPTO_PRICES=""
 NEWS_HEADLINES=""
 HAS_INTERNET=false
+
+# Flag to skip refresh when returning from submenu
+SKIP_REFRESH=false
 
 # Hooks directory
 HOOKS_DIR=""
@@ -428,14 +431,24 @@ run_command() {
     fi
 
     # If deployment succeeded, use global command
+    # Use sudo -n (non-interactive) to fail fast if NOPASSWD is missing
     if [ "$DEPLOY_STATUS" = "${GREEN}[GDeploy:+]${NC}" ]; then
-        $timeout_cmd sudo "$cmd" $args
+        if ! $timeout_cmd sudo -n "$cmd" $args; then
+            echo "ERROR: sudo failed for $cmd - check /etc/sudoers.d/kodachi-binaries" >&2
+            return 1
+        fi
     elif [ -n "$HOOKS_DIR" ] && [ -f "$HOOKS_DIR/$cmd" ]; then
         # Fallback to hooks directory
-        $timeout_cmd sudo "$HOOKS_DIR/$cmd" $args
+        if ! $timeout_cmd sudo -n "$HOOKS_DIR/$cmd" $args; then
+            echo "ERROR: sudo failed for $HOOKS_DIR/$cmd - check /etc/sudoers.d/kodachi-binaries" >&2
+            return 1
+        fi
     else
         # Try global command anyway
-        $timeout_cmd sudo "$cmd" $args
+        if ! $timeout_cmd sudo -n "$cmd" $args; then
+            echo "ERROR: sudo failed for $cmd - check /etc/sudoers.d/kodachi-binaries" >&2
+            return 1
+        fi
     fi
 }
 
@@ -1430,27 +1443,24 @@ display_info() {
 show_menu() {
     echo -e "${BOLD}SELECT PROFILE:${NC}"
     echo ""
-    echo -e " ${GREEN}[1]${NC} ${BOLD}Connect to WireGuard:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} WireGuard ${CYAN}→${NC} Verify"
-    echo -e " ${GREEN}[2]${NC} ${BOLD}Connect to Xray-VLESS-Reality:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Connect ${CYAN}→${NC} Verify"
-    echo -e " ${GREEN}[3]${NC} ${BOLD}Connect to OpenVPN:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} OpenVPN ${CYAN}→${NC} Verify"
-    echo -e " ${GREEN}[4]${NC} ${BOLD}Connect to V2Ray:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} V2Ray ${CYAN}→${NC} Verify"
-    echo -e " ${GREEN}[5]${NC} ${BOLD}Connect to Hysteria2:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Hysteria2 ${CYAN}→${NC} Verify"
-    echo -e " ${GREEN}[6]${NC} ${BOLD}Connect to Xray-VLESS:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Xray-VLESS ${CYAN}→${NC} Verify"
-    echo -e " ${GREEN}[7]${NC} ${BOLD}Connect to Xray-Trojan:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Xray-Trojan ${CYAN}→${NC} Verify"
-    echo -e " ${GREEN}[8]${NC} ${BOLD}Connect to Mita:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Mita ${CYAN}→${NC} Verify"
-    echo -e " ${GREEN}[9]${NC} ${BOLD}Torrify: Round-Robin${NC} ${CYAN}→${NC} Load-balanced Tor (even distribution)"
-    echo -e " ${GREEN}[10]${NC} ${BOLD}Torrify: Consistent-Hash${NC} ${CYAN}→${NC} Load-balanced Tor (stable per-connection)"
-    echo -e " ${GREEN}[11]${NC} ${BOLD}Torrify: Weighted${NC} ${CYAN}→${NC} Load-balanced Tor (priority-based)"
-    echo -e " ${GREEN}[12]${NC} ${BOLD}Connect WireGuard + Torrify Round-Robin:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Harden ${CYAN}→${NC} Connect ${CYAN}→${NC} Torrify RR ${CYAN}→${NC} Verify"
-    echo -e " ${GREEN}[13]${NC} ${BOLD}Enable DNSCrypt:${NC} ${CYAN}→${NC} Set Cloudflare ${CYAN}→${NC} Enable ${CYAN}→${NC} Net Check ${CYAN}→${NC} Verify"
-    echo -e " ${GREEN}[14]${NC} ${BOLD}Enable Tor DNS:${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Torrify ${CYAN}→${NC} nftables ${CYAN}→${NC} DNS ${CYAN}→${NC} Verify"
-    echo -e " ${GREEN}[15]${NC} ${BOLD}Disconnect Routing:${NC} ${CYAN}→${NC} Disconnect ${CYAN}→${NC} Status ${CYAN}→${NC} IP Fetch"
-    echo -e " ${GREEN}[16]${NC} ${BOLD}Detorrify System:${NC} ${CYAN}→${NC} Remove iptables ${CYAN}→${NC} Remove nftables ${CYAN}→${NC} Stop DNS ${CYAN}→${NC} Verify"
-    echo -e " ${GREEN}[17]${NC} ${BOLD}Emergency Network Recovery:${NC} ${CYAN}→${NC} Detorrify ${CYAN}→${NC} Disconnect ${CYAN}→${NC} Recover ${CYAN}→${NC} Reset ${CYAN}→${NC} Verify"
-    echo -e " ${GREEN}[18]${NC} ${BOLD}Check Security Score:${NC} ${CYAN}→${NC} Display comprehensive security score report"
-    echo -e " ${GREEN}[19]${NC} ${BOLD}Reboot System${NC} - Restart the system"
-    echo -e " ${GREEN}[20]${NC} ${BOLD}Shutdown System${NC} - Power off the system"
-    echo -e " ${GREEN}[21]${NC} ${BOLD}Exit${NC} - Skip to shell (Return: type ${CYAN}'kodachi'${NC} and press Enter)"
+    echo -e "${CYAN}=== VPN PROTOCOLS ===${NC}"
+    echo -e " ${GREEN}[1]${NC} ${BOLD}WireGuard${NC}  ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Connect ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[2]${NC} ${BOLD}OpenVPN${NC}    ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Connect ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[3]${NC} ${BOLD}V2Ray${NC}      ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Connect ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[4]${NC} ${BOLD}More VPN Protocols...${NC} (7 more)"
+    echo ""
+    echo -e "${CYAN}=== TOR/PRIVACY & DNS ===${NC}"
+    echo -e " ${GREEN}[5]${NC} ${BOLD}Torrify: Round-Robin${NC}     ${CYAN}→${NC} Auth ${CYAN}→${NC} Torrify ${CYAN}→${NC} nftables ${CYAN}→${NC} DNS ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[6]${NC} ${BOLD}Torrify: Consistent-Hash${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Torrify ${CYAN}→${NC} nftables ${CYAN}→${NC} DNS ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[7]${NC} ${BOLD}Torrify: Weighted${NC}        ${CYAN}→${NC} Auth ${CYAN}→${NC} Torrify ${CYAN}→${NC} nftables ${CYAN}→${NC} DNS ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[8]${NC} ${BOLD}WireGuard + Torrify RR${NC}   ${CYAN}→${NC} Auth ${CYAN}→${NC} Harden ${CYAN}→${NC} Connect ${CYAN}→${NC} Torrify ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[9]${NC} ${BOLD}More Tor Options...${NC} (5 more)"
+    echo ""
+    echo -e "${CYAN}=== NETWORK & SYSTEM ===${NC}"
+    echo -e " ${GREEN}[10]${NC} ${BOLD}Disconnect Routing${NC}          ${CYAN}→${NC} Disconnect ${CYAN}→${NC} Status ${CYAN}→${NC} IP Fetch"
+    echo -e " ${GREEN}[11]${NC} ${BOLD}Detorrify System${NC}            ${CYAN}→${NC} Remove iptables ${CYAN}→${NC} Remove nftables ${CYAN}→${NC} Stop DNS ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[12]${NC} ${BOLD}Emergency Network Recovery${NC}  ${CYAN}→${NC} Detorrify ${CYAN}→${NC} Disconnect ${CYAN}→${NC} Recover ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[13]${NC} ${BOLD}More System Options...${NC} (4 more)"
     echo -e "${CYAN}────────────────────────────────────────────────────────────────────────────${NC}"
     echo -e "${YELLOW}NOTE:${NC} ${CYAN}health-control -e${NC}, ${CYAN}routing-switch -e${NC} | ${PROFILE_COUNT_RAW}+ profiles: ${CYAN}workflow-manager list${NC}"
     echo -e "${YELLOW}TIP:${NC} MicroSOCKS: ${CYAN}routing-switch microsocks-enable -u USER -p PASS${NC}"
@@ -1458,10 +1468,87 @@ show_menu() {
     # Calculate and display timeout dynamically
     if [ $AUTO_REFRESH_TIMEOUT -ge 60 ]; then
         local timeout_minutes=$((AUTO_REFRESH_TIMEOUT / 60))
-        echo -ne "${BOLD}Enter choice [1-21]${NC} ${CYAN}(auto-refresh in ${timeout_minutes} min)${NC}: "
+        echo -ne "${BOLD}Enter choice [1-13]${NC} ${CYAN}(auto-refresh in ${timeout_minutes} min)${NC}: "
     else
-        echo -ne "${BOLD}Enter choice [1-21]${NC} ${CYAN}(auto-refresh in ${AUTO_REFRESH_TIMEOUT} sec)${NC}: "
+        echo -ne "${BOLD}Enter choice [1-13]${NC} ${CYAN}(auto-refresh in ${AUTO_REFRESH_TIMEOUT} sec)${NC}: "
     fi
+}
+
+# Submenu: More VPN Protocols
+show_vpn_submenu() {
+    clear
+    show_header
+    echo ""
+    echo -e "${CYAN}MORE VPN PROTOCOLS:${NC}"
+    echo ""
+    echo -e " ${GREEN}[1]${NC} ${BOLD}Xray-VLESS-Reality${NC}      ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Connect ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[2]${NC} ${BOLD}Xray-VLESS${NC}              ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Connect ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[3]${NC} ${BOLD}Xray-Trojan${NC}             ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Connect ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[4]${NC} ${BOLD}Shadowsocks${NC}             ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Connect ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[5]${NC} ${BOLD}Hysteria2${NC}               ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Connect ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[6]${NC} ${BOLD}Mita${NC}                    ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Connect ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[7]${NC} ${BOLD}Dante SOCKS5${NC}            ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Connect ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[0]${NC} ${BOLD}Back to main menu${NC}"
+    echo ""
+    echo -e "${CYAN}────────────────────────────────────────────────────────────────────────────${NC}"
+    echo -ne "${BOLD}Enter choice [0-7]${NC}: "
+}
+
+# Submenu: More Tor Options (DNS items + restart)
+show_tor_submenu() {
+    clear
+    show_header
+    echo ""
+    echo -e "${CYAN}MORE TOR OPTIONS:${NC}"
+    echo ""
+    echo -e " ${GREEN}[1]${NC} ${BOLD}Enable DNSCrypt${NC}             ${CYAN}→${NC} Stop Tor DNS ${CYAN}→${NC} Enable DNSCrypt ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[2]${NC} ${BOLD}Enable Tor DNS${NC}              ${CYAN}→${NC} Auth ${CYAN}→${NC} Start Tor ${CYAN}→${NC} DNS nftables ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[3]${NC} ${BOLD}Set Random Reputable Servers${NC} ${CYAN}→${NC} Switch to random reputable DNS servers"
+    echo -e " ${GREEN}[4]${NC} ${BOLD}Set DNS Fallback${NC}            ${CYAN}→${NC} Use hardcoded fallback DNS servers"
+    echo -e " ${GREEN}[5]${NC} ${BOLD}Remote Tor via RedSocks${NC}      ${CYAN}→${NC} Auth ${CYAN}→${NC} RedSocks ${CYAN}→${NC} Tor ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[6]${NC} ${BOLD}Torrify Single Default Node${NC}  ${CYAN}→${NC} Auth ${CYAN}→${NC} Torrify ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[7]${NC} ${BOLD}Restart All Tor Instances${NC}   ${CYAN}→${NC} Restart all Tor instances"
+    echo -e " ${GREEN}[8]${NC} ${BOLD}List Tor Instances (IPs & Countries)${NC} ${CYAN}→${NC} Show all instances with IPs"
+    echo -e " ${GREEN}[0]${NC} ${BOLD}Back to main menu${NC}"
+    echo ""
+    echo -e "${CYAN}────────────────────────────────────────────────────────────────────────────${NC}"
+    echo -ne "${BOLD}Enter choice [0-8]${NC}: "
+}
+
+# Submenu: DNS Options
+show_dns_submenu() {
+    clear
+    show_header
+    echo ""
+    echo -e "${CYAN}DNS OPTIONS:${NC}"
+    echo ""
+    echo -e " ${GREEN}[1]${NC} ${BOLD}Random DNS Selection${NC}  ${CYAN}→${NC} Switch to random reputable DNS servers"
+    echo -e " ${GREEN}[2]${NC} ${BOLD}Fallback DNS${NC}          ${CYAN}→${NC} Use hardcoded fallback DNS servers"
+    echo -e " ${GREEN}[0]${NC} ${BOLD}Back to Tor Options${NC}"
+    echo ""
+    echo -e "${CYAN}────────────────────────────────────────────────────────────────────────────${NC}"
+    echo -ne "${BOLD}Enter choice [0-2]${NC}: "
+}
+
+# Submenu: More System Options
+show_system_submenu() {
+    clear
+    show_header
+    echo ""
+    echo -e "${CYAN}MORE SYSTEM OPTIONS:${NC}"
+    echo ""
+    echo -e " ${GREEN}[1]${NC} ${BOLD}Check Security Score${NC}  ${CYAN}→${NC} Display comprehensive security report"
+    echo -e " ${GREEN}[2]${NC} ${BOLD}System Integrity Check${NC} ${CYAN}→${NC} Verify system integrity"
+    echo -e " ${GREEN}[3]${NC} ${BOLD}Test DNS Leaks${NC}        ${CYAN}→${NC} Test for DNS leaks"
+    echo -e " ${GREEN}[4]${NC} ${BOLD}Check Releases${NC}        ${CYAN}→${NC} Check latest Kodachi releases"
+    echo -e " ${GREEN}[5]${NC} ${BOLD}Flush iptables and nftables${NC} ${CYAN}→${NC} Clear firewall rules"
+    echo -e " ${GREEN}[6]${NC} ${BOLD}Reboot System${NC}         ${CYAN}→${NC} Restart the system"
+    echo -e " ${GREEN}[7]${NC} ${BOLD}Shutdown System${NC}       ${CYAN}→${NC} Power off the system"
+    echo -e " ${GREEN}[8]${NC} ${BOLD}Exit${NC}                  ${CYAN}→${NC} Skip to shell (type ${CYAN}'kodachi'${NC} and press Enter)"
+    echo -e " ${GREEN}[0]${NC} ${BOLD}Back to main menu${NC}"
+    echo ""
+    echo -e "${CYAN}────────────────────────────────────────────────────────────────────────────${NC}"
+    echo -ne "${BOLD}Enter choice [0-8]${NC}: "
 }
 
 # Function to execute selected profile
@@ -1733,11 +1820,267 @@ execute_profile() {
             echo -e "\n${GREEN}Exiting to shell...${NC}\n"
             return 1
             ;;
+        22)
+            echo -e "\n${YELLOW}Connecting to Dante SOCKS5...${NC}\n"
+            workflow-manager run initial_terminal_setup_dante_only
+            echo ""
+            echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
+            echo -e "${BOLD}Return to Menu Options:${NC}"
+            echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+            echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+            echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+            echo ""
+            echo -ne "${BOLD}Your choice:${NC} "
+            read -r refresh_choice
+            ;;
+        23)
+            echo -e "\n${YELLOW}Connecting to Shadowsocks...${NC}\n"
+            workflow-manager run initial_terminal_setup_shadowsocks_only
+            echo ""
+            echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
+            echo -e "${BOLD}Return to Menu Options:${NC}"
+            echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+            echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+            echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+            echo ""
+            echo -ne "${BOLD}Your choice:${NC} "
+            read -r refresh_choice
+            ;;
+        24)
+            echo -e "\n${YELLOW}Connecting Remote Tor via RedSocks...${NC}\n"
+            workflow-manager run initial_terminal_setup_tor_only
+            echo ""
+            echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
+            echo -e "${BOLD}Return to Menu Options:${NC}"
+            echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+            echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+            echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+            echo ""
+            echo -ne "${BOLD}Your choice:${NC} "
+            read -r refresh_choice
+            ;;
+        25)
+            echo -e "\n${YELLOW}Torrifying Single Default Node...${NC}\n"
+            workflow-manager run initial_terminal_setup_auth_torrify_only
+            echo ""
+            echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
+            echo -e "${BOLD}Return to Menu Options:${NC}"
+            echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+            echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+            echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+            echo ""
+            echo -ne "${BOLD}Your choice:${NC} "
+            read -r refresh_choice
+            ;;
         *)
             echo -e "\n${RED}Invalid choice. Please try again...${NC}\n"
             sleep 1
             ;;
     esac
+}
+
+# Function to handle submenu navigation
+handle_submenu() {
+    local menu_type="$1"
+    local submenu_executed=false
+
+    while true; do
+        case "$menu_type" in
+            "vpn")
+                show_vpn_submenu
+                read -r vpn_choice
+                case "$vpn_choice" in
+                    1) execute_profile "2"; submenu_executed=true ;; # Xray-VLESS-Reality
+                    2) execute_profile "6"; submenu_executed=true ;; # Xray-VLESS
+                    3) execute_profile "7"; submenu_executed=true ;; # Xray-Trojan
+                    4) execute_profile "23"; submenu_executed=true ;; # Shadowsocks
+                    5) execute_profile "5"; submenu_executed=true ;; # Hysteria2
+                    6) execute_profile "8"; submenu_executed=true ;; # Mita
+                    7) execute_profile "22"; submenu_executed=true ;; # Dante SOCKS5
+                    0) SKIP_REFRESH=true; break ;; # Back to main menu (no refresh)
+                    *) echo -e "${RED}Invalid choice. Try again.${NC}"; sleep 2 ;;
+                esac
+                ;;
+            "tor")
+                show_tor_submenu
+                read -r tor_choice
+                case "$tor_choice" in
+                    1) execute_profile "13"; submenu_executed=true ;; # Enable DNSCrypt
+                    2) execute_profile "14"; submenu_executed=true ;; # Enable Tor DNS
+                    3) # Set Random Reputable Servers
+                        echo -e "\n${YELLOW}Switching to Random Reputable DNS Servers...${NC}\n"
+                        sudo dns-switch random
+                        echo ""
+                        echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
+                        echo -e "${BOLD}Return to Menu Options:${NC}"
+                        echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+                        echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+                        echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+                        echo ""
+                        echo -ne "${BOLD}Your choice:${NC} "
+                        read -r refresh_choice
+                        submenu_executed=true
+                        ;;
+                    4) # Set DNS Fallback
+                        echo -e "\n${YELLOW}Switching to Fallback DNS Servers...${NC}\n"
+                        sudo dns-switch fallback
+                        echo ""
+                        echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
+                        echo -e "${BOLD}Return to Menu Options:${NC}"
+                        echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+                        echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+                        echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+                        echo ""
+                        echo -ne "${BOLD}Your choice:${NC} "
+                        read -r refresh_choice
+                        submenu_executed=true
+                        ;;
+                    5) execute_profile "24"; submenu_executed=true ;; # Remote Tor via RedSocks
+                    6) execute_profile "25"; submenu_executed=true ;; # Torrify Single Default Node
+                    7) # Restart All Tor Instances
+                        echo -e "\n${YELLOW}Restarting All Tor Instances...${NC}\n"
+                        sudo tor-switch restart-all-instances
+                        echo ""
+                        echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
+                        echo -e "${BOLD}Return to Menu Options:${NC}"
+                        echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+                        echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+                        echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+                        echo ""
+                        echo -ne "${BOLD}Your choice:${NC} "
+                        read -r refresh_choice
+                        submenu_executed=true
+                        ;;
+                    8) # List Tor Instances (IPs & Countries)
+                        echo -e "\n${YELLOW}Listing Tor Instances with IPs and Countries...${NC}\n"
+                        sudo tor-switch list-instances-with-ip
+                        echo ""
+                        echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
+                        echo -e "${BOLD}Return to Menu Options:${NC}"
+                        echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+                        echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+                        echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+                        echo ""
+                        echo -ne "${BOLD}Your choice:${NC} "
+                        read -r refresh_choice
+                        submenu_executed=true
+                        ;;
+                    0) SKIP_REFRESH=true; break ;; # Back to main menu (no refresh)
+                    *) echo -e "${RED}Invalid choice. Try again.${NC}"; sleep 2 ;;
+                esac
+                ;;
+            "system")
+                show_system_submenu
+                read -r sys_choice
+                case "$sys_choice" in
+                    1) execute_profile "18"; submenu_executed=true ;; # Check Security Score
+                    2) # System Integrity Check
+                        echo -e "\n${YELLOW}Running System Integrity Check...${NC}\n"
+                        sudo integrity-check check-all
+                        echo ""
+                        echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
+                        echo -e "${BOLD}Return to Menu Options:${NC}"
+                        echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+                        echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+                        echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+                        echo ""
+                        echo -ne "${BOLD}Your choice:${NC} "
+                        read -r refresh_choice
+                        submenu_executed=true
+                        ;;
+                    3) # Test DNS Leaks
+                        echo -e "\n${YELLOW}Testing DNS Leaks...${NC}\n"
+                        dns-leak test
+                        echo ""
+                        echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
+                        echo -e "${BOLD}Return to Menu Options:${NC}"
+                        echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+                        echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+                        echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+                        echo ""
+                        echo -ne "${BOLD}Your choice:${NC} "
+                        read -r refresh_choice
+                        submenu_executed=true
+                        ;;
+                    4) # Check Releases
+                        echo -e "\n${YELLOW}Checking Latest Releases...${NC}\n"
+                        online-info-switch releases
+                        echo ""
+                        echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
+                        echo -e "${BOLD}Return to Menu Options:${NC}"
+                        echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+                        echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+                        echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+                        echo ""
+                        echo -ne "${BOLD}Your choice:${NC} "
+                        read -r refresh_choice
+                        submenu_executed=true
+                        ;;
+                    5) # Flush iptables and nftables
+                        echo -e "\n${YELLOW}Flushing iptables and nftables...${NC}\n"
+                        sudo tor-switch flush-iptables
+                        sudo tor-switch flush-nftables
+                        echo ""
+                        echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
+                        echo -e "${BOLD}Return to Menu Options:${NC}"
+                        echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+                        echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+                        echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+                        echo ""
+                        echo -ne "${BOLD}Your choice:${NC} "
+                        read -r refresh_choice
+                        submenu_executed=true
+                        ;;
+                    6) execute_profile "19"; submenu_executed=true ;; # Reboot System
+                    7) execute_profile "20"; submenu_executed=true ;; # Shutdown System
+                    8) execute_profile "21"; submenu_executed=true ;; # Exit
+                    0) SKIP_REFRESH=true; break ;; # Back to main menu (no refresh)
+                    *) echo -e "${RED}Invalid choice. Try again.${NC}"; sleep 2 ;;
+                esac
+                ;;
+            "dns")
+                show_dns_submenu
+                read -r dns_choice
+                case "$dns_choice" in
+                    1) # Random DNS Selection
+                        echo -e "\n${YELLOW}Switching to Random DNS Servers...${NC}\n"
+                        sudo dns-switch random
+                        echo ""
+                        echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
+                        echo -e "${BOLD}Return to Menu Options:${NC}"
+                        echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+                        echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+                        echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+                        echo ""
+                        echo -ne "${BOLD}Your choice:${NC} "
+                        read -r refresh_choice
+                        submenu_executed=true
+                        ;;
+                    2) # Fallback DNS
+                        echo -e "\n${YELLOW}Switching to Fallback DNS Servers...${NC}\n"
+                        sudo dns-switch fallback
+                        echo ""
+                        echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
+                        echo -e "${BOLD}Return to Menu Options:${NC}"
+                        echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+                        echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+                        echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+                        echo ""
+                        echo -ne "${BOLD}Your choice:${NC} "
+                        read -r refresh_choice
+                        submenu_executed=true
+                        ;;
+                    0) SKIP_REFRESH=true; break ;; # Back to Tor Options
+                    *) echo -e "${RED}Invalid choice. Try again.${NC}"; sleep 2 ;;
+                esac
+                ;;
+        esac
+
+        # If submenu item was executed, break to return to main menu
+        if [ "$submenu_executed" = true ]; then
+            break
+        fi
+    done
 }
 
 # Main execution
@@ -2098,12 +2441,80 @@ main() {
             continue
         fi
 
-        # Execute selected profile
-        execute_profile "$choice"
+        # Handle menu choices with submenu support
+        case "$choice" in
+            1)  # WireGuard
+                execute_profile "1"
+                ;;
+            2)  # OpenVPN
+                execute_profile "3"
+                ;;
+            3)  # V2Ray
+                execute_profile "4"
+                ;;
+            4)  # More VPN Protocols submenu
+                handle_submenu "vpn"
+                ;;
+            5)  # Torrify: Round-Robin
+                execute_profile "9"
+                ;;
+            6)  # Torrify: Consistent-Hash (moved from submenu to main)
+                execute_profile "10"
+                ;;
+            7)  # Torrify: Weighted (moved from submenu to main)
+                execute_profile "11"
+                ;;
+            8)  # WireGuard + Torrify RR
+                execute_profile "12"
+                ;;
+            9)  # More Tor Options submenu (DNS items + Restart Tor)
+                handle_submenu "tor"
+                ;;
+            10) # Disconnect Routing
+                execute_profile "15"
+                ;;
+            11) # Detorrify System
+                execute_profile "16"
+                ;;
+            12) # Emergency Network Recovery
+                execute_profile "17"
+                ;;
+            13) # More System Options submenu (Security Score, Detorrify, Reboot, Shutdown, Exit, Releases, Integrity, DNS Leak)
+                handle_submenu "system"
+                ;;
+            *)  # Invalid choice
+                echo -e "\n${RED}Invalid choice. Please try again...${NC}\n"
+                sleep 1
+                continue
+                ;;
+        esac
 
-        # Check if user wants to exit
+        # Check if user wants to exit (execute_profile returns 1 for Exit choice)
         if [ $? -eq 1 ]; then
             break  # Exit selected
+        fi
+
+        # Check if we should skip refresh (returning from submenu with [0])
+        if [ "$SKIP_REFRESH" = true ]; then
+            # Skip refresh and reset flag
+            SKIP_REFRESH=false
+            clear
+            show_header
+            echo -e "${DEPLOY_STATUS} | ${AUTH_STATUS} | ${TIME_SYNC_STATUS} | ${DNS_STATUS_MSG} | ${INFO_STATUS} | ${PERM_GUARD_STATUS}"
+
+            # Build counts line
+            local counts_line=""
+            [ -n "$PROFILE_COUNT" ] && counts_line="${PROFILE_COUNT}"
+            [ -n "$LOGS_COUNT" ] && counts_line="${counts_line:+$counts_line | }${LOGS_COUNT}"
+            [ -n "$BINARIES_COUNT" ] && counts_line="${counts_line:+$counts_line | }${BINARIES_COUNT}"
+            [ -n "$LATEST_VERSION" ] && counts_line="${counts_line:+$counts_line | }${LATEST_VERSION}"
+
+            # Only print counts line if we have something to show
+            [ -n "$counts_line" ] && echo -e "$counts_line"
+
+            # Display information
+            display_info
+            continue
         fi
 
         # Check user's refresh preference
