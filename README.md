@@ -181,11 +181,7 @@ To learn how to use Kodachi, explore the following resources:
 
 Linux Kodachi is free, but maintaining a project of this magnitude takes time and resources. If you find Kodachi valuable and want to support its future development, consider making a donation.
 
-**Donation Options:**
-
-- **<a href="https://nowpayments.io/donation/linuxkodachi" target="_blank" rel="noopener noreferrer">Donate with Cryptocurrency</a>**
-- **<a href="https://www.paypal.com/ncp/payment/TJZSGR6452HS4" target="_blank" rel="noopener noreferrer">Donate with PayPal direct</a>**
-- **<a href="https://donorbox.org/kodachi" target="_blank" rel="noopener noreferrer">Donate with PayPal via Donorbox</a>**
+All donation options (cryptocurrency payments, PayPal, and recurring support) are available on the [Kodachi documentation page](https://www.kodachi.cloud/wiki/bina/index.html).
 
 Your donations will be used to fund future development, improve user support, and ensure Kodachi remains the **most secure operating system available**.
 
