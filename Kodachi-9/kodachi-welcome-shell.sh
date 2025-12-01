@@ -602,7 +602,7 @@ setup_dnscrypt() {
     # Check if this is first run - only force configuration on first boot
     # Detect hooks directory silently (function prints output, we just need the path)
     detect_hooks_dir >/dev/null 2>&1
-    local HOOKS_DIR="${HOOKS_BASE_DIR:-$HOME/k900/dashboard/hooks}"
+    local HOOKS_DIR="${HOOKS_DIR:-$HOME/dashboard/hooks}"
     local DNS_MARKER="$HOOKS_DIR/results/dns-configured"
     local IS_FIRST_RUN=false
 
