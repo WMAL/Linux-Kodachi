@@ -181,13 +181,7 @@ To learn how to use Kodachi, explore the following resources:
 
 Linux Kodachi is free, but maintaining a project of this magnitude takes time and resources. If you find Kodachi valuable and want to support its future development, consider making a donation.
 
-**Cryptocurrency Donations:**
-
-- **Bitcoin (BTC):** `126vuB7gy5JDebBUmxBNTeQgkFH226c2we`
-- **Ethereum (ETH):** `0x6e2e582f308f99cf567446a9e825bbb1b278c906`
-- **Monero (XMR):** `4AXd2tWczXHD5okSGmJQJY6AuqtdtMSLEWAxziYVw2kCcpxsAcGeeZnE4jv2kTy2gb5AkPZ2bERypKHFRfyQw41RUnLRudy`
-
-For additional cryptocurrency options (SOL, USDT, DOGE, LTC, and more), QR codes, PayPal, and recurring support options, visit the [Kodachi documentation page](https://www.kodachi.cloud/wiki/bina/index.html).
+For all donation options including cryptocurrency (BTC, ETH, XMR, SOL, USDT, DOGE, LTC, and more), QR codes, PayPal, and recurring support options, please visit the [Donations and Support](https://www.kodachi.cloud/wiki/bina/index.html#donations) section.
 
 Your donations will be used to fund future development, improve user support, and ensure Kodachi remains the **most secure operating system available**.
 
