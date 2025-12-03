@@ -17,6 +17,21 @@ Experience command-line anonymity and security with full privacy protection.
 
 </div>
 
+<div align="center">
+
+### ![Updates](https://img.shields.io/badge/-QUICK%20UPDATES-purple?style=for-the-badge) What's New ![Updates](https://img.shields.io/badge/-DECEMBER%202025-purple?style=for-the-badge)
+
+</div>
+
+> **Recent Platform Updates:**
+>
+> - **[API Documentation Portal](https://www.kodachi.cloud/api-docs.html)** - New API docs for IP geolocation, platform stats, and binary service endpoints
+> - **[Infrastructure Status Dashboard](https://www.kodachi.cloud/status.php)** - Live monitoring of servers and services across multiple regions
+> - **[Kodachi Cloud](https://www.kodachi.cloud/)** - Fresh redesigned interface
+> - **[Kodachi Homepage](https://www.digi77.com/linux-kodachi/)** - New modern look
+
+---
+
 # Linux Kodachi - Kodachi 9
 
 **Linux Kodachi** is a **privacy-focused Linux distribution built on Debian**. It provides a hardened, privacy-preserving desktop designed to balance security with usability, delivering a pre-wired anonymity stack (failover VPN, Tor routing, DNSCrypt, and anti-forensic tooling) that most operating systems leave you to assemble yourself. **Kodachi 9** features a modular architecture that breaks traditional barriers, enabling deployment across any Debian-based Linux distribution through **standalone binaries**, a **command-line terminal version**, or the upcoming **complete desktop experience**. Each deployment option provides the same robust security and privacy protection that Kodachi is known for.
