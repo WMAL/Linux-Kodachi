@@ -61,8 +61,9 @@ This roadmap provides an overview of the current status of key components in the
 | **[Kodachi Binary Documentation](https://www.kodachi.cloud/wiki/bina/index.html)**        | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **[Kodachi Standalone Binaries](https://www.kodachi.cloud/wiki/bina/installation.html)**  | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **[Kodachi Terminal Server Version](https://www.kodachi.cloud/wiki/bina/terminal-version.html)** | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
-| **[Kodachi Dashboard GUI](https://www.kodachi.cloud/wiki/bina/support.html)**             | ![In Progress](https://img.shields.io/badge/Status-In%20Progress-orange?style=flat-square) | ![85%](https://img.shields.io/badge/Progress-85%25-orange?style=flat-square)        |
+| **[Kodachi Payment Gateway](https://www.kodachi.cloud/wiki/bina/support.html)**           | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **Kodachi Admin Dashboard**                                                               | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **[Kodachi Dashboard GUI](https://www.kodachi.cloud/wiki/bina/support.html)**             | ![In Progress](https://img.shields.io/badge/Status-In%20Progress-orange?style=flat-square) | ![85%](https://img.shields.io/badge/Progress-85%25-orange?style=flat-square)        |
 
 ### **Kodachi 9: A New Era is Coming!**
 
