@@ -2,44 +2,47 @@
 
 This roadmap provides an overview of the current status of key components in the Kodachi project. All code and infrastructure have been written from scratch; however, I have integrated the working code from the old version to avoid reinventing the wheel and accelerate development.
 
-| Component                                                                          | Status            | Completion                                                                          |
-| ---------------------------------------------------------------------------------- | ----------------- | ----------------------------------------------------------------------------------- |
-| **Kodachi Workers VPS**                                                            | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square) | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
-| **Kodachi Master VPS**                                                             | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square) | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
-| **[Kodachi Anonymity Verifier](https://www.kodachi.cloud/)**                       | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square) | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
-| **[Kodachi Binary Documentation](https://www.kodachi.cloud/wiki/bina/index.html)** | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square) | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
-| **[Kodachi Standalone Binaries](https://www.kodachi.cloud/wiki/bina/installation.html)**                                                  | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square) | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
-| **[Kodachi Terminal Version](https://www.kodachi.cloud/wiki/bina/terminal-version.html)** | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square) | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
-| **Kodachi Dashboard GUI**                                                          | ![In Progress](https://img.shields.io/badge/Status-In%20Progress-orange?style=flat-square) | ![65%](https://img.shields.io/badge/Progress-65%25-orange?style=flat-square)        |
+| Component                                                                                 | Status                                                                                     | Completion                                                                          |
+| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| **Kodachi Workers VPS**                                                                   | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **Kodachi Master VPS**                                                                    | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **[Kodachi Anonymity Verifier](https://www.kodachi.cloud/)**                              | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **[Kodachi Binary Documentation](https://www.kodachi.cloud/wiki/bina/index.html)**        | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **[Kodachi Standalone Binaries](https://www.kodachi.cloud/wiki/bina/installation.html)**  | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **[Kodachi Terminal Server Version](https://www.kodachi.cloud/wiki/bina/terminal-version.html)** | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **[Kodachi Payment Gateway](https://www.kodachi.cloud/wiki/bina/support.html)**           | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **Kodachi Admin Dashboard**                                                               | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **[Kodachi Dashboard GUI](https://www.kodachi.cloud/wiki/bina/support.html)**             | ![In Progress](https://img.shields.io/badge/Status-In%20Progress-orange?style=flat-square) | ![85%](https://img.shields.io/badge/Progress-85%25-orange?style=flat-square)        |
+| **Kodachi Desktop**                                                                       | ![In Progress](https://img.shields.io/badge/Status-In%20Progress-orange?style=flat-square) | ![80%](https://img.shields.io/badge/Progress-80%25-orange?style=flat-square)        |
 
 ---
 
 ## Component Progress Breakdown
 
-| Feature / Utility        | Backend      | Frontend   | Notes                                                                          |
-| ------------------------ | ------------ | ---------- | ------------------------------------------------------------------------------ |
-| **Login Manager**        | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | Completed both authentication logic and UI integration.                        |
-| **Internet Fix Utility** | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | Network diagnostics and recovery utilities implemented.                        |
-| **Application Launcher** | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | Modular app launch system for privacy tools.                                   |
-| **Security Tools**       | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | Includes firewall toggles and protection utilities.                            |
-| **IP Fetch Utility**     | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | Full location + ASN lookup integrated.                                         |
-| **MAC Address Utility**  | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | Automatic and manual MAC spoofing supported.                                   |
-| **Hostname Changer**     | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | Persistent and session-based hostname updates handled.                         |
-| **Time Zone Utility**    | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | Geo-based adjustment; includes IP-based firewall re-evaluation.                |
-| **Command Guide**        | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | CLI helper with context-aware command suggestions.                             |
-| **Gambas Command Line**  | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | Command line integration and debugging completed (Task #9).                    |
-| **Tor Manager**          | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | Backend and frontend complete; IP login testing needed (Task #6, Aug 28).      |
-| **System Information**   | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | Backend and frontend both completed with dynamic hardware and OS data parsing. |
-| **DNS Manager**          | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Pending](https://img.shields.io/badge/-Pending-yellow?style=flat-square) | Backend fully implemented; GUI frontend under development (Task #7, Sep 1).    |
-| **Card System**          | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | Decryption and patching completed (Task #1, Aug 15).                           |
-| **Secure Connectivity**  | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | VPN and secure connection management fully implemented.                        |
-| **Project Connector**    | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | Backend Rust implementation completed (Task #2, Aug 17).                       |
-| **Workflow Manager**     | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | Batch command execution with conditional logic and telemetry completed.        |
-| **Settings Manager**     | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Pending](https://img.shields.io/badge/-Pending-yellow?style=flat-square) | Core settings logic ready; GUI still under development.                        |
-| **CLI-Core Library**     | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | N/A        | Unified command-line interface foundation for all services.                    |
-| **Dependencies Checker** | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | N/A        | Comprehensive system dependency verification and management.                   |
-| **Auth-Shared Library**  | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | N/A        | Centralized authentication framework for all backend services.                 |
-| **Rust-Updater**         | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | N/A        | Automated dependency updating and API compatibility management.                |
+| Feature / Utility        | Backend                                                                   | Frontend                                                                   | Notes                                                                          |
+| ------------------------ | ------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| **Login Manager**        | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  | Completed both authentication logic and UI integration.                        |
+| **Internet Fix Utility** | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  | Network diagnostics and recovery utilities implemented.                        |
+| **Application Launcher** | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  | Modular app launch system for privacy tools.                                   |
+| **Security Tools**       | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  | Includes firewall toggles and protection utilities.                            |
+| **IP Fetch Utility**     | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  | Full location + ASN lookup integrated.                                         |
+| **MAC Address Utility**  | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  | Automatic and manual MAC spoofing supported.                                   |
+| **Hostname Changer**     | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  | Persistent and session-based hostname updates handled.                         |
+| **Time Zone Utility**    | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  | Geo-based adjustment; includes IP-based firewall re-evaluation.                |
+| **Command Guide**        | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  | CLI helper with context-aware command suggestions.                             |
+| **Gambas Command Line**  | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  | Command line integration and debugging completed (Task #9).                    |
+| **Tor Manager**          | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  | Backend and frontend complete; IP login testing needed (Task #6, Aug 28).      |
+| **System Information**   | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  | Backend and frontend both completed with dynamic hardware and OS data parsing. |
+| **DNS Manager**          | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  | Backend and frontend fully implemented.                                        |
+| **Card System**          | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  | Decryption and patching completed (Task #1, Aug 15).                           |
+| **Secure Connectivity**  | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  | VPN and secure connection management fully implemented.                        |
+| **Project Connector**    | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  | Backend Rust implementation completed (Task #2, Aug 17).                       |
+| **Workflow Manager**     | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  | Batch command execution with conditional logic and telemetry completed.        |
+| **Settings Manager**     | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  | Core settings logic and GUI fully implemented.                                 |
+| **CLI-Core Library**     | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | N/A                                                                        | Unified command-line interface foundation for all services.                    |
+| **Dependencies Checker** | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | N/A                                                                        | Comprehensive system dependency verification and management.                   |
+| **Auth-Shared Library**  | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | N/A                                                                        | Centralized authentication framework for all backend services.                 |
+| **Rust-Updater**         | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | N/A                                                                        | Automated dependency updating and API compatibility management.                |
 
 ### System-Wide Improvements
 
@@ -61,20 +64,20 @@ This roadmap provides an overview of the current status of key components in the
 
 ### Project Timeline
 
-|  #  | Task                             |    Status    | Completion Date  | Notes                                            |
-| :-: | :------------------------------- | :----------: | :--------------: | ------------------------------------------------ |
-|  1  | Gambas Command Line & Debug      | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) |   Aug 11, 2025   | Command line integration completed               |
-|  2  | Card System (Decryption & Patch) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) |   Aug 15, 2025   | Decryption and patching completed                |
-|  3  | Project Connector in Rust        | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) |   Aug 17, 2025   | Backend Rust implementation completed            |
-|  4  | Recheck 8.27 features            | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) |   Aug 25, 2025   | All Kodachi 8.27 features verified               |
-|  5  | Test all binaries                | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) |   Sep 17, 2025   | Compiled binaries tested across all environments |
-|  6  | Research                         | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) |   Sep 30, 2025   | Edge-case testing and hardening completed        |
-|  7  | Tor Manager IP Login GUI fix     | ![Pending](https://img.shields.io/badge/-Pending-yellow?style=flat-square) |   Jan 15, 2026   | Fix IP login functionality                       |
-|  8  | DNS GUI                          | ![Pending](https://img.shields.io/badge/-Pending-yellow?style=flat-square) |   Jan 20, 2026   | Complete GUI for DNS management                  |
-|  9  | Blender GUI + scoring            | ![Pending](https://img.shields.io/badge/-Pending-yellow?style=flat-square) |   Jan 25, 2026   | Traffic mixing and obfuscation UI                |
-| 10  | Check Reference General MD       | ![Pending](https://img.shields.io/badge/-Pending-yellow?style=flat-square) |   Jan 30, 2026   | Documentation review                             |
-| 11  | Build ISO                        | ![Pending](https://img.shields.io/badge/-Pending-yellow?style=flat-square) |  **Feb 2026**    | Final ISO build for beta release                 |
-| 12  | Blender in Rust                  | ![Cancelled](https://img.shields.io/badge/-Cancelled-red?style=flat-square) |        -         | Duplicate of Workflow Manager (completed)        |
+|  #  | Task                             |                                   Status                                    | Completion Date | Notes                                            |
+| :-: | :------------------------------- | :-------------------------------------------------------------------------: | :-------------: | ------------------------------------------------ |
+|  1  | Gambas Command Line & Debug      |  ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  |  Aug 11, 2025   | Command line integration completed               |
+|  2  | Card System (Decryption & Patch) |  ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  |  Aug 15, 2025   | Decryption and patching completed                |
+|  3  | Project Connector in Rust        |  ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  |  Aug 17, 2025   | Backend Rust implementation completed            |
+|  4  | Recheck 8.27 features            |  ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  |  Aug 25, 2025   | All Kodachi 8.27 features verified               |
+|  5  | Test all binaries                |  ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  |  Sep 17, 2025   | Compiled binaries tested across all environments |
+|  6  | Research                         |  ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  |  Sep 30, 2025   | Edge-case testing and hardening completed        |
+|  7  | Tor Manager IP Login GUI fix     | ![Pending](https://img.shields.io/badge/-Pending-yellow?style=flat-square)  |  Jan 15, 2026   | Fix IP login functionality                       |
+|  8  | DNS GUI                          | ![Pending](https://img.shields.io/badge/-Pending-yellow?style=flat-square)  |  Jan 20, 2026   | Complete GUI for DNS management                  |
+|  9  | Blender GUI + scoring            | ![Pending](https://img.shields.io/badge/-Pending-yellow?style=flat-square)  |  Jan 25, 2026   | Traffic mixing and obfuscation UI                |
+| 10  | Check Reference General MD       | ![Pending](https://img.shields.io/badge/-Pending-yellow?style=flat-square)  |  Jan 30, 2026   | Documentation review                             |
+| 11  | Build ISO                        | ![Pending](https://img.shields.io/badge/-Pending-yellow?style=flat-square)  |  **Feb 2026**   | Final ISO build for beta release                 |
+| 12  | Blender in Rust                  | ![Cancelled](https://img.shields.io/badge/-Cancelled-red?style=flat-square) |        -        | Duplicate of Workflow Manager (completed)        |
 
 **Beta Release Target:** February 2026
 
@@ -101,10 +104,10 @@ This roadmap provides an overview of the current status of key components in the
 - Early bug detection without needing ISO builds
 - Community feedback on core functionality
 
-### Phase 2: Kodachi Terminal Version ![RELEASED](https://img.shields.io/badge/-RELEASED-brightgreen?style=flat-square)
+### Phase 2: Kodachi Terminal Server Version ![RELEASED](https://img.shields.io/badge/-RELEASED-brightgreen?style=flat-square)
 
 **Status:** ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)
-**Documentation:** [Terminal Version Guide](https://www.kodachi.cloud/wiki/bina/terminal-version.html)
+**Documentation:** [Terminal Server Version Guide](https://www.kodachi.cloud/wiki/bina/terminal-version.html)
 **Description:** Terminal-based edition with lightweight CLI interface and full backend integration
 **Technical Foundation:** Built on all standalone binaries from Phase 1 with optimized system integration
 
@@ -133,7 +136,7 @@ This roadmap provides an overview of the current status of key components in the
 
 **• Binaries First** ![Complete](https://img.shields.io/badge/-Complete-brightgreen?style=flat-square) = Fastest way to get real-world coverage on any distro. We catch environment bugs early without rebuilding ISOs.
 
-**• Terminal Next** ![Complete](https://img.shields.io/badge/-Complete-brightgreen?style=flat-square) = Stabilize network and security modules on a smaller, lighter attack surface, and harden the core that the Desktop will use.
+**• Terminal Server Next** ![Complete](https://img.shields.io/badge/-Complete-brightgreen?style=flat-square) = Stabilize network and security modules on a smaller, lighter attack surface, and harden the core that the Desktop will use.
 
 **• Desktop Last** ![In Progress](https://img.shields.io/badge/-In%20Progress-orange?style=flat-square) = Integrate user feedback, polish UX, and ship the full experience. **Target: Feb 2026**
 
@@ -142,14 +145,14 @@ This roadmap provides an overview of the current status of key components in the
 Each phase builds upon the previous, ensuring maximum stability and security:
 
 **Phase 1 (Standalone Binaries)** = Individual tools → Modular testing and development
-**Phase 2 (Terminal Version)** = Binaries + System Integration → Hardened foundation
+**Phase 2 (Terminal Server Version)** = Binaries + System Integration → Hardened foundation
 **Phase 3 (Desktop Edition)** = Terminal + GUI Dashboard → Complete user experience
 
 This progression ensures that each layer is thoroughly tested and hardened before the next is built on top of it.
 
 ### What This Means for Users:
 
-• **Available Now**: Binaries and Terminal Version are ready for immediate use
+• **Available Now**: Binaries and Terminal Server Version are ready for immediate use
 • **Better Stability**: Desktop edition benefits from real-world testing of Phases 1 & 2
 • **Flexible Deployment**: Choose the edition that fits your needs (binaries, terminal, or wait for desktop)
 • **Community-Driven**: Your feedback from current releases shapes the desktop edition
@@ -158,9 +161,9 @@ This progression ensures that each layer is thoroughly tested and hardened befor
 
 • ![Available](https://img.shields.io/badge/-Available-brightgreen?style=flat-square) **Standalone Binaries**: [Install individual tools on any Linux distribution](https://www.kodachi.cloud/wiki/bina/installation.html) - Perfect for adding Kodachi privacy tools to your existing system
 
-• ![Available](https://img.shields.io/badge/-Available-brightgreen?style=flat-square) **Terminal Version**: [Complete system with all binaries pre-integrated](https://www.kodachi.cloud/wiki/bina/terminal-version.html) - Perfect for dedicated privacy systems, servers, and headless deployments
+• ![Available](https://img.shields.io/badge/-Available-brightgreen?style=flat-square) **Terminal Server Version**: [Complete system with all binaries pre-integrated](https://www.kodachi.cloud/wiki/bina/terminal-version.html) - Perfect for dedicated privacy systems, servers, and headless deployments
 
-• ![Coming Soon](https://img.shields.io/badge/-Coming%20Soon-yellow?style=flat-square) **Desktop Edition**: Coming February 2026 with complete GUI dashboard built on Terminal Version foundation
+• ![Coming Soon](https://img.shields.io/badge/-Coming%20Soon-yellow?style=flat-square) **Desktop Edition**: Coming February 2026 with complete GUI dashboard built on Terminal Server Version foundation
 
 • **All editions share the same core binaries and security features** - Choose based on your deployment needs
 
