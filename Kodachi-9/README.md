@@ -72,10 +72,10 @@ This roadmap provides an overview of the current status of key components in the
 |  4  | Recheck 8.27 features            |  ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  |  Aug 25, 2025   | All Kodachi 8.27 features verified               |
 |  5  | Test all binaries                |  ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  |  Sep 17, 2025   | Compiled binaries tested across all environments |
 |  6  | Research                         |  ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  |  Sep 30, 2025   | Edge-case testing and hardening completed        |
-|  7  | Tor Manager IP Login GUI fix     | ![Pending](https://img.shields.io/badge/-Pending-yellow?style=flat-square)  |  Jan 15, 2026   | Fix IP login functionality                       |
-|  8  | DNS GUI                          | ![Pending](https://img.shields.io/badge/-Pending-yellow?style=flat-square)  |  Jan 20, 2026   | Complete GUI for DNS management                  |
-|  9  | Blender GUI + scoring            | ![Pending](https://img.shields.io/badge/-Pending-yellow?style=flat-square)  |  Jan 25, 2026   | Traffic mixing and obfuscation UI                |
-| 10  | Check Reference General MD       | ![Pending](https://img.shields.io/badge/-Pending-yellow?style=flat-square)  |  Jan 30, 2026   | Documentation review                             |
+|  7  | Tor Manager IP Login GUI fix     |  ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  |  Jan 15, 2026   | Fix IP login functionality                       |
+|  8  | DNS GUI                          |  ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  |  Jan 20, 2026   | Complete GUI for DNS management                  |
+|  9  | Blender GUI + scoring            |  ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  |  Jan 25, 2026   | Traffic mixing and obfuscation UI                |
+| 10  | Check Reference General MD       |  ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  |  Jan 30, 2026   | Documentation review                             |
 | 11  | Build ISO                        | ![Pending](https://img.shields.io/badge/-Pending-yellow?style=flat-square)  |  **Feb 2026**   | Final ISO build for beta release                 |
 | 12  | Blender in Rust                  | ![Cancelled](https://img.shields.io/badge/-Cancelled-red?style=flat-square) |        -        | Duplicate of Workflow Manager (completed)        |
 
