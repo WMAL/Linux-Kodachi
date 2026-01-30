@@ -19,12 +19,13 @@ Experience command-line anonymity and security with full privacy protection.
 
 <div align="center">
 
-### ![Updates](https://img.shields.io/badge/-QUICK%20UPDATES-purple?style=for-the-badge) What's New ![Updates](https://img.shields.io/badge/-DECEMBER%202025-purple?style=for-the-badge)
+### ![Updates](https://img.shields.io/badge/-QUICK%20UPDATES-purple?style=for-the-badge) What's New ![Updates](https://img.shields.io/badge/-JANUARY%202026-purple?style=for-the-badge)
 
 </div>
 
 > **Recent Platform Updates:**
 >
+> - **[Kodachi Dashboard GUI](https://www.kodachi.cloud/wiki/bina/installation.html)** - The binary package now ships with the full GUI dashboard! This modern Tauri + Svelte desktop application provides centralized control over all security services
 > - **[Domain Checker](https://www.kodachi.cloud/domain-checker.html)** - Global DNS propagation checker with multi-server verification
 > - **[API Documentation Portal](https://www.kodachi.cloud/api-docs.html)** - New API docs for IP geolocation, platform stats, and binary service endpoints
 > - **[Infrastructure Status Dashboard](https://www.kodachi.cloud/apps/status.php)** - Live monitoring of servers and services across multiple regions
@@ -63,7 +64,7 @@ This roadmap provides an overview of the current status of key components in the
 | **[Kodachi Terminal Server Version](https://www.kodachi.cloud/wiki/bina/terminal-version.html)** | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **[Kodachi Payment Gateway](https://www.kodachi.cloud/wiki/bina/support.html)**                  | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **Kodachi Admin Dashboard**                                                                      | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
-| **Kodachi Dashboard GUI**                                                                        | ![In Progress](https://img.shields.io/badge/Status-In%20Progress-orange?style=flat-square) | ![85%](https://img.shields.io/badge/Progress-85%25-orange?style=flat-square)        |
+| **Kodachi Dashboard GUI**                                                                        | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **Kodachi Desktop**                                                                              | ![In Progress](https://img.shields.io/badge/Status-In%20Progress-orange?style=flat-square) | ![80%](https://img.shields.io/badge/Progress-80%25-orange?style=flat-square)        |
 
 ### **Kodachi 9: A New Era is Coming!**
