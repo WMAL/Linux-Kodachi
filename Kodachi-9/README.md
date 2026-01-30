@@ -12,7 +12,7 @@ This roadmap provides an overview of the current status of key components in the
 | **[Kodachi Terminal Server Version](https://www.kodachi.cloud/wiki/bina/terminal-version.html)** | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **[Kodachi Payment Gateway](https://www.kodachi.cloud/wiki/bina/support.html)**                  | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **Kodachi Admin Dashboard**                                                                      | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
-| **Kodachi Dashboard GUI**                                                                        | ![In Progress](https://img.shields.io/badge/Status-In%20Progress-orange?style=flat-square) | ![85%](https://img.shields.io/badge/Progress-85%25-orange?style=flat-square)        |
+| **Kodachi Dashboard GUI**                                                                        | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **Kodachi Desktop**                                                                              | ![In Progress](https://img.shields.io/badge/Status-In%20Progress-orange?style=flat-square) | ![80%](https://img.shields.io/badge/Progress-80%25-orange?style=flat-square)        |
 
 ---
@@ -175,3 +175,16 @@ Each of the above components is now integrated or in final testing stages. Kodac
 
 - **From Scratch with Legacy Integration:**
   Every component has been re-engineered from the ground up to ensure modern, robust architecture. That said, the working code from the previous version was utilized where applicable to maintain proven functionality and save valuable development time.
+
+---
+
+## What's New ![Updates](https://img.shields.io/badge/-Updates-blue?style=for-the-badge)
+
+**Recent Platform Updates:**
+
+- **[Kodachi Dashboard GUI](https://www.kodachi.cloud/wiki/bina/installation.html)** - The binary package now ships with the full GUI dashboard! This modern Tauri + Svelte desktop application provides centralized control over all security services
+- **Domain Checker** - Global DNS propagation checker with multi-server verification
+- **API Documentation Portal** - New API docs for IP geolocation, platform stats, and binary service endpoints
+- **Infrastructure Status Dashboard** - Live monitoring of servers and services across multiple regions
+- **Kodachi Cloud** - Fresh redesigned interface
+- **Kodachi Homepage** - New modern look

@@ -4,7 +4,7 @@
 # ======================================================
 #
 # SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.0
-# Copyright (c) 2013-2025 Warith Al Maawali
+# Copyright (c) 2013-2026 Warith Al Maawali
 #
 # This file is part of Kodachi OS.
 # For full license terms, see LICENSE.md or visit:
@@ -538,7 +538,109 @@ if [[ -d "$EXTRACT_DIR/binaries-update-scripts" ]]; then
     fi
 fi
 
-# Step 9: Add to PATH in .bashrc with idempotent block management
+# Step 9: Create desktop shortcuts
+mark_desktop_file_trusted() {
+    local desktop_file="$1"
+    local checksum=""
+
+    if command -v sha256sum &>/dev/null; then
+        checksum=$(sha256sum "$desktop_file" | awk '{print $1}')
+    fi
+
+    # GNOME/Nautilus and XFCE trust metadata (best-effort)
+    if command -v gio &>/dev/null; then
+        gio set "$desktop_file" metadata::trusted true 2>/dev/null || \
+            gio set "$desktop_file" metadata::trusted yes 2>/dev/null || true
+        if [[ -n "$checksum" ]]; then
+            gio set "$desktop_file" metadata::xfce-exe-checksum "$checksum" 2>/dev/null || true
+        fi
+    fi
+
+    if command -v gvfs-set-attribute &>/dev/null; then
+        gvfs-set-attribute -t string "$desktop_file" metadata::trusted "true" 2>/dev/null || true
+        if [[ -n "$checksum" ]]; then
+            gvfs-set-attribute -t string "$desktop_file" metadata::xfce-exe-checksum "$checksum" 2>/dev/null || true
+        fi
+    fi
+
+    if command -v setfattr &>/dev/null; then
+        setfattr -n user.xfce.executable -v true "$desktop_file" 2>/dev/null || true
+    fi
+}
+
+create_desktop_shortcuts() {
+    print_step "Creating desktop shortcuts..."
+
+    local DESKTOP_DIR
+    # Detect desktop directory (supports multiple languages)
+    if [[ -d "$HOME/Desktop" ]]; then
+        DESKTOP_DIR="$HOME/Desktop"
+    elif [[ -d "$HOME/Escritorio" ]]; then
+        DESKTOP_DIR="$HOME/Escritorio"
+    elif [[ -d "$HOME/Bureau" ]]; then
+        DESKTOP_DIR="$HOME/Bureau"
+    elif [[ -d "$HOME/Schreibtisch" ]]; then
+        DESKTOP_DIR="$HOME/Schreibtisch"
+    elif command -v xdg-user-dir &>/dev/null; then
+        DESKTOP_DIR="$(xdg-user-dir DESKTOP 2>/dev/null)"
+    fi
+
+    if [[ -z "$DESKTOP_DIR" ]] || [[ ! -d "$DESKTOP_DIR" ]]; then
+        print_warning "Desktop directory not found, skipping shortcuts"
+        return 0
+    fi
+
+    # Determine icon path - prefer 128x128 icon if available in config/icons
+    local ICON_PATH="$INSTALL_PATH/config/icons/kodachi-dashboard.png"
+    if [[ ! -f "$ICON_PATH" ]]; then
+        # Fallback to generic system icon
+        ICON_PATH="utilities-terminal"
+    fi
+
+    # 1. Kodachi Dashboard shortcut
+    cat > "$DESKTOP_DIR/kodachi-dashboard.desktop" << EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Kodachi Dashboard
+Comment=Kodachi Security Dashboard
+Exec=$INSTALL_PATH/kodachi-dashboard
+Icon=$ICON_PATH
+Terminal=false
+Categories=Security;System;
+StartupNotify=true
+X-XFCE-TrustedApplication=true
+EOF
+    chmod +x "$DESKTOP_DIR/kodachi-dashboard.desktop"
+    mark_desktop_file_trusted "$DESKTOP_DIR/kodachi-dashboard.desktop"
+    # Compatibility toggle for some XFCE/Thunar setups
+    if command -v xfconf-query &>/dev/null; then
+        xfconf-query -c thunar -p /misc-exec-shell-scripts-by-default -n -t bool -s true 2>/dev/null || true
+    fi
+
+    # 2. Kodachi Binaries folder shortcut
+    cat > "$DESKTOP_DIR/kodachi-binaries.desktop" << EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Kodachi Binaries
+Comment=Open Kodachi binaries folder
+Exec=xdg-open $INSTALL_PATH
+Icon=folder-open
+Terminal=false
+Categories=Utility;
+X-XFCE-TrustedApplication=true
+EOF
+    chmod +x "$DESKTOP_DIR/kodachi-binaries.desktop"
+    mark_desktop_file_trusted "$DESKTOP_DIR/kodachi-binaries.desktop"
+
+    print_success "Desktop shortcuts created: kodachi-dashboard, kodachi-binaries"
+}
+
+# Create desktop shortcuts
+create_desktop_shortcuts
+
+# Step 10: Add to PATH in .bashrc with idempotent block management
 if [[ "$SKIP_PATH_UPDATE" != "true" ]]; then
     print_step "Updating PATH in .bashrc..."
 
@@ -575,28 +677,26 @@ if [[ "$SKIP_PATH_UPDATE" != "true" ]]; then
     fi
 fi
 
-# Step 10: Global deployment reminder
-echo ""
-print_highlight "======= Global Deployment ======="
-echo ""
-print_info "System-wide deployment requires root privileges and now runs as part of the dependency installer."
-print_info "To finish setup, install dependencies and publish binaries to /usr/local/bin with:"
-echo -e "  ${BOLD}sudo bash $INSTALL_PATH/binaries-update-scripts/kodachi-deps-install.sh${NC}"
-print_info "Until then, binaries remain available locally in $INSTALL_PATH"
-
 # Final summary
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║    Binary Installation Complete!             ║${NC}"
+echo -e "${GREEN}║    Script #1 Complete - Binaries Installed!  ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════════╝${NC}"
 echo ""
 print_success "Kodachi binaries installed to: $INSTALL_PATH"
 print_info "Binaries installed: $TOTAL_COUNT"
 print_info "Signatures verified: $VERIFIED_COUNT"
+print_info "Desktop shortcuts: kodachi-dashboard, kodachi-binaries"
 
 if [[ $FAILED_COUNT -gt 0 ]]; then
     print_warning "Signatures not verified: $FAILED_COUNT"
 fi
+
+echo ""
+print_highlight "═══════════════════════════════════════════════════════════════"
+print_highlight "  IMPORTANT: You Must Run Script #2 Next for Dashboard to Work"
+print_highlight "═══════════════════════════════════════════════════════════════"
+echo ""
 
 # Function to check if user is in sudoers
 check_sudoers_status() {
@@ -613,16 +713,21 @@ check_sudoers_status() {
     if [[ "$in_sudo_group" == "true" ]]; then
         print_success "User '$current_user' is in the sudoers group"
         echo ""
-        print_highlight "Next Step (runs as root):"
+        print_highlight "Next Step - Script #2 (REQUIRED for Dashboard):"
         echo ""
-        echo "  Install dependencies and deploy binaries system-wide:"
-        echo -e "   ${BOLD}sudo bash $INSTALL_PATH/binaries-update-scripts/kodachi-deps-install.sh${NC}"
+        print_warning "The Dashboard and binaries won't work until you run the dependencies script!"
         echo ""
-        print_info "This command installs required packages and creates /usr/local/bin symlinks."
+        echo -e "  ${CYAN}Download and run the dependencies installer:${NC}"
+        echo -e "   ${BOLD}curl -sSL https://www.kodachi.cloud/apps/os/install/kodachi-deps-install.sh | sudo bash${NC}"
+        echo ""
+        echo -e "  ${CYAN}Or if you have it locally:${NC}"
+        echo -e "   ${BOLD}sudo bash kodachi-deps-install.sh${NC}"
+        echo ""
+        print_info "This script installs system packages, configures sudoers for dashboard, and sets up DNS/Tor."
     else
         print_warning "User '$current_user' is NOT in the sudoers group"
         echo ""
-        print_highlight "IMPORTANT: You need to be in the sudoers group to continue"
+        print_highlight "IMPORTANT: You need sudo access to run Script #2"
         echo ""
         print_highlight "To add yourself to the sudoers group:"
         echo ""
@@ -637,10 +742,12 @@ check_sudoers_status() {
         echo ""
         echo "  4. Log out and log back in for changes to take effect"
         echo ""
-        print_highlight "After adding to sudoers, you can:"
+        print_highlight "After adding to sudoers, run Script #2:"
         echo ""
-        echo "1. Install dependencies and deploy globally:"
-        echo -e "   ${BOLD}sudo bash $INSTALL_PATH/binaries-update-scripts/kodachi-deps-install.sh${NC}"
+        print_warning "Dashboard won't work until you run the dependencies script!"
+        echo ""
+        echo -e "  ${CYAN}Script #2 - Dependencies Installer (REQUIRED):${NC}"
+        echo -e "   ${BOLD}curl -sSL https://www.kodachi.cloud/apps/os/install/kodachi-deps-install.sh | sudo bash${NC}"
     fi
 }
 

@@ -11,6 +11,11 @@ Here you'll find a collection of:
 
 ---
 
+!!! tip "New: Kodachi Dashboard Available"
+    The **Kodachi Dashboard** is now included in the binary packages! This modern Tauri + Svelte desktop application provides centralized control over all security services including authentication, connections, TOR, DNS, and system health. Install the binaries to try it out - feedback welcome on [Discord](https://discord.gg/KEFErEx).
+
+---
+
 ## ![Purpose](https://img.shields.io/badge/-Purpose-green?style=flat-square&logo=pushpin) Purpose
 
 The goal of this folder is to provide **transparency and technical depth** into the decisions and challenges involved in building Kodachi v9. It's a **progress log** from the perspective of the lead developer, designed to share not only solutions, but the *thinking behind them*.
