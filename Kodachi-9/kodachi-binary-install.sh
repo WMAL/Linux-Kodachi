@@ -15,7 +15,7 @@
 #
 # Author: Warith Al Maawali
 # Version: 9.0.1
-# Last updated: 2025-10-19
+# Last updated: 2026-01-29
 #
 # Description:
 # This script downloads and installs Kodachi security tool binaries
