@@ -2,16 +2,16 @@
 
 <div align="center">
 
-### ![Announcement](https://img.shields.io/badge/-ANNOUNCEMENT-success?style=for-the-badge) **Kodachi 9 Terminal Server Version Released!** ![Announcement](https://img.shields.io/badge/-ANNOUNCEMENT-success?style=for-the-badge)
+### ![Announcement](https://img.shields.io/badge/-ANNOUNCEMENT-success?style=for-the-badge) **Kodachi 9 Dashboard GUI Released!** ![Announcement](https://img.shields.io/badge/-ANNOUNCEMENT-success?style=for-the-badge)
 
-[![Release](https://img.shields.io/badge/Kodachi%209-Terminal%20Server%20Version-success?style=for-the-badge&logo=debian&logoColor=white)](https://www.kodachi.cloud/wiki/bina/terminal-version.html)
-[![Test Now](https://img.shields.io/badge/Test%20Now-Get%20Started-blue?style=for-the-badge&logo=rocket&logoColor=white)](https://www.kodachi.cloud/wiki/bina/terminal-version.html)
-[![Security](https://img.shields.io/badge/Privacy%20%26%20Anonymity-Guaranteed-red?style=for-the-badge&logo=shield&logoColor=white)](https://www.kodachi.cloud/wiki/bina/terminal-version.html)
+[![Release](https://img.shields.io/badge/Kodachi%209-Dashboard%20GUI-success?style=for-the-badge&logo=debian&logoColor=white)](https://www.kodachi.cloud/wiki/bina/installation.html)
+[![Test Now](https://img.shields.io/badge/Test%20Now-Get%20Started-blue?style=for-the-badge&logo=rocket&logoColor=white)](https://www.kodachi.cloud/wiki/bina/installation.html)
+[![Security](https://img.shields.io/badge/Privacy%20%26%20Anonymity-Guaranteed-red?style=for-the-badge&logo=shield&logoColor=white)](https://www.kodachi.cloud/wiki/bina/installation.html)
 
-**The Kodachi 9 Terminal Server Version is now available as the latest release!**
-Experience command-line anonymity and security with full privacy protection.
+**The Kodachi 9 Dashboard GUI is now available!**
+The binary package now ships with the full GUI dashboard - a modern Tauri + Svelte desktop application providing centralized control over all security services.
 
-![Documentation](https://img.shields.io/badge/-Documentation-blue?style=flat-square&logo=book) **[Installation Guide & Documentation](https://www.kodachi.cloud/wiki/bina/terminal-version.html)**
+![Documentation](https://img.shields.io/badge/-Documentation-blue?style=flat-square&logo=book) **[Installation Guide & Documentation](https://www.kodachi.cloud/wiki/bina/installation.html)**
 
 ---
 
