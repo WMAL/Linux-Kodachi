@@ -4,7 +4,7 @@
 # ==============================================================
 #
 # SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.0
-# Copyright (c) 2013-2025 Warith Al Maawali
+# Copyright (c) 2013-2026 Warith Al Maawali
 #
 # This file is part of Kodachi OS.
 # For full license terms, see LICENSE.md or visit:
@@ -15,7 +15,19 @@
 #
 # Author: Warith Al Maawali
 # Version: 9.0.1
-# Last updated: 2025-10-19
+# Last updated: 2025-01-29
+#
+# Features:
+# =========
+# - Automatic contrib/non-free repository enablement
+# - Automatic DNS fix after systemd-resolved installation (dns-switch integration)
+# - Per-package DNS testing for Privacy packages (detects which package breaks DNS)
+# - DNS retry logic for GitHub downloads (handles network issues gracefully)
+# - Verbose mode for detailed debugging output (--verbose or -v flag)
+# - Multiple installation modes: full, minimal, interactive, proxy-only
+# - Automatic architecture detection (amd64, ARM support)
+# - Download retry with fallback mechanisms
+# - Non-interactive package installation (prevents freezing)
 #
 # Description:
 # This script installs all system package dependencies required for
@@ -54,12 +66,20 @@
 #   --force-kicksecure-ramwipe   Keep/Install Kicksecure RAM wipe (dracut + ram-wipe)
 #                                By default: Removes dracut/ram-wipe, restores initramfs-tools
 #                                Note: Kodachi has built-in RAM wipe via 'health-control memory-wipe'
+#   --verbose, -v                Enable verbose mode - show detailed apt-get output and progress
 #   --help                       Show help message
 
 # Strict mode - will be disabled for interactive mode
 set -eo pipefail
 umask 022
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
+
+# CRITICAL FIX: Prevent job control signals from suspending apt-get processes
+# Ignore SIGTSTP (Ctrl+Z), SIGTTIN (background read), SIGTTOU (background write)
+trap '' SIGTSTP SIGTTIN SIGTTOU
+
+# Disable job control globally to prevent suspend issues
+set +m
 
 # Security and reliability options
 CURL_OPTS=(--fail --location --show-error --silent --connect-timeout 15 --max-time 120)
@@ -75,6 +95,9 @@ MAGENTA='\033[0;35m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
+# Verbose mode flag
+VERBOSE_MODE=false
+
 # Function to print colored output
 print_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
 print_success() { echo -e "${GREEN}[✓]${NC} $1"; }
@@ -82,12 +105,333 @@ print_error() { echo -e "${RED}[✗]${NC} $1"; }
 print_warning() { echo -e "${YELLOW}[!]${NC} $1"; }
 print_step() { echo -e "${CYAN}[→]${NC} $1"; }
 print_highlight() { echo -e "${MAGENTA}${BOLD}$1${NC}"; }
+print_verbose() {
+    if [[ "$VERBOSE_MODE" == "true" ]]; then
+        local timestamp=$(date +"%H:%M:%S")
+        echo -e "${CYAN}[VERBOSE ${timestamp}]${NC} $1"
+    fi
+}
+
+# Function to apply fallback DNS servers (mimics dns-switch fix-dns behavior)
+apply_fallback_dns() {
+    print_step "Applying FALLBACK DNS fix (systemd-resolved + /etc/resolv.conf)..."
+
+    # Step 1: Check if systemd-resolved is active and restart it if needed
+    if systemctl is-active --quiet systemd-resolved 2>/dev/null; then
+        print_verbose "systemd-resolved is active, restarting it..."
+        systemctl restart systemd-resolved 2>/dev/null || true
+        sleep 2
+    else
+        print_verbose "systemd-resolved not active, starting it..."
+        systemctl start systemd-resolved 2>/dev/null || true
+        sleep 2
+    fi
+
+    # Step 2: Fix /etc/resolv.conf symlink if needed
+    if [[ -L "/etc/resolv.conf" ]]; then
+        local target=$(readlink -f /etc/resolv.conf)
+        if [[ "$target" != *"systemd"* ]]; then
+            print_verbose "Fixing /etc/resolv.conf symlink to point to systemd-resolved..."
+            ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf 2>/dev/null || true
+        fi
+    else
+        print_verbose "/etc/resolv.conf is a regular file, converting to systemd symlink..."
+        ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf 2>/dev/null || true
+    fi
+
+    # Step 3: Remove immutable attribute from /etc/resolv.conf (in case it's set)
+    chattr -i /etc/resolv.conf 2>/dev/null || true
+
+    # Step 4: Write fallback DNS servers directly to /etc/resolv.conf as backup
+    # This ensures DNS works even if systemd-resolved fails
+    print_verbose "Writing fallback DNS servers to /etc/resolv.conf..."
+    cat > /etc/resolv.conf << 'EOF'
+# Kodachi fallback DNS configuration
+# Generated automatically after systemd-resolved installation
+nameserver 1.1.1.1
+nameserver 9.9.9.9
+nameserver 149.112.112.112
+nameserver 94.140.14.14
+EOF
+
+    # Step 5: Try to configure systemd-resolved via resolvectl if available
+    if command -v resolvectl &>/dev/null; then
+        print_verbose "Configuring systemd-resolved via resolvectl..."
+        resolvectl dns 2>/dev/null || true
+        resolvectl flush-caches 2>/dev/null || true
+    fi
+
+    print_success "Fallback DNS applied: 1.1.1.1, 9.9.9.9, 149.112.112.112, 94.140.14.14"
+}
+
+# Function to configure sudoers for Kodachi binaries (NOPASSWD access)
+configure_kodachi_sudoers() {
+    print_step "Configuring sudoers for Kodachi binaries..."
+
+    # Determine the actual user (not root) - SECURE method (no eval)
+    local actual_user
+    local real_user_home
+    if [[ -n "$SUDO_USER" ]]; then
+        # Validate SUDO_USER contains only valid username characters
+        if [[ "$SUDO_USER" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+            actual_user="$SUDO_USER"
+            real_user_home=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+        else
+            print_error "Invalid SUDO_USER detected"
+            return 1
+        fi
+    else
+        actual_user=$(whoami)
+        real_user_home="$HOME"
+    fi
+
+    # Fallback if getent failed
+    if [[ -z "$real_user_home" ]]; then
+        real_user_home="/home/$actual_user"
+    fi
+
+    print_info "User: $actual_user"
+    print_info "Home: $real_user_home"
+
+    # Find dashboard location
+    local dashboard_dir=""
+    if [[ -d "$real_user_home/dashboard/hooks" ]]; then
+        dashboard_dir="$real_user_home/dashboard/hooks"
+    elif [[ -d "$real_user_home/Desktop/dashboard/hooks" ]]; then
+        dashboard_dir="$real_user_home/Desktop/dashboard/hooks"
+    fi
+
+    if [[ -n "$dashboard_dir" ]]; then
+        print_info "Dashboard found at: $dashboard_dir"
+    else
+        print_warning "Dashboard hooks directory not found, using /usr/local/bin only"
+    fi
+
+    # Get list of all executable binaries in hooks folder
+    local binaries=()
+    if [[ -n "$dashboard_dir" && -d "$dashboard_dir" ]]; then
+        print_info "Scanning for Kodachi binaries in hooks directory..."
+        while IFS= read -r -d '' binary; do
+            local binary_name=$(basename "$binary")
+            # Include ELF binaries
+            if [[ -x "$binary" ]] && file "$binary" 2>/dev/null | grep -q "ELF"; then
+                binaries+=("$binary_name")
+            fi
+        done < <(find "$dashboard_dir" -maxdepth 1 -type f -executable -print0 2>/dev/null)
+    fi
+
+    # Add common Kodachi binaries that might be missing or in /usr/local/bin
+    local common_binaries=(
+        "health-control"
+        "tor-switch"
+        "dns-switch"
+        "routing-switch"
+        "ip-fetch"
+        "online-auth"
+        "integrity-check"
+        "dns-leak"
+        "permission-guard"
+        "logs-hook"
+        "deps-checker"
+        "oniux"
+        "kodachi-dashboard"
+        "global-launcher"
+        "workflow-manager"
+        "online-info-switch"
+        "tun2socks-linux-amd64"
+    )
+
+    # Merge and deduplicate
+    for common in "${common_binaries[@]}"; do
+        if [[ ! " ${binaries[@]} " =~ " ${common} " ]]; then
+            # Check if it exists in the directory or /usr/local/bin
+            if [[ -f "$dashboard_dir/$common" ]] || [[ -f "/usr/local/bin/$common" ]]; then
+                binaries+=("$common")
+            else
+                # Add anyway for future deployment
+                binaries+=("$common")
+            fi
+        fi
+    done
+
+    # Remove duplicates and sort
+    IFS=$'\n' binaries=($(printf '%s\n' "${binaries[@]}" | sort -u))
+    unset IFS
+
+    print_info "Found ${#binaries[@]} Kodachi binaries to configure"
+
+    # Create sudoers.d directory if it doesn't exist
+    mkdir -p /etc/sudoers.d
+
+    # Backup existing sudoers file
+    local sudoers_file="/etc/sudoers.d/kodachi-binaries"
+    if [[ -f "$sudoers_file" ]]; then
+        print_info "Backing up existing sudoers file..."
+        cp "$sudoers_file" "${sudoers_file}.backup.$(date +%s)"
+    fi
+
+    # Create the kodachi-binaries sudoers file with ALL binaries for BOTH paths
+    cat > "$sudoers_file" << EOF
+# Kodachi System Binaries - Passwordless Sudo Access
+# Generated: $(date)
+# User: $actual_user
+# Hooks Path: $dashboard_dir
+# System Path: /usr/local/bin
+#
+# This file grants NOPASSWD sudo access to all Kodachi binaries
+# deployed to /usr/local/bin/ and user's dashboard/hooks directory
+#
+# Security justification:
+# - Full paths prevent PATH hijacking attacks
+# - Binaries are cryptographically signed by Kodachi PKI
+# - User already authenticated with password at login
+# - Each binary has built-in permission guards and validation
+# - Standard practice for system monitoring tools (htop, iotop, netdata)
+#
+# Syntax validation: visudo -c -f /etc/sudoers.d/kodachi-binaries
+# Required permissions: 0440 (read-only, root:root)
+
+# ============================================================
+# Kodachi Binaries - Dual Path Configuration
+# ============================================================
+EOF
+
+    # Add entries for each binary with BOTH paths
+    for binary in "${binaries[@]}"; do
+        if [[ -n "$dashboard_dir" ]]; then
+            # Add hooks path entry
+            echo "$actual_user ALL=(ALL) NOPASSWD: $dashboard_dir/$binary" >> "$sudoers_file"
+        fi
+        # Add /usr/local/bin path entry
+        echo "$actual_user ALL=(ALL) NOPASSWD: /usr/local/bin/$binary" >> "$sudoers_file"
+    done
+
+    # Add system management commands
+    cat >> "$sudoers_file" << EOF
+
+# ============================================================
+# System Power Management (menu options)
+# ============================================================
+$actual_user ALL=(ALL) NOPASSWD: /usr/sbin/reboot
+$actual_user ALL=(ALL) NOPASSWD: /usr/sbin/shutdown
+$actual_user ALL=(ALL) NOPASSWD: /usr/sbin/poweroff
+
+# ============================================================
+# Time Synchronization (welcome script)
+# ============================================================
+$actual_user ALL=(ALL) NOPASSWD: /usr/sbin/ntpdig
+$actual_user ALL=(ALL) NOPASSWD: /usr/sbin/ntpdate
+$actual_user ALL=(ALL) NOPASSWD: /usr/sbin/ntpd
+$actual_user ALL=(ALL) NOPASSWD: /usr/bin/timedatectl
+
+# End of Kodachi NOPASSWD rules
+EOF
+
+    # Set correct permissions (0440 = read-only, root:root)
+    chmod 0440 "$sudoers_file"
+    chown root:root "$sudoers_file"
+
+    # Validate sudoers file syntax
+    if visudo -c -f "$sudoers_file" >/dev/null 2>&1; then
+        local entry_count=$(grep -c "NOPASSWD" "$sudoers_file")
+        print_success "Sudoers configured for user: $actual_user"
+        print_info "Total NOPASSWD entries: $entry_count"
+        print_info "Binaries configured: ${#binaries[@]}"
+        if [[ -n "$dashboard_dir" ]]; then
+            print_info "Paths: $dashboard_dir and /usr/local/bin"
+        else
+            print_info "Path: /usr/local/bin only"
+        fi
+        print_info "File: $sudoers_file"
+        print_success "Kodachi binaries can now run with sudo without password (terminal and GUI)"
+    else
+        print_error "Sudoers file syntax validation failed!"
+        print_warning "Removing invalid sudoers file for safety..."
+        rm -f "$sudoers_file"
+        # Restore backup if exists
+        if [[ -f "${sudoers_file}.backup."* ]]; then
+            local latest_backup=$(ls -t "${sudoers_file}.backup."* | head -1)
+            cp "$latest_backup" "$sudoers_file"
+            print_info "Restored previous backup: $latest_backup"
+        fi
+        return 1
+    fi
+}
+
+# Function to download with retry logic for DNS failures
+retry_download() {
+    local url="$1"
+    local output="$2"
+    local max_attempts=3
+    local attempt=1
+
+    while [[ $attempt -le $max_attempts ]]; do
+        print_verbose "Download attempt $attempt/$max_attempts: $url"
+
+        if curl -LS --connect-timeout 30 --max-time 120 --progress-bar -o "$output" "$url" 2>&1; then
+            if [[ -f "$output" ]] && [[ -s "$output" ]]; then
+                print_verbose "Download successful on attempt $attempt"
+                return 0
+            else
+                print_verbose "Downloaded file is empty or missing"
+                rm -f "$output" 2>/dev/null || true
+            fi
+        fi
+
+        local curl_exit=$?
+        if [[ $curl_exit -eq 6 ]]; then
+            print_verbose "DNS resolution failure detected (curl error 6)"
+            if [[ $attempt -lt $max_attempts ]]; then
+                print_info "Waiting for DNS to stabilize (attempt $attempt/$max_attempts)..."
+                sleep 5
+                wait_for_dns
+            fi
+        elif [[ $attempt -lt $max_attempts ]]; then
+            print_verbose "Download failed with curl error $curl_exit, retrying in 3 seconds..."
+            sleep 3
+        fi
+
+        attempt=$((attempt + 1))
+    done
+
+    print_error "Failed to download after $max_attempts attempts: $url"
+    return 1
+}
+
+# Logging (file + console)
+LOG_DIR="/var/log/kodachi"
+LOG_FILE=""
+
+setup_logging() {
+    local ts
+    ts=$(date +"%Y%m%d-%H%M%S")
+
+    if mkdir -p "$LOG_DIR" 2>/dev/null; then
+        chmod 700 "$LOG_DIR" 2>/dev/null || true
+    else
+        LOG_DIR="/tmp"
+    fi
+
+    LOG_FILE="$LOG_DIR/kodachi-deps-install-$ts.log"
+    if ! touch "$LOG_FILE" 2>/dev/null; then
+        LOG_FILE="/tmp/kodachi-deps-install-$ts.log"
+        touch "$LOG_FILE" 2>/dev/null || true
+    fi
+    chmod 600 "$LOG_FILE" 2>/dev/null || true
+
+    exec > >(tee -a "$LOG_FILE") 2>&1
+    print_info "Logging to ${CYAN}$LOG_FILE${NC}"
+    if [[ "$VERBOSE_MODE" == "true" ]]; then
+        print_verbose "Verbose mode enabled - detailed output will be shown"
+        print_verbose "Use 'tail -f $LOG_FILE' in another terminal to monitor progress"
+    fi
+}
 
 # Version configuration
-MIERU_VERSION="3.22.1"
-HYSTERIA2_VERSION="2.6.5"
+MIERU_VERSION="3.27.0"
+HYSTERIA2_VERSION="2.7.0"
 V2RAY_PLUGIN_VERSION="1.3.2"
-DNSCRYPT_VERSION="2.1.14"
+DNSCRYPT_VERSION="2.1.15"
 QRENCODE_VERSION="4.1.1"
 KLOAK_VERSION="0.2"
 
@@ -190,13 +534,16 @@ NETWORK_PACKAGES="tor torsocks obfs4proxy openvpn wireguard-tools iptables nftab
 SECURITY_PACKAGES="ufw macchanger firejail apparmor apparmor-utils apparmor-profiles aide lynis rkhunter chkrootkit usbguard ecryptfs-utils cryptsetup cryptsetup-initramfs cryptsetup-nuke-password fail2ban unattended-upgrades auditd libpam-pwquality libpam-google-authenticator secure-delete wipe nwipe"
 
 # Privacy - DNS and anonymity tools
-PRIVACY_PACKAGES="dnsutils bind9-dnsutils"
+PRIVACY_PACKAGES="dnsutils bind9-dnsutils systemd-resolved"
 
 # Advanced - Specialized tools and utilities (non-GUI)
 ADVANCED_PACKAGES="jq git build-essential rng-tools-debian haveged ccze yamllint smartmontools lm-sensors hdparm htop iotop vnstat efibootmgr rfkill ethtool lsb-release pciutils"
 
+# Monitoring - System and network monitoring tools for dashboard
+MONITORING_PACKAGES="btop iftop nethogs ncdu nload iperf3 speedtest-cli"
+
 # GUI-only packages - only installed on systems with desktop environments
-GUI_PACKAGES="bleachbit kitty fontconfig fonts-noto-color-emoji alsa-utils pulseaudio pulseaudio-utils libnotify-bin"
+GUI_PACKAGES="bleachbit kitty fontconfig fonts-noto-color-emoji alsa-utils pulseaudio pulseaudio-utils libnotify-bin xclip xsel mpv xterm network-manager"
 
 # Packages that require contrib/non-free repositories
 CONTRIB_PACKAGES="shadowsocks-v2ray-plugin v2ray"
@@ -250,6 +597,11 @@ while [[ $# -gt 0 ]]; do
             SKIP_GUI_INSTALL=true
             shift
             ;;
+        --verbose|-v)
+            VERBOSE_MODE=true
+            echo -e "${CYAN}[VERBOSE]${NC} Verbose mode enabled - showing detailed output"
+            shift
+            ;;
         --help)
             echo "Kodachi Dependencies Installation Script"
             echo ""
@@ -271,6 +623,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --force-kicksecure-ramwipe   Keep/Install Kicksecure RAM wipe (dracut + ram-wipe)"
             echo "                               By default: Removes dracut/ram-wipe, restores initramfs-tools"
             echo "                               Note: Kodachi has built-in RAM wipe via 'health-control memory-wipe'"
+            echo "  --verbose, -v                Enable verbose mode - show detailed output"
             echo "  --help                       Show this help message"
             echo ""
             echo "Examples:"
@@ -435,6 +788,272 @@ EOF
     return 0
 }
 
+# Function to test and fix DNS after package installation
+test_and_fix_dns() {
+    local package_name="$1"
+
+    print_step "Testing DNS after installing $package_name..."
+
+    # Test if DNS is working by pinging a domain
+    if timeout 5 ping -c 1 cloudflare.com >/dev/null 2>&1; then
+        print_success "DNS is working correctly after $package_name install"
+        return 0
+    fi
+
+    print_warning "DNS broken after installing $package_name - applying fixes..."
+
+    # PRIMARY FIX: Try dns-switch fix-dns
+    local dns_switch_binary=""
+
+    # Detect real user's home directory (not root's home when using sudo) - secure method
+    local real_user_home=""
+    if [[ -n "$SUDO_USER" ]]; then
+        real_user_home=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+        # Fallback if getent failed
+        if [[ -z "$real_user_home" ]]; then
+            real_user_home="/home/$SUDO_USER"
+        fi
+    else
+        real_user_home="$HOME"
+    fi
+
+    # Try to find dns-switch using 'which' command first (searches PATH)
+    dns_switch_binary=$(which dns-switch 2>/dev/null || true)
+
+    # If not in PATH, check standard installation directories
+    if [[ -z "$dns_switch_binary" ]]; then
+        local possible_locations=(
+            "$real_user_home/dashboard/hooks/dns-switch"           # Default installation
+            "$real_user_home/Desktop/dashboard/hooks/dns-switch"   # Desktop installation
+            "/opt/kodachi/dashboard/hooks/dns-switch"              # System-wide installation
+            "/usr/local/bin/dns-switch"                            # System binary path
+            "/usr/bin/dns-switch"                                  # System binary path
+        )
+
+        for location in "${possible_locations[@]}"; do
+            if [[ -x "$location" ]]; then
+                dns_switch_binary="$location"
+                break
+            fi
+        done
+    fi
+
+    # Run dns-switch fix-dns if found (PRIMARY FIX)
+    if [[ -n "$dns_switch_binary" ]]; then
+        print_step "Applying PRIMARY DNS fix (dns-switch fix-dns)..."
+        print_verbose "Using dns-switch from: $dns_switch_binary"
+
+        if sudo "$dns_switch_binary" fix-dns 2>&1 | tail -5; then
+            print_success "dns-switch fix-dns completed"
+        else
+            print_warning "dns-switch returned error, continuing anyway"
+        fi
+
+        # Give DNS a moment to stabilize
+        sleep 2
+
+        # Test DNS after primary fix
+        if timeout 5 ping -c 1 cloudflare.com >/dev/null 2>&1; then
+            print_success "DNS RESTORED after PRIMARY fix (dns-switch)!"
+            return 0
+        fi
+
+        # Primary fix didn't work, try fallback
+        print_warning "DNS still broken after primary fix, trying fallback..."
+    else
+        print_warning "dns-switch binary NOT FOUND in any location!"
+        print_info "Searched: which dns-switch, $real_user_home/dashboard/hooks, /opt/kodachi/dashboard/hooks, /usr/local/bin, /usr/bin"
+        print_info "Skipping primary fix, will use fallback method..."
+    fi
+
+    # FALLBACK FIX: Apply fallback DNS servers (only runs if primary failed or not found)
+    apply_fallback_dns
+
+    # Final test after fallback
+    if timeout 5 ping -c 1 cloudflare.com >/dev/null 2>&1; then
+        print_success "DNS RESTORED after FALLBACK fix!"
+        return 0
+    else
+        print_error "DNS STILL BROKEN after all fixes - downloads will fail!"
+        print_error "Please manually run: dns-switch fix-dns"
+        return 1
+    fi
+}
+
+# Function to install privacy packages one by one with DNS testing
+install_privacy_packages_safe() {
+    print_highlight "Installing Privacy packages (with DNS testing after each)..."
+    echo ""
+
+    # Install each package separately and test DNS after each
+    local privacy_pkgs=("dnsutils" "bind9-dnsutils" "systemd-resolved")
+
+    for pkg in "${privacy_pkgs[@]}"; do
+        print_step "Installing $pkg..."
+
+        if check_package "$pkg"; then
+            print_success "$pkg is already installed"
+        else
+            print_step "Installing $pkg..."
+            if timeout 600 apt-get install -y -o DPkg::Use-Pty=0 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" < /dev/null "$pkg" 2>&1 | tail -10; then
+                print_success "$pkg installed successfully"
+            else
+                print_error "Failed to install $pkg"
+                continue
+            fi
+        fi
+
+        # CRITICAL: Test and fix DNS after each package
+        test_and_fix_dns "$pkg"
+        echo ""
+    done
+
+    # Configure systemd-resolved after all packages are installed
+    configure_systemd_resolved
+}
+
+# Function to configure systemd-resolved safely
+configure_systemd_resolved() {
+    print_step "Configuring systemd-resolved..."
+
+    # CRITICAL: Always configure DNS immediately, don't wait for package checks
+    # Create config directory
+    mkdir -p /etc/systemd/resolved.conf.d
+
+    # Check if dnscrypt-proxy or Pi-hole is active (they should handle DNS)
+    if systemctl is-active --quiet dnscrypt-proxy 2>/dev/null; then
+        print_info "dnscrypt-proxy is active - configuring systemd-resolved as fallback"
+        # Disable systemd-resolved's DNS stub listener to avoid port 53 conflict
+        # But keep fallback DNS servers for when DNSCrypt isn't available
+        cat > /etc/systemd/resolved.conf.d/kodachi.conf << 'EOF'
+# Kodachi configuration - dnscrypt-proxy handles DNS
+[Resolve]
+DNSStubListener=no
+# Fallback DNS servers (privacy-focused, NO Google)
+FallbackDNS=1.1.1.1 9.9.9.9 149.112.112.112 94.140.14.14
+EOF
+        # SECURITY FIX: Repoint /etc/resolv.conf when disabling stub listener
+        ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
+        systemctl restart systemd-resolved 2>/dev/null || true
+        print_success "systemd-resolved configured (stub listener disabled, privacy-focused fallback DNS)"
+        return 0
+    fi
+
+    # Check if Pi-hole is active
+    if systemctl is-active --quiet pihole-FTL 2>/dev/null; then
+        print_info "Pi-hole is active - configuring systemd-resolved as fallback"
+        # Disable systemd-resolved's DNS stub listener to avoid port 53 conflict
+        # But keep fallback DNS servers for when Pi-hole isn't available
+        cat > /etc/systemd/resolved.conf.d/kodachi.conf << 'EOF'
+# Kodachi configuration - Pi-hole handles DNS
+[Resolve]
+DNSStubListener=no
+# Fallback DNS servers (privacy-focused, NO Google)
+FallbackDNS=1.1.1.1 9.9.9.9 149.112.112.112 94.140.14.14
+EOF
+        # SECURITY FIX: Repoint /etc/resolv.conf when disabling stub listener
+        ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
+        systemctl restart systemd-resolved 2>/dev/null || true
+        print_success "systemd-resolved configured (stub listener disabled, privacy-focused fallback DNS)"
+        return 0
+    fi
+
+    # Neither DNSCrypt nor Pi-hole is active - use systemd-resolved as primary DNS
+    print_info "Configuring systemd-resolved as primary DNS resolver (privacy-focused, NO Google)"
+    cat > /etc/systemd/resolved.conf.d/kodachi.conf << 'EOF'
+# Kodachi configuration - systemd-resolved as primary DNS
+[Resolve]
+# Primary DNS servers (privacy-focused: Cloudflare, Quad9, AdGuard - NO Google)
+DNS=1.1.1.1 9.9.9.9 149.112.112.112 94.140.14.14
+# Fallback DNS servers (Cloudflare IPv4 alt, Quad9 uncensored)
+FallbackDNS=1.0.0.1 149.112.112.10
+# Enable DNSSEC validation
+DNSSEC=allow-downgrade
+# Cache settings
+Cache=yes
+EOF
+
+    # Enable and start systemd-resolved if not active
+    if ! systemctl is-active --quiet systemd-resolved 2>/dev/null; then
+        print_step "Enabling systemd-resolved service..."
+        systemctl enable systemd-resolved 2>/dev/null || true
+        systemctl start systemd-resolved 2>/dev/null || true
+    else
+        # Restart to apply new configuration
+        systemctl restart systemd-resolved 2>/dev/null || true
+    fi
+
+    print_success "systemd-resolved configured with privacy-focused DNS (NO Google)"
+
+    # Wait for DNS service to stabilize
+    print_verbose "Waiting 3 seconds for DNS service to stabilize..."
+    sleep 3
+
+    # CRITICAL FIX: Run dns-switch fix-dns to restore internet connectivity (PRIMARY METHOD)
+    # After systemd-resolved installation, DNS often breaks and internet is lost
+    # Dynamically locate dns-switch binary (NO HARDCODED PATHS)
+    local dns_switch_binary=""
+
+    # Try to find dns-switch in PATH first
+    if command -v dns-switch &>/dev/null; then
+        dns_switch_binary="dns-switch"
+    else
+        # Check standard installation directories dynamically using $HOME
+        local possible_locations=(
+            "$HOME/dashboard/hooks/dns-switch"           # Default installation
+            "$HOME/Desktop/dashboard/hooks/dns-switch"   # Desktop installation
+            "/opt/kodachi/dashboard/hooks/dns-switch"    # System-wide installation
+            "/usr/local/bin/dns-switch"                  # System binary path
+            "/usr/bin/dns-switch"                        # System binary path
+        )
+
+        for location in "${possible_locations[@]}"; do
+            if [[ -x "$location" ]]; then
+                dns_switch_binary="$location"
+                break
+            fi
+        done
+    fi
+
+    # Run dns-switch fix-dns if found
+    if [[ -n "$dns_switch_binary" ]]; then
+        print_step "Running dns-switch fix-dns to restore internet connectivity..."
+        print_verbose "Using dns-switch from: $dns_switch_binary"
+
+        # Run with sudo since this script is already running as root
+        if sudo "$dns_switch_binary" fix-dns 2>&1 | tail -5; then
+            print_success "dns-switch fix-dns completed"
+        else
+            print_warning "dns-switch fix-dns returned error, continuing anyway"
+        fi
+
+        # Give DNS a moment to stabilize after fix
+        sleep 2
+    else
+        print_warning "dns-switch binary not found in common locations"
+        print_info "Searched locations: $HOME/dashboard/hooks/dns-switch, /opt/kodachi/dashboard/hooks/dns-switch"
+        print_info "Skipping primary DNS fix, will use fallback method"
+    fi
+
+    # Test if DNS is working by pinging a domain
+    print_step "Testing DNS resolution with ping..."
+    if timeout 5 ping -c 1 cloudflare.com >/dev/null 2>&1; then
+        print_success "DNS is working correctly - internet restored!"
+    else
+        print_warning "DNS test failed, applying fallback DNS fix..."
+        # FALLBACK: Use wait_for_dns if primary method didn't work
+        wait_for_dns
+
+        # Test again after fallback
+        if timeout 5 ping -c 1 cloudflare.com >/dev/null 2>&1; then
+            print_success "DNS working after fallback fix"
+        else
+            print_error "DNS still not working after all fixes - downloads may fail"
+            print_info "You may need to manually run: dns-switch fix-dns"
+        fi
+    fi
+}
+
 # Function to initialize iptables alternatives properly
 initialize_iptables_alternatives() {
     print_step "Initializing iptables alternatives..."
@@ -507,6 +1126,30 @@ check_contrib_nonfree() {
     fi
 }
 
+# Function to automatically enable contrib and non-free repositories
+enable_contrib_nonfree() {
+    print_step "Enabling contrib and non-free repositories..."
+
+    # Backup sources.list
+    cp /etc/apt/sources.list /etc/apt/sources.list.backup 2>/dev/null || true
+
+    # Modify sources.list to add contrib non-free non-free-firmware
+    # This works for any Debian-based distribution
+    sed -i 's/main$/main contrib non-free non-free-firmware/' /etc/apt/sources.list 2>/dev/null || true
+    sed -i 's/main contrib$/main contrib non-free non-free-firmware/' /etc/apt/sources.list 2>/dev/null || true
+    sed -i 's/main non-free$/main contrib non-free non-free-firmware/' /etc/apt/sources.list 2>/dev/null || true
+
+    # Update package lists
+    print_step "Updating package lists after enabling repositories..."
+    if apt-get update 2>&1 | tail -10; then
+        print_success "Contrib and non-free repositories enabled and package lists updated"
+        return 0
+    else
+        print_warning "Failed to update package lists, but repositories were modified"
+        return 1
+    fi
+}
+
 # Function to install DNSCrypt Proxy from GitHub
 install_dnscrypt_github() {
     print_step "Checking DNSCrypt Proxy installation..."
@@ -573,7 +1216,7 @@ install_dnscrypt_github() {
     echo "Downloading DNSCrypt Proxy v${DNSCRYPT_VERSION}..."
     mkdir -p "$temp_dir"
 
-    if curl -LS --connect-timeout 30 --max-time 120 --progress-bar -o "$temp_dir/dnscrypt-proxy.tar.gz" "$url"; then
+    if retry_download "$url" "$temp_dir/dnscrypt-proxy.tar.gz"; then
         echo "Extracting DNSCrypt Proxy..."
         tar -xzf "$temp_dir/dnscrypt-proxy.tar.gz" -C "$temp_dir"
 
@@ -650,7 +1293,7 @@ install_qrencode_github() {
 
     # Try APT installation first (preferred method)
     print_info "Attempting APT installation first (faster, pre-compiled)..."
-    if timeout 60 apt-get install -y qrencode 2>/dev/null; then
+    if timeout 60 apt-get install -y -o DPkg::Use-Pty=0 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" < /dev/null qrencode 2>/dev/null; then
         if command -v qrencode &>/dev/null; then
             print_success "QRencode installed successfully via APT"
             return 0
@@ -823,6 +1466,124 @@ if [[ $EUID -ne 0 ]]; then
 
     exit 1
 fi
+
+# ============================================================================
+# SYSTEM UPDATE - Upgrade all packages before installing dependencies
+# ============================================================================
+print_step "Updating system packages..."
+print_info "Running apt-get update to refresh package lists..."
+
+if apt-get update 2>&1 | tail -5; then
+    print_success "Package lists updated successfully"
+else
+    print_warning "apt-get update had issues, continuing anyway..."
+fi
+
+echo ""
+print_step "Upgrading installed packages..."
+print_info "Running apt-get upgrade to ensure system is up-to-date..."
+
+# Use DEBIAN_FRONTEND=noninteractive to avoid prompts
+export DEBIAN_FRONTEND=noninteractive
+
+if apt-get upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" 2>&1 | tail -20; then
+    print_success "System packages upgraded successfully"
+else
+    print_warning "apt-get upgrade had issues, continuing anyway..."
+fi
+
+echo ""
+
+# ============================================================================
+# CHECK IF KODACHI BINARIES ARE INSTALLED (REQUIRED BEFORE RUNNING THIS SCRIPT)
+# ============================================================================
+print_step "Checking if Kodachi binaries are installed..."
+
+# Detect real user's home directory (secure method - no eval)
+if [[ -n "$SUDO_USER" ]]; then
+    REAL_USER_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    # Fallback if getent failed
+    if [[ -z "$REAL_USER_HOME" ]]; then
+        REAL_USER_HOME="/home/$SUDO_USER"
+    fi
+else
+    REAL_USER_HOME="$HOME"
+fi
+
+# Check for binaries in standard locations
+BINARIES_FOUND=false
+BINARIES_LOCATION=""
+
+# Possible binary locations
+BINARY_LOCATIONS=(
+    "$REAL_USER_HOME/dashboard/hooks"
+    "$REAL_USER_HOME/Desktop/dashboard/hooks"
+    "/opt/kodachi/dashboard/hooks"
+    "/usr/local/bin"
+)
+
+# Core binaries that must exist
+REQUIRED_BINARIES=("health-control" "tor-switch" "dns-switch" "kodachi-dashboard")
+FOUND_COUNT=0
+
+for location in "${BINARY_LOCATIONS[@]}"; do
+    if [[ -d "$location" ]]; then
+        # Count how many required binaries exist in this location
+        local_found=0
+        for binary in "${REQUIRED_BINARIES[@]}"; do
+            if [[ -x "$location/$binary" ]]; then
+                local_found=$((local_found + 1))
+            fi
+        done
+
+        # If we found at least 3 out of 4 required binaries, consider this the location
+        if [[ $local_found -ge 3 ]]; then
+            BINARIES_FOUND=true
+            BINARIES_LOCATION="$location"
+            FOUND_COUNT=$local_found
+            break
+        fi
+    fi
+done
+
+if [[ "$BINARIES_FOUND" == "false" ]]; then
+    echo ""
+    print_error "Kodachi binaries NOT FOUND!"
+    echo ""
+    print_highlight "═══════════════════════════════════════════════════════════════"
+    print_highlight "  IMPORTANT: This is Script #2 - Run AFTER Installing Binaries"
+    print_highlight "═══════════════════════════════════════════════════════════════"
+    echo ""
+    print_warning "You must install Kodachi binaries FIRST using:"
+    echo ""
+    echo -e "  ${CYAN}Script #1 (Run First):${NC}"
+    echo -e "  ${BOLD}curl -sSL https://www.kodachi.cloud/apps/os/install/kodachi-binary-install.sh | bash${NC}"
+    echo ""
+    echo -e "  ${CYAN}Script #2 (Run After):${NC}"
+    echo -e "  ${BOLD}curl -sSL https://www.kodachi.cloud/apps/os/install/kodachi-deps-install.sh | sudo bash${NC}"
+    echo ""
+    print_info "The binaries script installs Kodachi tools to ~/dashboard/hooks"
+    print_info "This deps script installs system dependencies and configures sudoers"
+    echo ""
+    print_error "Aborting installation - please run kodachi-binary-install.sh first"
+    echo ""
+    exit 1
+else
+    print_success "Kodachi binaries found in: $BINARIES_LOCATION"
+    print_info "Found $FOUND_COUNT required binaries"
+fi
+
+echo ""
+
+# ============================================================================
+# CONFIGURE SUDOERS EARLY - Before any package installation that might fail
+# ============================================================================
+print_step "Configuring sudoers for Kodachi binaries (early setup)..."
+configure_kodachi_sudoers
+echo ""
+
+# Start logging after confirming root access and binaries
+setup_logging
 
 # Welcome message
 echo ""
@@ -1217,6 +1978,8 @@ install_packages() {
     local failed_list=""
 
     print_step "Installing $category packages..."
+    print_verbose "========== CATEGORY: $category =========="
+    print_verbose "Packages to check: $packages"
 
     export DEBIAN_FRONTEND=noninteractive
 
@@ -1242,6 +2005,7 @@ install_packages() {
     if [[ -n "$to_install" ]]; then
         echo ""
         echo "Installing missing packages..."
+        print_verbose "Missing packages to install: $to_install"
 
         # Handle rkhunter separately to prevent exim4 installation
         local rkhunter_separate=""
@@ -1258,15 +2022,33 @@ install_packages() {
         # Install rkhunter with --no-install-recommends if needed
         if [[ -n "$rkhunter_separate" ]]; then
             echo "Installing rkhunter without recommended packages (prevents exim4)..."
-            timeout 60 apt-get install -y --no-install-recommends $rkhunter_separate 2>&1 | tail -5
+            print_verbose "Installing rkhunter: $rkhunter_separate"
+            if [[ "$VERBOSE_MODE" == "true" ]]; then
+                timeout 600 apt-get install -y -o DPkg::Use-Pty=0 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" --no-install-recommends $rkhunter_separate < /dev/null 2>&1 | cat
+            else
+                timeout 600 apt-get install -y -o DPkg::Use-Pty=0 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" --no-install-recommends $rkhunter_separate < /dev/null 2>&1 | tail -10
+            fi
+            print_verbose "rkhunter installation completed"
         fi
 
-        # Install other packages normally
+        # Install other packages normally (600 second timeout for complex packages with triggers)
+        # SECURITY FIX: Disable set -e temporarily to prevent premature exit on pipeline failure
         local install_result=true
         if [[ -n "$other_packages" ]]; then
-            if ! timeout 60 apt-get install -y $other_packages 2>&1 | tail -5; then
+            print_verbose "Installing packages: $other_packages"
+            set +e
+            if [[ "$VERBOSE_MODE" == "true" ]]; then
+                # Verbose mode: show full output (pipe through cat to prevent job control issues)
+                timeout 600 apt-get install -y -o DPkg::Use-Pty=0 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" $other_packages < /dev/null 2>&1 | cat
+            else
+                # Normal mode: show only last 10 lines
+                timeout 600 apt-get install -y -o DPkg::Use-Pty=0 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" $other_packages < /dev/null 2>&1 | tail -10
+            fi
+            if [ ${PIPESTATUS[0]} -ne 0 ]; then
                 install_result=false
             fi
+            set -e
+            print_verbose "Package installation completed with exit code: ${PIPESTATUS[0]}"
         fi
 
         if $install_result; then
@@ -1294,11 +2076,18 @@ install_packages() {
             print_info "Attempting to fix package system..."
             ensure_dpkg_healthy
 
-            # Retry installation once
+            # Retry installation once (600 second timeout for complex packages)
             print_info "Retrying installation..."
-            if timeout 60 apt-get install -y $to_install 2>&1 | tail -5; then
+            print_verbose "Retrying packages: $to_install"
+            if [[ "$VERBOSE_MODE" == "true" ]]; then
+                timeout 600 apt-get install -y -o DPkg::Use-Pty=0 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" $to_install < /dev/null 2>&1 | cat
+            else
+                timeout 600 apt-get install -y -o DPkg::Use-Pty=0 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" $to_install < /dev/null 2>&1 | tail -10
+            fi
+            if [ ${PIPESTATUS[0]} -eq 0 ]; then
                 print_success "Retry successful"
             fi
+            print_verbose "Retry completed with exit code: ${PIPESTATUS[0]}"
 
             # Check what got installed after retry
             for pkg in $to_install; do
@@ -1357,7 +2146,7 @@ install_contrib_packages() {
         # Try to install shadowsocks-v2ray-plugin if not already installed
         if ! $v2ray_plugin_installed; then
             print_step "Installing shadowsocks-v2ray-plugin from apt..."
-            if timeout 60 apt-get install -y shadowsocks-v2ray-plugin 2>&1 | tail -5; then
+            if timeout 60 apt-get install -y -o DPkg::Use-Pty=0 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" < /dev/null shadowsocks-v2ray-plugin 2>&1 | tail -5; then
                 print_success "shadowsocks-v2ray-plugin installed via apt"
                 v2ray_plugin_installed=true
             else
@@ -1371,7 +2160,7 @@ install_contrib_packages() {
         # Try to install v2ray if not already installed
         if ! $v2ray_installed; then
             print_step "Installing v2ray from apt..."
-            if timeout 60 apt-get install -y v2ray 2>&1 | tail -5; then
+            if timeout 60 apt-get install -y -o DPkg::Use-Pty=0 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" < /dev/null v2ray 2>&1 | tail -5; then
                 print_success "v2ray installed via apt"
                 v2ray_installed=true
             else
@@ -1380,26 +2169,43 @@ install_contrib_packages() {
             fi
         fi
     else
-        # Repositories not enabled - handle fallback installations
-        if ! $v2ray_plugin_installed || ! $v2ray_installed; then
-            show_repo_warning=true
-        fi
+        # Repositories not enabled - AUTOMATICALLY ENABLE THEM
+        print_warning "Contrib and/or non-free repositories are NOT enabled!"
+        echo ""
 
-        if $show_repo_warning; then
-            print_warning "Contrib and/or non-free repositories are NOT enabled!"
-            echo ""
-            print_highlight "IMPORTANT: Some packages require contrib and non-free repositories"
-            echo ""
-            print_info "To enable them, add 'contrib non-free' to your sources.list:"
-            echo -e "  ${BOLD}sudo nano /etc/apt/sources.list${NC}"
-            echo ""
-            echo "Example for Debian Bookworm:"
-            echo -e "  ${CYAN}deb http://deb.debian.org/debian/ bookworm main contrib non-free non-free-firmware${NC}"
-            echo -e "  ${CYAN}deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware${NC}"
-            echo -e "  ${CYAN}deb http://deb.debian.org/debian/ bookworm-updates main contrib non-free non-free-firmware${NC}"
-            echo ""
-            print_info "After enabling, run: sudo apt update"
-            echo ""
+        # Automatically enable the repositories
+        if enable_contrib_nonfree; then
+            # Repositories now enabled, try installing packages again
+            print_step "Retrying package installations after enabling repositories..."
+
+            # Try to install shadowsocks-v2ray-plugin if not already installed
+            if ! $v2ray_plugin_installed; then
+                print_step "Installing shadowsocks-v2ray-plugin from apt..."
+                if timeout 60 apt-get install -y -o DPkg::Use-Pty=0 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" < /dev/null shadowsocks-v2ray-plugin 2>&1 | tail -5; then
+                    print_success "shadowsocks-v2ray-plugin installed via apt"
+                    v2ray_plugin_installed=true
+                else
+                    print_warning "Failed to install shadowsocks-v2ray-plugin via apt, trying GitHub..."
+                    if install_v2ray_plugin_github; then
+                        v2ray_plugin_installed=true
+                    fi
+                fi
+            fi
+
+            # Try to install v2ray if not already installed
+            if ! $v2ray_installed; then
+                print_step "Installing v2ray from apt..."
+                if timeout 60 apt-get install -y -o DPkg::Use-Pty=0 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" < /dev/null v2ray 2>&1 | tail -5; then
+                    print_success "v2ray installed via apt"
+                    v2ray_installed=true
+                else
+                    print_warning "Failed to install v2ray via apt"
+                    print_info "v2ray may require manual installation or is not available in your distribution"
+                fi
+            fi
+        else
+            print_error "Failed to enable contrib/non-free repositories automatically"
+            print_info "You may need to manually edit /etc/apt/sources.list"
         fi
 
         # Install v2ray-plugin from GitHub if not already installed
@@ -1429,7 +2235,7 @@ install_v2ray() {
     # First try apt if contrib/non-free are enabled
     if check_contrib_nonfree; then
         echo "Attempting to install v2ray from apt..."
-        if timeout 60 apt-get install -y v2ray 2>&1 | tail -5; then
+        if timeout 60 apt-get install -y -o DPkg::Use-Pty=0 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" < /dev/null v2ray 2>&1 | tail -5; then
             if command -v v2ray &>/dev/null; then
                 print_success "v2ray installed via apt"
                 return 0
@@ -1440,7 +2246,7 @@ install_v2ray() {
     # Fallback to GitHub installation
     echo "Installing v2ray from GitHub..."
     # Download and execute the v2ray installer script
-    if curl -L --connect-timeout 30 --max-time 120 https://github.com/v2fly/fhs-install-v2ray/raw/master/install-release.sh -o /tmp/v2ray-install.sh; then
+    if retry_download "https://github.com/v2fly/fhs-install-v2ray/raw/master/install-release.sh" "/tmp/v2ray-install.sh"; then
         if timeout 120 bash /tmp/v2ray-install.sh; then
             rm -f /tmp/v2ray-install.sh
             if command -v v2ray &>/dev/null; then
@@ -1466,10 +2272,34 @@ install_xray() {
     fi
 
     echo "Downloading and installing xray..."
-    if timeout 120 bash -c "$(curl -L --connect-timeout 30 --max-time 120 https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install -u root; then
-        print_success "xray installed successfully"
+
+    # SECURITY FIX: Download script to temp file and verify before execution
+    local xray_script="/tmp/xray-install-$$.sh"
+    if retry_download "https://github.com/XTLS/Xray-install/raw/main/install-release.sh" "$xray_script"; then
+        # Basic sanity check: verify it's a bash script
+        if head -1 "$xray_script" | grep -q "^#!.*bash"; then
+            # Display script hash for verification (admin can compare with known good hash)
+            local script_hash=$(sha256sum "$xray_script" | cut -d' ' -f1)
+            echo -e "${BLUE}[INFO]${NC} xray installer script SHA256: ${CYAN}${script_hash}${NC}"
+
+            # Execute the verified script
+            if timeout 120 bash "$xray_script" install -u root; then
+                print_success "xray installed successfully"
+                rm -f "$xray_script"
+                return 0
+            else
+                print_error "Failed to install xray"
+                rm -f "$xray_script"
+                return 1
+            fi
+        else
+            print_error "Downloaded xray installer is not a valid bash script"
+            rm -f "$xray_script"
+            return 1
+        fi
     else
-        print_error "Failed to install xray"
+        print_error "Failed to download xray installer"
+        return 1
     fi
 }
 
@@ -1497,11 +2327,13 @@ install_mieru() {
         print_step "Installing mieru v$MIERU_VERSION..."
     fi
 
-    local temp_file="/tmp/mieru_${MIERU_VERSION}_amd64.deb"
-    local url="https://github.com/enfein/mieru/releases/download/v${MIERU_VERSION}/mieru_${MIERU_VERSION}_amd64.deb"
+    # SECURITY FIX: Detect architecture dynamically instead of hardcoding amd64
+    local arch=$(dpkg --print-architecture 2>/dev/null || echo "amd64")
+    local temp_file="/tmp/mieru_${MIERU_VERSION}_${arch}.deb"
+    local url="https://github.com/enfein/mieru/releases/download/v${MIERU_VERSION}/mieru_${MIERU_VERSION}_${arch}.deb"
 
     echo "Downloading mieru client..."
-    if curl -LS --connect-timeout 30 --max-time 120 --progress-bar -o "$temp_file" "$url"; then
+    if retry_download "$url" "$temp_file"; then
         echo "Installing mieru client package..."
 
         # Make sure no apt is running
@@ -1566,7 +2398,7 @@ install_hysteria2() {
     local url="https://github.com/apernet/hysteria/releases/download/app%2F${version}/hysteria-linux-${arch}"
 
     echo "Downloading hysteria2..."
-    if curl -L --connect-timeout 30 --max-time 120 --progress-bar -o /tmp/hysteria "$url"; then
+    if retry_download "$url" "/tmp/hysteria"; then
         mv /tmp/hysteria /usr/local/bin/hysteria
         chmod +x /usr/local/bin/hysteria
         print_success "hysteria2 installed successfully"
@@ -1626,7 +2458,7 @@ install_kloak_from_source() {
     mkdir -p "$temp_dir"
     cd "$temp_dir" || return 1
     
-    if curl -L --connect-timeout 30 --max-time 120 -o kloak.tar.gz "https://github.com/vmonaco/kloak/archive/v${KLOAK_VERSION}.tar.gz"; then
+    if retry_download "https://github.com/vmonaco/kloak/archive/v${KLOAK_VERSION}.tar.gz" "kloak.tar.gz"; then
         print_info "Downloaded kloak source from GitHub"
         
         # Extract and compile
@@ -2184,19 +3016,38 @@ install_pihole() {
 
         # Generate setupVars.conf for unattended installation
         if generate_pihole_setupvars; then
-            # Run Pi-hole installer in unattended mode
-            # Redirect stderr to prevent background process errors from leaking
-            if curl -sSL https://install.pi-hole.net 2>/tmp/pihole-install.err | bash /dev/stdin --unattended 2>>/tmp/pihole-install.err; then
-                print_success "Pi-hole installed successfully in unattended mode"
+            # SECURITY FIX: Download Pi-hole installer to temp file and verify before execution
+            local pihole_script="/tmp/pihole-install-$$.sh"
+            if curl -sSL -o "$pihole_script" https://install.pi-hole.net 2>/tmp/pihole-install.err; then
+                # Basic sanity check: verify it's a bash script
+                if head -1 "$pihole_script" | grep -q "^#!.*bash"; then
+                    # Display script hash for verification
+                    local script_hash=$(sha256sum "$pihole_script" | cut -d' ' -f1)
+                    echo -e "${BLUE}[INFO]${NC} Pi-hole installer script SHA256: ${CYAN}${script_hash}${NC}"
 
-                # Display saved password if available
-                if [[ -f /etc/pihole/.webpassword_initial ]]; then
-                    local saved_password=$(cat /etc/pihole/.webpassword_initial)
-                    print_info "Pi-hole Web Interface Password: $saved_password"
-                    print_warning "Password saved to: /etc/pihole/.webpassword_initial"
+                    # Run Pi-hole installer in unattended mode
+                    if bash "$pihole_script" --unattended 2>>/tmp/pihole-install.err; then
+                        print_success "Pi-hole installed successfully in unattended mode"
+
+                        # Display saved password if available
+                        if [[ -f /etc/pihole/.webpassword_initial ]]; then
+                            local saved_password=$(cat /etc/pihole/.webpassword_initial)
+                            print_info "Pi-hole Web Interface Password: $saved_password"
+                            print_warning "Password saved to: /etc/pihole/.webpassword_initial"
+                        fi
+                        rm -f "$pihole_script"
+                    else
+                        print_error "Pi-hole unattended installation failed"
+                        rm -f "$pihole_script"
+                        return 1
+                    fi
+                else
+                    print_error "Downloaded Pi-hole installer is not a valid bash script"
+                    rm -f "$pihole_script"
+                    return 1
                 fi
             else
-                print_error "Pi-hole unattended installation failed"
+                print_error "Failed to download Pi-hole installer"
                 return 1
             fi
         else
@@ -2207,9 +3058,24 @@ install_pihole() {
         print_warning "Pi-hole installer will run interactively."
         print_info "You'll need to configure Pi-hole settings during installation."
         echo ""
-        # Run Pi-hole installer
-        # Redirect stderr to prevent background process errors from leaking
-        curl -sSL https://install.pi-hole.net 2>/tmp/pihole-install.err | bash 2>>/tmp/pihole-install.err
+
+        # SECURITY FIX: Download and verify Pi-hole installer before interactive execution
+        local pihole_script="/tmp/pihole-install-interactive-$$.sh"
+        if curl -sSL -o "$pihole_script" https://install.pi-hole.net 2>/tmp/pihole-install.err; then
+            if head -1 "$pihole_script" | grep -q "^#!.*bash"; then
+                local script_hash=$(sha256sum "$pihole_script" | cut -d' ' -f1)
+                echo -e "${BLUE}[INFO]${NC} Pi-hole installer script SHA256: ${CYAN}${script_hash}${NC}"
+                bash "$pihole_script" 2>>/tmp/pihole-install.err
+                rm -f "$pihole_script"
+            else
+                print_error "Downloaded Pi-hole installer is not a valid bash script"
+                rm -f "$pihole_script"
+                return 1
+            fi
+        else
+            print_error "Failed to download Pi-hole installer"
+            return 1
+        fi
     fi
 
     # Wait for any background processes from Pi-hole installer to complete
@@ -2446,14 +3312,14 @@ install_grub_tools() {
     # Detect GRUB2 vs GRUB legacy
     if [ -d "/boot/grub2" ] || [ -f "/boot/grub2/grub.cfg" ]; then
         print_info "Detected GRUB2 installation"
-        if timeout 60 apt-get install -y grub-common grub2-common 2>&1 | tail -5; then
+        if timeout 60 apt-get install -y -o DPkg::Use-Pty=0 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" < /dev/null grub-common grub2-common 2>&1 | tail -5; then
             print_success "GRUB2 tools installed (grub-common + grub2-common)"
         else
             print_warning "Failed to install GRUB2 tools - RAM wipe will still work"
         fi
     elif [ -d "/boot/grub" ] || [ -f "/boot/grub/grub.cfg" ]; then
         print_info "Detected GRUB bootloader"
-        if timeout 60 apt-get install -y grub-pc 2>&1 | tail -5; then
+        if timeout 60 apt-get install -y -o DPkg::Use-Pty=0 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" < /dev/null grub-pc 2>&1 | tail -5; then
             print_success "GRUB tools installed (grub-pc)"
         else
             print_warning "Failed to install GRUB tools - RAM wipe will still work"
@@ -2572,12 +3438,17 @@ elif [[ "$INSTALL_MODE" == "interactive" ]]; then
   curl -sSL https://install.pi-hole.net | bash"
     
     if install_category_interactive "$PRIVACY_PACKAGES" "Privacy" "$PRIVACY_DESC" "$PRIVACY_MANUAL"; then
+        # CRITICAL: Configure systemd-resolved IMMEDIATELY after installation
+        # This ensures DNS works before any GitHub downloads are attempted
+        echo ""
+        configure_systemd_resolved
+
         # Install DNSCrypt Proxy from GitHub with apt fallback
         echo ""
         print_step "Installing DNSCrypt Proxy from GitHub..."
         if ! install_dnscrypt_github; then
             print_warning "GitHub installation failed, trying apt package..."
-            if timeout 60 apt-get install -y dnscrypt-proxy 2>&1 | tail -5; then
+            if timeout 60 apt-get install -y -o DPkg::Use-Pty=0 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" < /dev/null dnscrypt-proxy 2>&1 | tail -5; then
                 print_success "DNSCrypt Proxy installed via apt"
                 setup_dnscrypt_service "apt"
             else
@@ -2625,6 +3496,18 @@ elif [[ "$INSTALL_MODE" == "interactive" ]]; then
     install_category_interactive "$ADVANCED_PACKAGES" "Advanced" "$ADVANCED_DESC" "$ADVANCED_MANUAL"
     ensure_dpkg_healthy
 
+    # Monitoring packages
+    MONITORING_DESC="System and network monitoring tools for the dashboard:
+  • Resource monitoring: btop (modern TUI resource monitor)
+  • Network monitoring: iftop, nethogs, nload
+  • Disk usage: ncdu (NCurses Disk Usage)
+  • Speed testing: iperf3, speedtest-cli"
+
+    MONITORING_MANUAL="  sudo apt-get install btop iftop nethogs ncdu nload iperf3 speedtest-cli"
+
+    install_category_interactive "$MONITORING_PACKAGES" "Monitoring" "$MONITORING_DESC" "$MONITORING_MANUAL"
+    ensure_dpkg_healthy
+
     # GUI packages (only if desktop environment detected or forced, unless explicitly skipped)
     if [[ "$SKIP_GUI_INSTALL" == "true" ]]; then
         print_info "Skipping GUI packages (--skipgui specified by user)."
@@ -2634,13 +3517,15 @@ elif [[ "$INSTALL_MODE" == "interactive" ]]; then
         fi
 
         GUI_DESC="GUI-specific packages for desktop environments:
-  • Terminal: kitty terminal emulator
+  • Terminal: kitty, xterm terminal emulators
   • Fonts: fontconfig, emoji support
-  • Audio: PulseAudio, ALSA utilities
-  • Desktop tools: bleachbit, notifications"
+  • Audio: PulseAudio, ALSA utilities, mpv
+  • Desktop tools: bleachbit, notifications
+  • Clipboard: xclip, xsel
+  • Network: NetworkManager (nmcli)"
 
         GUI_MANUAL="  sudo apt-get install bleachbit kitty fontconfig fonts-noto-color-emoji \\
-    alsa-utils pulseaudio pulseaudio-utils libnotify-bin"
+    alsa-utils pulseaudio pulseaudio-utils libnotify-bin xclip xsel mpv xterm network-manager"
 
         install_category_interactive "$GUI_PACKAGES" "GUI" "$GUI_DESC" "$GUI_MANUAL"
         ensure_dpkg_healthy
@@ -2746,8 +3631,8 @@ elif [[ "$INSTALL_MODE" == "minimal" ]]; then
     # Handle contrib/non-free packages
     install_contrib_packages
     ensure_dpkg_healthy
-    # Install DNS packages
-    install_packages "$PRIVACY_PACKAGES" "Privacy"
+    # Install DNS packages one by one with DNS testing after each
+    install_privacy_packages_safe
     ensure_dpkg_healthy
     # Install DNSCrypt Proxy from GitHub with apt fallback
     echo ""
@@ -2765,6 +3650,8 @@ elif [[ "$INSTALL_MODE" == "minimal" ]]; then
     install_qrencode_github
     # Try to install resolvconf (optional, won't break on failure)
     install_resolvconf_safe
+    # Configure systemd-resolved for DNS caching and conflict avoidance
+    configure_systemd_resolved
     ensure_dpkg_healthy
     # Install Pi-hole
     install_pihole
@@ -2778,6 +3665,13 @@ elif [[ "$INSTALL_MODE" == "minimal" ]]; then
     install_xray
     install_hysteria2
     install_mieru
+
+    # Install monitoring packages
+    echo ""
+    print_highlight "Installing Monitoring Tools"
+    echo ""
+    install_packages "$MONITORING_PACKAGES" "Monitoring"
+    ensure_dpkg_healthy
 
     # GRUB tools for health-control RAM wipe support
     echo ""
@@ -2798,7 +3692,8 @@ elif [[ "$INSTALL_MODE" == "full" ]]; then
     install_contrib_packages
     ensure_dpkg_healthy
     wait_for_apt
-    install_packages "$PRIVACY_PACKAGES" "Privacy"
+    # Install DNS packages one by one with DNS testing after each
+    install_privacy_packages_safe
     ensure_dpkg_healthy
     wait_for_apt
     # Install DNSCrypt Proxy from GitHub with apt fallback
@@ -2817,6 +3712,8 @@ elif [[ "$INSTALL_MODE" == "full" ]]; then
     install_qrencode_github
     # Try to install resolvconf (optional, won't break on failure)
     install_resolvconf_safe
+    # Configure systemd-resolved for DNS caching and conflict avoidance
+    configure_systemd_resolved
     ensure_dpkg_healthy
     wait_for_apt
     # Install Pi-hole after DNS packages
@@ -2827,6 +3724,14 @@ elif [[ "$INSTALL_MODE" == "full" ]]; then
     ensure_dpkg_healthy
     wait_for_apt
     install_packages "$ADVANCED_PACKAGES" "Advanced"
+    ensure_dpkg_healthy
+    wait_for_apt
+
+    # Install monitoring packages
+    echo ""
+    print_highlight "Installing Monitoring Tools"
+    echo ""
+    install_packages "$MONITORING_PACKAGES" "Monitoring"
     ensure_dpkg_healthy
     wait_for_apt
 
@@ -2885,7 +3790,8 @@ else
     install_contrib_packages
     ensure_dpkg_healthy
     wait_for_apt
-    install_packages "$PRIVACY_PACKAGES" "Privacy"
+    # Install DNS packages one by one with DNS testing after each
+    install_privacy_packages_safe
     ensure_dpkg_healthy
     wait_for_apt
     # Install DNSCrypt Proxy from GitHub with apt fallback
@@ -2904,6 +3810,8 @@ else
     install_qrencode_github
     # Try to install resolvconf (optional, won't break on failure)
     install_resolvconf_safe
+    # Configure systemd-resolved for DNS caching and conflict avoidance
+    configure_systemd_resolved
     ensure_dpkg_healthy
     wait_for_apt
     # Install Pi-hole after DNS packages
@@ -2914,6 +3822,14 @@ else
     ensure_dpkg_healthy
     wait_for_apt
     install_packages "$ADVANCED_PACKAGES" "Advanced"
+    ensure_dpkg_healthy
+    wait_for_apt
+
+    # Install monitoring packages
+    echo ""
+    print_highlight "Installing Monitoring Tools"
+    echo ""
+    install_packages "$MONITORING_PACKAGES" "Monitoring"
     ensure_dpkg_healthy
     wait_for_apt
 
@@ -4087,12 +5003,13 @@ deploy_kodachi_binaries_globally() {
     local candidates=()
     if [[ -n "$SUDO_USER" ]]; then
         local sudo_home
-        sudo_home=$(eval echo "~$SUDO_USER" 2>/dev/null)
-        if [[ -n "$sudo_home" && "$sudo_home" != "~$SUDO_USER" ]]; then
+        sudo_home=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+        if [[ -n "$sudo_home" ]]; then
             candidates+=("$sudo_home/dashboard/hooks" "$sudo_home/Desktop/dashboard/hooks")
         fi
     fi
-    candidates+=("$HOME/dashboard/hooks" "$HOME/Desktop/dashboard/hooks" "/home/kodachi/dashboard/hooks")
+    # Use $HOME as fallback (no hardcoded usernames)
+    candidates+=("$HOME/dashboard/hooks" "$HOME/Desktop/dashboard/hooks")
 
     local install_path=""
     for path in "${candidates[@]}"; do
@@ -4183,11 +5100,24 @@ cleanup_github_temp_files() {
         fi
     done
 
-    # Clean up any other GitHub-related temp files
-    find /tmp -maxdepth 1 -name "*github*" -o -name "*install*" -o -name "*.tar.gz" -o -name "*.deb" 2>/dev/null | while read temp_file; do
-        if [[ -f "$temp_file" ]] || [[ -d "$temp_file" ]]; then
-            rm -rf "$temp_file" 2>/dev/null && ((cleaned_files++))
-        fi
+    # SECURITY FIX: Clean up only Kodachi-specific temp files (not generic wildcards)
+    # Use specific patterns to avoid deleting unrelated user files
+    local kodachi_patterns=(
+        "kodachi-*"
+        "mieru_*"
+        "dnscrypt-proxy-*"
+        "xray-*"
+        "v2ray-*"
+        "hysteria-*"
+        "pihole-*"
+    )
+
+    for pattern in "${kodachi_patterns[@]}"; do
+        find /tmp -maxdepth 1 -name "$pattern" 2>/dev/null | while read temp_file; do
+            if [[ -f "$temp_file" ]] || [[ -d "$temp_file" ]]; then
+                rm -rf "$temp_file" 2>/dev/null && ((cleaned_files++))
+            fi
+        done
     done
 
     if [[ $cleaned_files -gt 0 ]]; then
@@ -4275,6 +5205,7 @@ echo -e "${GREEN}║   Dependency Installation Complete!          ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════════╝${NC}"
 echo ""
 print_success "Installation finished successfully!"
+print_success "Kodachi Dashboard and all binaries can now run with sudo without password"
 echo ""
 # Force success exit code - ignore bash -n false positives
 exit 0
