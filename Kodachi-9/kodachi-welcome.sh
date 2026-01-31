@@ -4,7 +4,7 @@
 # ===========================================================
 #
 # SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.0
-# Copyright (c) 2013-2025 Warith Al Maawali
+# Copyright (c) 2013-2026 Warith Al Maawali
 #
 # This file is part of Kodachi OS.
 # For full license terms, see LICENSE.md or visit:
@@ -15,7 +15,7 @@
 #
 # Author: Warith Al Maawali
 # Version: 9.0.1
-# Last updated: 2025-10-21
+# Last updated: 2026-01-30
 #
 # Description:
 # This script displays system status, security information, and network details
@@ -76,8 +76,8 @@ fi
 # Source: main-info.json (terminal section)
 # DO NOT EDIT MANUALLY - Run pack-kodachi.sh to update these values
 BUILD_VERSION="9.0.1"  # From: terminal.main_version
-BUILD_NUM="6"          # From: terminal.build_number (auto-incremented)
-BUILD_DATE="2025-11-11"  # From: terminal.last_build_date
+BUILD_NUM="20"          # From: terminal.build_number (auto-incremented)
+BUILD_DATE="2026-01-30"  # From: terminal.last_build_date
 SCRIPT_VERSION="${BUILD_VERSION}.${BUILD_NUM}"
 
 # Color codes for compact display (optimized for black terminal)
@@ -131,6 +131,7 @@ LATEST_VERSION=""
 CRYPTO_PRICES=""
 NEWS_HEADLINES=""
 HAS_INTERNET=false
+KNET_STATUS="${YELLOW}[KNet:?]${NC}"  # Kodachi Network status
 
 # Flag to skip refresh when returning from submenu
 SKIP_REFRESH=false
@@ -1247,6 +1248,19 @@ fetch_system_info() {
         fi
         end_timer
         echo -e " ${GREEN}+ VPN status retrieved${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+
+        # Check Kodachi Network status (5s timeout - quick check)
+        echo -ne "${YELLOW}▸ Checking Kodachi Network...${NC}"
+        start_timer
+        KNET_JSON=$(curl -s --max-time 5 "https://kodachi.cloud/apps/ip-extract.php" 2>/dev/null)
+        IS_KODACHI=$(parse_json "$KNET_JSON" ".is_kodachi" || echo "false")
+        if [ "$IS_KODACHI" = "true" ]; then
+            KNET_STATUS="${GREEN}[KNet:+]${NC}"
+        else
+            KNET_STATUS="${RED}[KNet:-]${NC}"
+        fi
+        end_timer
+        echo -e " ${GREEN}+ KNet status checked${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
     else
         # Offline mode - set placeholders
         echo -e "${YELLOW}⊘ Skipping IP geolocation (offline mode)${NC}"
@@ -1259,6 +1273,7 @@ fetch_system_info() {
         FLAG=""
         TOR_STATUS="${YELLOW}⊘ N/A${NC}"
         NET_STATUS="${YELLOW}Offline${NC}"
+        KNET_STATUS="${YELLOW}[KNet:?]${NC}"
     fi
 
     # SECURITY VERIFICATION section (always runs - local operations)
@@ -1417,7 +1432,7 @@ display_info() {
     echo -e "${BOLD}Security:${NC} ${SCORE_COLOR}${SEC_SCORE}/100 [${SEC_STATUS}]${NC} | ${BOLD}Hardening:${NC} ${GREEN}${HARDENING_STATUS}${NC} | ${BOLD}Torrified:${NC} ${TOR_STATUS}"
 
     # Line 2: Network Connection | DNS
-    echo -e "${BOLD}Network:${NC} ${NET_STATUS} | ${BOLD}DNS:${NC} ${DNS_COLOR}${DNS_DISPLAY}${NC}"
+    echo -e "${BOLD}Network:${NC} ${NET_STATUS} | ${BOLD}DNS:${NC} ${DNS_COLOR}${DNS_DISPLAY}${NC} | ${KNET_STATUS}"
 
     # Line 3: IP, Country, City (bright green - same as PermG:+)
     echo -e "${BOLD}IP:${NC} ${GREEN}${IP_ADDR}${NC} | ${BOLD}Country:${NC} ${GREEN}${FLAG} ${COUNTRY}${NC} | ${BOLD}City:${NC} ${GREEN}${CITY}${NC}"
