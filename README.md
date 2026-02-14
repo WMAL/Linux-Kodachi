@@ -32,8 +32,8 @@ The binary package now ships with the full GUI dashboard - a modern Tauri + Svel
 
 > **Recent Platform Updates:**
 >
-> - **[Kodachi Dashboard GUI](https://www.kodachi.cloud/wiki/bina/installation.html)** - The binary package now ships with the full GUI dashboard! This modern Tauri + Svelte desktop application provides centralized control over all security services
 > - **[Kodachi AI Capabilities](https://www.kodachi.cloud/wiki/bina/ai/index.html)** - KAICS (Kodachi AI Command Intelligence System) brings 7 AI-powered binaries for intelligent command processing, NLP-driven service control, and proactive security automation
+> - **[Kodachi Dashboard GUI](https://www.kodachi.cloud/wiki/bina/installation.html)** - The binary package now ships with the full GUI dashboard! This modern Tauri + Svelte desktop application provides centralized control over all security services
 > - **[Domain Checker](https://www.kodachi.cloud/domain-checker.html)** - Global DNS propagation checker with multi-server verification
 > - **[API Documentation Portal](https://www.kodachi.cloud/api-docs.html)** - New API docs for IP geolocation, platform stats, and binary service endpoints
 > - **[Infrastructure Status Dashboard](https://www.kodachi.cloud/apps/status.php)** - Live monitoring of servers and services across multiple regions
