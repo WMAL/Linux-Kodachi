@@ -239,6 +239,14 @@ configure_kodachi_sudoers() {
         "workflow-manager"
         "online-info-switch"
         "tun2socks-linux-amd64"
+        # AI system binaries
+        "ai-cmd"
+        "ai-trainer"
+        "ai-learner"
+        "ai-admin"
+        "ai-monitor"
+        "ai-scheduler"
+        "ai-discovery"
     )
 
     # Merge and deduplicate
@@ -355,6 +363,170 @@ EOF
             print_info "Restored previous backup: $latest_backup"
         fi
         return 1
+    fi
+}
+
+# Install Conky assets and autostart profile for the real desktop user
+install_kodachi_conky_for_user() {
+    print_step "Configuring Kodachi Conky startup..."
+
+    if [[ "${SKIP_GUI_INSTALL:-}" == "true" ]]; then
+        print_info "GUI install skipped (--skipgui). Skipping Conky bootup setup."
+        return 0
+    fi
+    # Check build variant marker file (written by build-iso.sh during ISO creation)
+    local _build_variant=""
+    if [[ -f /opt/kodachi-offline-packages/build-variant ]]; then
+        _build_variant=$(tr -cd 'a-z-' < /opt/kodachi-offline-packages/build-variant)
+    fi
+    if [[ "$_build_variant" == "terminal" ]] || [[ "$_build_variant" == "minimal" ]]; then
+        print_info "Build variant is '${_build_variant}'. Skipping Conky bootup setup."
+        return 0
+    fi
+    if ! detect_gui_environment; then
+        print_info "No GUI desktop detected (terminal/headless system). Skipping Conky setup."
+        return 0
+    fi
+
+    local actual_user=""
+    local real_user_home=""
+
+    if [[ -n "${SUDO_USER:-}" ]] && [[ "$SUDO_USER" != "root" ]]; then
+        actual_user="$SUDO_USER"
+    elif [[ -n "${LOGNAME:-}" ]] && [[ "$LOGNAME" != "root" ]]; then
+        actual_user="$LOGNAME"
+    fi
+
+    if [[ -z "$actual_user" ]] || [[ ! "$actual_user" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+        print_warning "Could not determine target non-root user. Skipping Conky user setup."
+        return 0
+    fi
+
+    real_user_home=$(getent passwd "$actual_user" | cut -d: -f6)
+    if [[ -z "$real_user_home" ]]; then
+        real_user_home="/home/$actual_user"
+    fi
+
+    local conky_source=""
+    local candidates=(
+        "/home/kodachi/k900/livebuild-assets/conky"
+        "$real_user_home/k900/livebuild-assets/conky"
+        "$real_user_home/dashboard/hooks/conky"
+        "$real_user_home/Desktop/dashboard/hooks/conky"
+        "/opt/kodachi/dashboard/hooks/conky"
+    )
+
+    for candidate in "${candidates[@]}"; do
+        if [[ -d "$candidate/configs" ]] && [[ -d "$candidate/scripts" ]]; then
+            conky_source="$candidate"
+            break
+        fi
+    done
+
+    if [[ -z "$conky_source" ]]; then
+        # No source package found — check if Conky is already installed at destination
+        local conky_dest="$real_user_home/.config/kodachi/conky"
+        if [[ -d "$conky_dest/configs" ]] && [[ -d "$conky_dest/scripts" ]]; then
+            print_success "Conky already installed at $conky_dest (no update source found)"
+            return 0
+        fi
+        print_warning "Conky assets not found in known paths. Skipping Conky setup."
+        return 0
+    fi
+
+    local conky_install_dir="$real_user_home/.config/kodachi/conky"
+    local autostart_dir="$real_user_home/.config/autostart"
+    local autostart_file="$autostart_dir/kodachi-conky.desktop"
+    local launcher="$conky_install_dir/scripts/conky-launcher.sh"
+    local watchdog_script="$conky_install_dir/scripts/conky-watchdog.sh"
+    local service_source="$conky_install_dir/systemd/conky-watchdog.service"
+    local systemd_user_dir="$real_user_home/.config/systemd/user"
+    local service_file="$systemd_user_dir/conky-watchdog.service"
+    local wants_dir="$systemd_user_dir/default.target.wants"
+    local autostart_exec=""
+    local autostart_tryexec=""
+
+    mkdir -p "$(dirname "$conky_install_dir")" "$autostart_dir" "$systemd_user_dir" "$wants_dir"
+    rm -rf "$conky_install_dir"
+    cp -a "$conky_source" "$conky_install_dir"
+
+    if [[ -d "$conky_install_dir/scripts" ]]; then
+        find "$conky_install_dir/scripts" -type f -name "*.sh" -exec chmod 755 {} + 2>/dev/null || true
+    fi
+
+    if command -v systemctl >/dev/null 2>&1 && [[ -x "$watchdog_script" ]]; then
+        if [[ -f "$service_source" ]]; then
+            cp -f "$service_source" "$service_file"
+        else
+            cat > "$service_file" << EOF
+[Unit]
+Description=Kodachi Conky Watchdog
+After=graphical-session.target
+Wants=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.config/kodachi/conky/scripts/conky-watchdog.sh
+Restart=always
+RestartSec=3
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=%h/.Xauthority
+
+[Install]
+WantedBy=default.target
+EOF
+        fi
+        chmod 644 "$service_file"
+        ln -sfn "$service_file" "$wants_dir/conky-watchdog.service"
+        autostart_exec="/usr/bin/systemctl --user start conky-watchdog.service"
+        autostart_tryexec="/usr/bin/systemctl"
+    elif [[ -x "$launcher" ]]; then
+        autostart_exec="$launcher --restart"
+        autostart_tryexec="$launcher"
+        print_warning "Conky watchdog script missing at $watchdog_script. Falling back to launcher autostart."
+    else
+        print_warning "Conky launcher not found at $launcher. Skipping Conky setup."
+        return 0
+    fi
+
+    cat > "$autostart_file" << EOF
+[Desktop Entry]
+Type=Application
+Name=Kodachi Conky
+Comment=Kodachi 9 Desktop Status Panels
+GenericName=System Monitor
+Exec=$autostart_exec
+TryExec=$autostart_tryexec
+Terminal=false
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=5
+Categories=System;Monitor;
+Keywords=conky;monitor;system;status;privacy;security;
+StartupNotify=false
+EOF
+    chmod 644 "$autostart_file"
+
+    chown -R "$actual_user:$actual_user" "$conky_install_dir" 2>/dev/null || true
+    chown "$actual_user:$actual_user" "$autostart_dir" 2>/dev/null || true
+    chown "$actual_user:$actual_user" "$autostart_file" 2>/dev/null || true
+    chown -R "$actual_user:$actual_user" "$systemd_user_dir" 2>/dev/null || true
+
+    if command -v conky >/dev/null 2>&1; then
+        if command -v systemctl >/dev/null 2>&1 && [[ -x "$watchdog_script" ]] && [[ -f "$service_file" ]]; then
+            if command -v runuser >/dev/null 2>&1; then
+                runuser -u "$actual_user" -- systemctl --user daemon-reload >/dev/null 2>&1 || true
+                runuser -u "$actual_user" -- systemctl --user enable --now conky-watchdog.service >/dev/null 2>&1 || \
+                    runuser -u "$actual_user" -- systemctl --user start conky-watchdog.service >/dev/null 2>&1 || true
+            fi
+            print_success "Conky configured for user $actual_user (watchdog enabled)"
+        else
+            print_warning "Conky watchdog script missing at $watchdog_script"
+            print_success "Conky configured for user $actual_user (autostart enabled)"
+        fi
+    else
+        print_warning "Conky binary not found. Install package 'conky-all' to run desktop panels."
     fi
 }
 
@@ -543,7 +715,7 @@ ADVANCED_PACKAGES="jq git build-essential rng-tools-debian haveged ccze yamllint
 MONITORING_PACKAGES="btop iftop nethogs ncdu nload iperf3 speedtest-cli"
 
 # GUI-only packages - only installed on systems with desktop environments
-GUI_PACKAGES="bleachbit kitty fontconfig fonts-noto-color-emoji alsa-utils pulseaudio pulseaudio-utils libnotify-bin xclip xsel mpv xterm network-manager"
+GUI_PACKAGES="bleachbit kitty fontconfig fonts-noto-color-emoji conky-all alsa-utils pulseaudio pulseaudio-utils libnotify-bin xclip xsel mpv xterm network-manager"
 
 # Packages that require contrib/non-free repositories
 CONTRIB_PACKAGES="shadowsocks-v2ray-plugin v2ray"
@@ -694,6 +866,18 @@ detect_gui_environment() {
     done
 
     return 1  # No GUI detected
+}
+
+# Build GUI package list for current system.
+# Conky is GUI-desktop-specific and should be skipped on terminal/headless systems.
+get_gui_packages_for_install() {
+    local packages="$GUI_PACKAGES"
+
+    if ! detect_gui_environment; then
+        packages=$(echo " $packages " | sed 's/ conky-all / /g' | xargs)
+    fi
+
+    echo "$packages"
 }
 
 # Function to install resolvconf with conflict handling
@@ -1928,7 +2112,7 @@ install_category_interactive() {
     
     for pkg in "${pkg_array[@]}"; do
         printf "  %-25s" "$pkg"
-        ((i++))
+        i=$((i + 1))
         if [[ $((i % cols)) -eq 0 ]]; then
             echo ""
         fi
@@ -3518,16 +3702,24 @@ elif [[ "$INSTALL_MODE" == "interactive" ]]; then
 
         GUI_DESC="GUI-specific packages for desktop environments:
   • Terminal: kitty, xterm terminal emulators
+  • Desktop panels: Conky status widgets
   • Fonts: fontconfig, emoji support
   • Audio: PulseAudio, ALSA utilities, mpv
   • Desktop tools: bleachbit, notifications
   • Clipboard: xclip, xsel
   • Network: NetworkManager (nmcli)"
 
-        GUI_MANUAL="  sudo apt-get install bleachbit kitty fontconfig fonts-noto-color-emoji \\
+        GUI_PACKAGES_TO_INSTALL="$(get_gui_packages_for_install)"
+        if [[ "$GUI_PACKAGES_TO_INSTALL" == *"conky-all"* ]]; then
+            GUI_MANUAL="  sudo apt-get install bleachbit kitty fontconfig fonts-noto-color-emoji conky-all \\
     alsa-utils pulseaudio pulseaudio-utils libnotify-bin xclip xsel mpv xterm network-manager"
+        else
+            print_info "Terminal/headless mode detected: skipping Conky package (conky-all)."
+            GUI_MANUAL="  sudo apt-get install bleachbit kitty fontconfig fonts-noto-color-emoji \\
+    alsa-utils pulseaudio pulseaudio-utils libnotify-bin xclip xsel mpv xterm network-manager"
+        fi
 
-        install_category_interactive "$GUI_PACKAGES" "GUI" "$GUI_DESC" "$GUI_MANUAL"
+        install_category_interactive "$GUI_PACKAGES_TO_INSTALL" "GUI" "$GUI_DESC" "$GUI_MANUAL"
         ensure_dpkg_healthy
     else
         print_warning "Skipping GUI packages (no desktop environment detected). Use --forcegui to install them anyway."
@@ -3742,9 +3934,13 @@ elif [[ "$INSTALL_MODE" == "full" ]]; then
     elif detect_gui_environment || [[ "$FORCE_GUI_INSTALL" == "true" ]]; then
         if [[ "$FORCE_GUI_INSTALL" == "true" ]] && ! detect_gui_environment; then
             print_warning "No desktop environment detected, but --forcegui specified"
-            print_info "Installing GUI packages anyway..."
+            print_info "Installing GUI packages anyway (Conky will be skipped)."
         fi
-        install_packages "$GUI_PACKAGES" "GUI"
+        GUI_PACKAGES_TO_INSTALL="$(get_gui_packages_for_install)"
+        if [[ "$GUI_PACKAGES_TO_INSTALL" != *"conky-all"* ]]; then
+            print_info "Terminal/headless mode detected: skipping Conky package (conky-all)."
+        fi
+        install_packages "$GUI_PACKAGES_TO_INSTALL" "GUI"
         ensure_dpkg_healthy
         wait_for_apt
     else
@@ -3840,9 +4036,13 @@ else
     elif detect_gui_environment || [[ "$FORCE_GUI_INSTALL" == "true" ]]; then
         if [[ "$FORCE_GUI_INSTALL" == "true" ]] && ! detect_gui_environment; then
             print_warning "No desktop environment detected, but --forcegui specified"
-            print_info "Installing GUI packages anyway..."
+            print_info "Installing GUI packages anyway (Conky will be skipped)."
         fi
-        install_packages "$GUI_PACKAGES" "GUI"
+        GUI_PACKAGES_TO_INSTALL="$(get_gui_packages_for_install)"
+        if [[ "$GUI_PACKAGES_TO_INSTALL" != *"conky-all"* ]]; then
+            print_info "Terminal/headless mode detected: skipping Conky package (conky-all)."
+        fi
+        install_packages "$GUI_PACKAGES_TO_INSTALL" "GUI"
         ensure_dpkg_healthy
         wait_for_apt
     else
@@ -5074,6 +5274,7 @@ deploy_kodachi_binaries_globally() {
 }
 
 deploy_kodachi_binaries_globally
+install_kodachi_conky_for_user
 
 # ============================================================================
 # CLEANUP TEMPORARY FILES
@@ -5096,7 +5297,7 @@ cleanup_github_temp_files() {
 
     for file_pattern in "${temp_files[@]}"; do
         if ls ${file_pattern} 2>/dev/null 1>&2; then
-            rm -rf ${file_pattern} 2>/dev/null && ((cleaned_files++))
+            rm -rf ${file_pattern} 2>/dev/null && cleaned_files=$((cleaned_files + 1))
         fi
     done
 
@@ -5115,7 +5316,7 @@ cleanup_github_temp_files() {
     for pattern in "${kodachi_patterns[@]}"; do
         find /tmp -maxdepth 1 -name "$pattern" 2>/dev/null | while read temp_file; do
             if [[ -f "$temp_file" ]] || [[ -d "$temp_file" ]]; then
-                rm -rf "$temp_file" 2>/dev/null && ((cleaned_files++))
+                rm -rf "$temp_file" 2>/dev/null && cleaned_files=$((cleaned_files + 1))
             fi
         done
     done
@@ -5137,7 +5338,15 @@ cleanup_github_temp_files
 # Check if binaries are installed - verify at least 3 core binaries exist
 echo ""
 BINARY_COUNT=0
-INSTALL_LOCATIONS=("$HOME/dashboard/hooks" "$HOME/Desktop/dashboard/hooks")
+# Build locations list: real user's home (via SUDO_USER), $HOME fallback, and /usr/local/bin
+INSTALL_LOCATIONS=()
+if [[ -n "$SUDO_USER" ]]; then
+    _real_home=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    if [[ -n "$_real_home" ]]; then
+        INSTALL_LOCATIONS+=("$_real_home/dashboard/hooks" "$_real_home/Desktop/dashboard/hooks")
+    fi
+fi
+INSTALL_LOCATIONS+=("$HOME/dashboard/hooks" "$HOME/Desktop/dashboard/hooks" "/usr/local/bin")
 CORE_BINARIES=("ip-fetch" "health-control" "tor-switch")
 FOUND_LOCATION=""
 
@@ -5146,7 +5355,7 @@ for location in "${INSTALL_LOCATIONS[@]}"; do
         local_count=0
         for binary in "${CORE_BINARIES[@]}"; do
             if [ -f "$location/$binary" ]; then
-                ((local_count++))
+                local_count=$((local_count + 1))
             fi
         done
         if [ $local_count -gt 0 ]; then
@@ -5206,6 +5415,9 @@ echo -e "${GREEN}╚════════════════════
 echo ""
 print_success "Installation finished successfully!"
 print_success "Kodachi Dashboard and all binaries can now run with sudo without password"
+if ! detect_gui_environment; then
+    print_info "Conky: skipped (no GUI detected)"
+fi
 echo ""
 # Force success exit code - ignore bash -n false positives
 exit 0

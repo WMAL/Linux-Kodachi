@@ -13,6 +13,7 @@ This roadmap provides an overview of the current status of key components in the
 | **[Kodachi Payment Gateway](https://www.kodachi.cloud/wiki/bina/support.html)**                  | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **Kodachi Admin Dashboard**                                                                      | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **Kodachi Dashboard GUI**                                                                        | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **Kodachi AI Capabilities**                                                                      | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **Kodachi Desktop**                                                                              | ![In Progress](https://img.shields.io/badge/Status-In%20Progress-orange?style=flat-square) | ![80%](https://img.shields.io/badge/Progress-80%25-orange?style=flat-square)        |
 
 ---
@@ -43,6 +44,7 @@ This roadmap provides an overview of the current status of key components in the
 | **Dependencies Checker** | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | N/A                                                                       | Comprehensive system dependency verification and management.                   |
 | **Auth-Shared Library**  | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | N/A                                                                       | Centralized authentication framework for all backend services.                 |
 | **Rust-Updater**         | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | N/A                                                                       | Automated dependency updating and API compatibility management.                |
+| **AI Capabilities**      | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | AI-powered intent classification, NLP command processing, and agent framework. |
 
 ### System-Wide Improvements
 
