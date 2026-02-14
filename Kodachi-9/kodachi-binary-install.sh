@@ -15,7 +15,7 @@
 #
 # Author: Warith Al Maawali
 # Version: 9.0.1
-# Last updated: 2026-01-29
+# Last updated: 2026-02-12
 #
 # Description:
 # This script downloads and installs Kodachi security tool binaries
@@ -88,6 +88,46 @@ print_highlight() { echo -e "${MAGENTA}${BOLD}$1${NC}"; }
 # Configuration
 CDN_BASE="https://www.kodachi.cloud/apps/os/install"
 KODACHI_VERSION="9.0.1"
+CONKY_PACKAGE_LOCAL_SOURCE="/home/kodachi/k900/livebuild-assets/conky"
+CONKY_CONFIG_BASE="${XDG_CONFIG_HOME:-$HOME/.config}"
+CONKY_INSTALL_DIR="$CONKY_CONFIG_BASE/kodachi/conky"
+CONKY_AUTOSTART_FILE="$CONKY_CONFIG_BASE/autostart/kodachi-conky.desktop"
+CONKY_SETUP_DONE=false
+
+# Detect whether this system has a GUI desktop environment (XFCE/GNOME/etc.)
+detect_gui_environment() {
+    # Active GUI session
+    if [[ -n "${DISPLAY:-}" || -n "${WAYLAND_DISPLAY:-}" ]]; then
+        return 0
+    fi
+
+    # Session type hint from login manager
+    if [[ "${XDG_SESSION_TYPE:-}" == "x11" || "${XDG_SESSION_TYPE:-}" == "wayland" ]]; then
+        return 0
+    fi
+
+    # Installed desktop session files (XFCE, GNOME, KDE, etc.)
+    if compgen -G "/usr/share/xsessions/*.desktop" >/dev/null 2>&1 || \
+       compgen -G "/usr/share/wayland-sessions/*.desktop" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    # Common desktop environment packages (Debian/Ubuntu family)
+    if command -v dpkg >/dev/null 2>&1; then
+        local desktop_packages=(
+            "xfce4" "xfce4-session" "gnome-shell" "plasma-desktop"
+            "mate-desktop" "lxde" "lxqt-core" "cinnamon"
+        )
+        local pkg=""
+        for pkg in "${desktop_packages[@]}"; do
+            if dpkg -l "$pkg" 2>/dev/null | grep -q "^ii"; then
+                return 0
+            fi
+        done
+    fi
+
+    return 1
+}
 
 # Parse command line arguments
 INSTALL_PATH=""
@@ -137,7 +177,13 @@ done
 
 # Set default install path if not specified
 if [[ -z "$INSTALL_PATH" ]]; then
-    INSTALL_PATH="$HOME/dashboard/hooks"
+    if [[ -x "$PWD/dashboard/hooks/kodachi-dashboard" ]]; then
+        INSTALL_PATH="$PWD/dashboard/hooks"
+    elif [[ -x "$HOME/k900/dashboard/hooks/kodachi-dashboard" ]]; then
+        INSTALL_PATH="$HOME/k900/dashboard/hooks"
+    else
+        INSTALL_PATH="$HOME/dashboard/hooks"
+    fi
 fi
 
 # Welcome message
@@ -187,25 +233,44 @@ fi
 TEMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TEMP_DIR"' EXIT
 
-# Function to download with retry and exponential backoff
+# Function to download with retry, resume support, and stall detection
 download_with_retry() {
     local url="$1"
     local output="$2"
-    local max_retries=4
+    local max_retries=5
     local retry=0
     local backoff=2
+    local curl_progress="--silent"
+
+    # Show progress bar if running in a terminal
+    if [ -t 1 ]; then
+        curl_progress="--progress-bar"
+    fi
 
     while [[ $retry -lt $max_retries ]]; do
-        if curl --fail --location --show-error --silent \
-               --connect-timeout 15 --max-time 90 \
-               "$url" -o "$output"; then
+        local exit_code=0
+        curl --fail --location --show-error \
+               $curl_progress \
+               --connect-timeout 15 \
+               --speed-limit 50000 --speed-time 30 \
+               -C - \
+               "$url" -o "$output" || exit_code=$?
+
+        if [[ $exit_code -eq 0 ]]; then
             return 0
         fi
+
         retry=$((retry + 1))
+
+        # Exit code 33 = range request not supported, restart without resume
+        if [[ $exit_code -eq 33 ]]; then
+            rm -f "$output"
+        fi
+
         if [[ $retry -lt $max_retries ]]; then
-            print_warning "Download failed, retry $retry/$max_retries in ${backoff}s..."
+            print_warning "Download failed (attempt $retry/$max_retries), retrying in ${backoff}s..."
             sleep "$backoff"
-            backoff=$((backoff * 2))
+            backoff=$((backoff + retry + 1))
         fi
     done
 
@@ -320,6 +385,172 @@ stop_permission_guard_if_running() {
     fi
 }
 
+# Collect running PIDs that are holding target binaries we are about to replace
+collect_install_path_pids() {
+    local pids=()
+    local pid=""
+    local exe=""
+    local binary_file=""
+    local binary_name=""
+    local target=""
+    local have_sudo=false
+    local have_timeout=false
+    local self_pid="$$"
+    local parent_pid="${PPID:-0}"
+    local targets=()
+    local -A target_map=()
+    local lsof_pids=""
+
+    if sudo -n true 2>/dev/null; then
+        have_sudo=true
+    fi
+    if command -v timeout &>/dev/null; then
+        have_timeout=true
+    fi
+
+    for binary_file in "$EXTRACT_DIR/binaries/"*; do
+        [[ -f "$binary_file" ]] || continue
+        binary_name="$(basename "$binary_file")"
+        target="$INSTALL_PATH/$binary_name"
+        [[ -e "$target" ]] || continue
+        targets+=("$target")
+        target_map["$target"]=1
+    done
+
+    if [[ "${#targets[@]}" -eq 0 ]]; then
+        return 0
+    fi
+
+    # Method 1: Open file handles for all target binaries (single call)
+    if command -v lsof &>/dev/null; then
+        if [[ "$have_timeout" == true ]]; then
+            lsof_pids="$(timeout --signal=TERM 8s lsof -t -- "${targets[@]}" 2>/dev/null || true)"
+        else
+            lsof_pids="$(lsof -t -- "${targets[@]}" 2>/dev/null || true)"
+        fi
+        while IFS= read -r pid; do
+            [[ -n "$pid" ]] && pids+=("$pid")
+        done < <(printf '%s\n' "$lsof_pids" | sort -u || true)
+
+        # Also inspect root-owned holders if non-interactive sudo is available
+        if [[ "$have_sudo" == true ]]; then
+            if [[ "$have_timeout" == true ]]; then
+                lsof_pids="$(sudo -n timeout --signal=TERM 8s lsof -t -- "${targets[@]}" 2>/dev/null || true)"
+            else
+                lsof_pids="$(sudo -n lsof -t -- "${targets[@]}" 2>/dev/null || true)"
+            fi
+            while IFS= read -r pid; do
+                [[ -n "$pid" ]] && pids+=("$pid")
+            done < <(printf '%s\n' "$lsof_pids" | sort -u || true)
+        fi
+    fi
+
+    # Method 2: Executable path points to one of target binaries (single /proc pass)
+    for proc in /proc/[0-9]*; do
+        pid="${proc##*/}"
+        exe="$(readlink -f "$proc/exe" 2>/dev/null || true)"
+        if [[ -n "$exe" ]] && [[ -n "${target_map[$exe]:-}" ]]; then
+            pids+=("$pid")
+        fi
+    done
+
+    # Print unique numeric PIDs excluding current shell and parent shell
+    printf '%s\n' "${pids[@]}" \
+        | awk '/^[0-9]+$/' \
+        | awk -v self="$self_pid" -v parent="$parent_pid" '$1 != self && $1 != parent' \
+        | sort -u
+}
+
+# Kill all processes using hooks path to prevent ETXTBSY during binary replacement
+drain_install_path_processes() {
+    print_step "Stopping processes using hooks binaries..."
+
+    local pids=()
+    local pid=""
+    local survivors=()
+    local count=0
+    local have_sudo=false
+
+    if sudo -n true 2>/dev/null; then
+        have_sudo=true
+    fi
+
+    while IFS= read -r pid; do
+        [[ -n "$pid" ]] && pids+=("$pid")
+    done < <(collect_install_path_pids)
+
+    count="${#pids[@]}"
+    if [[ "$count" -eq 0 ]]; then
+        print_success "No active processes are holding hooks binaries"
+        return 0
+    fi
+
+    print_warning "Found $count active process(es) holding target binaries; terminating..."
+
+    # Graceful stop first
+    kill -TERM "${pids[@]}" 2>/dev/null || true
+    if [[ "$have_sudo" == true ]]; then
+        sudo -n kill -TERM "${pids[@]}" 2>/dev/null || true
+    fi
+    sleep 1
+
+    # Force kill remaining PIDs
+    kill -KILL "${pids[@]}" 2>/dev/null || true
+    if [[ "$have_sudo" == true ]]; then
+        sudo -n kill -KILL "${pids[@]}" 2>/dev/null || true
+    fi
+    sleep 0.5
+
+    # Re-check to ensure drain succeeded
+    while IFS= read -r pid; do
+        [[ -n "$pid" ]] && survivors+=("$pid")
+    done < <(collect_install_path_pids)
+
+    if [[ "${#survivors[@]}" -gt 0 ]]; then
+        print_warning "Some processes still hold old binaries: ${survivors[*]}"
+        print_warning "Proceeding with atomic replacement; those processes may need restart."
+        return 0
+    fi
+
+    print_success "Hooks path is clear; no process is holding binaries"
+}
+
+# Remove only target binaries (top-level files) before copying replacements
+remove_old_hook_binaries() {
+    print_step "Removing old hook binaries before copy..."
+
+    local binary_file=""
+    local binary_name=""
+    local removed=0
+
+    for binary_file in "$EXTRACT_DIR/binaries/"*; do
+        if [[ -f "$binary_file" ]]; then
+            binary_name="$(basename "$binary_file")"
+            if [[ -f "$INSTALL_PATH/$binary_name" ]]; then
+                rm -f "$INSTALL_PATH/$binary_name" 2>/dev/null || true
+                if [[ -f "$INSTALL_PATH/$binary_name" ]] && sudo -n true 2>/dev/null; then
+                    sudo -n rm -f "$INSTALL_PATH/$binary_name" 2>/dev/null || true
+                fi
+                if [[ ! -f "$INSTALL_PATH/$binary_name" ]]; then
+                    removed=$((removed + 1))
+                fi
+            fi
+        fi
+    done
+
+    print_success "Removed $removed old binary file(s) from hooks"
+}
+
+# Ensure hooks folder is safe for binary replacement
+prepare_hooks_for_binary_replace() {
+    # First stop permission-guard (may be protecting/chmod'ing binaries)
+    stop_permission_guard_if_running
+    # Then drain all running processes using hooks path
+    drain_install_path_processes
+    # Finally remove old target binaries before writing new files
+    remove_old_hook_binaries
+}
+
 echo ""
 print_highlight "======= Downloading Kodachi Binaries ======="
 echo ""
@@ -334,7 +565,8 @@ if ! download_with_retry "$PACKAGE_URL" "$PACKAGE_FILE"; then
     print_error "Failed to download package from $PACKAGE_URL"
     exit 1
 fi
-print_success "Package downloaded successfully"
+file_size=$(du -h "$PACKAGE_FILE" | cut -f1)
+print_success "Package downloaded successfully ($file_size)"
 
 # Step 2: Download and verify package signature
 print_step "Downloading package signature..."
@@ -413,11 +645,11 @@ print_success "Package extracted successfully"
 
 # Step 5: Create installation directory structure
 print_step "Creating installation directories..."
-mkdir -p "$INSTALL_PATH"/{config/signkeys,config/profiles,logs,tmp,results/signatures,backups,others,sounds,flags,licenses,binaries-update-scripts}
+mkdir -p "$INSTALL_PATH"/{config/signkeys,config/profiles,icons,logs,tmp,results/signatures,backups,others,sounds,flags,licenses,binaries-update-scripts,models,data}
 print_success "Directory structure created"
 
-# Step 5.5: Stop permission-guard daemon if running (prevents binary replacement issues)
-stop_permission_guard_if_running
+# Step 5.5: Pre-copy safety drain for hooks binary replacement
+prepare_hooks_for_binary_replace
 
 # Step 5.6: Cleanup old global symlinks (if global-launcher exists)
 echo ""
@@ -462,8 +694,10 @@ cleanup_global_symlinks
 print_step "Installing binaries..."
 VERIFIED_COUNT=0
 FAILED_COUNT=0
+INSTALL_FAILED_COUNT=0
 TOTAL_COUNT=0
 FAILED_BINARIES=""
+INSTALL_FAILED_BINARIES=""
 
 for binary_file in "$EXTRACT_DIR/binaries/"*; do
     if [[ -f "$binary_file" ]]; then
@@ -472,12 +706,17 @@ for binary_file in "$EXTRACT_DIR/binaries/"*; do
 
         # Verify signature BEFORE copying
         if verify_signature "$binary_file" "$EXTRACT_DIR/signatures"; then
-            VERIFIED_COUNT=$((VERIFIED_COUNT + 1))
-            echo -e "  ${GREEN}✓${NC} $binary_name - signature verified"
-
-            # Only copy if signature is valid
-            cp "$binary_file" "$INSTALL_PATH/$binary_name"
-            chmod 755 "$INSTALL_PATH/$binary_name"
+            # Atomic replace avoids ETXTBSY on running binaries.
+            tmp_target="$INSTALL_PATH/.${binary_name}.new.$$"
+            if install -m 755 "$binary_file" "$tmp_target" && mv -f "$tmp_target" "$INSTALL_PATH/$binary_name"; then
+                VERIFIED_COUNT=$((VERIFIED_COUNT + 1))
+                echo -e "  ${GREEN}✓${NC} $binary_name - signature verified and installed"
+            else
+                rm -f "$tmp_target" 2>/dev/null || true
+                INSTALL_FAILED_COUNT=$((INSTALL_FAILED_COUNT + 1))
+                INSTALL_FAILED_BINARIES="${INSTALL_FAILED_BINARIES}    - ${binary_name}\n"
+                echo -e "  ${RED}✗${NC} $binary_name - install failed (write/permission/busy)"
+            fi
         else
             FAILED_COUNT=$((FAILED_COUNT + 1))
             FAILED_BINARIES="${FAILED_BINARIES}    - ${binary_name}\n"
@@ -502,6 +741,15 @@ fi
 
 print_success "Installed and verified $VERIFIED_COUNT binaries"
 
+if [[ $INSTALL_FAILED_COUNT -gt 0 ]]; then
+    echo ""
+    print_error "Binary installation failed for $INSTALL_FAILED_COUNT binaries!"
+    print_error "The following binaries could not be installed:"
+    echo -e "${RED}${INSTALL_FAILED_BINARIES}${NC}"
+    print_error "Please check permissions/process locks and re-run the installer."
+    exit 1
+fi
+
 # Step 7: Copy configuration files
 print_step "Installing configuration files..."
 if [[ -d "$EXTRACT_DIR/config" ]]; then
@@ -515,11 +763,41 @@ if [[ -d "$EXTRACT_DIR/signatures" ]]; then
 fi
 
 if [[ -d "$EXTRACT_DIR/sounds" ]]; then
-    cp -r "$EXTRACT_DIR/sounds/"* "$INSTALL_PATH/sounds/" 2>/dev/null || true
+    cp -a "$EXTRACT_DIR/sounds/." "$INSTALL_PATH/sounds/" 2>/dev/null || true
 fi
 
 if [[ -d "$EXTRACT_DIR/flags" ]]; then
-    cp -r "$EXTRACT_DIR/flags/"* "$INSTALL_PATH/flags/" 2>/dev/null || true
+    cp -a "$EXTRACT_DIR/flags/." "$INSTALL_PATH/flags/" 2>/dev/null || true
+fi
+
+if [[ -d "$EXTRACT_DIR/icons" ]]; then
+    cp -a "$EXTRACT_DIR/icons/." "$INSTALL_PATH/icons/" 2>/dev/null || true
+fi
+
+# Backward compatibility: older packages may only contain dashboard icon
+# under config/icons and no top-level icons directory.
+if [[ -d "$EXTRACT_DIR/config/icons" ]]; then
+    if [[ -z "$(find "$INSTALL_PATH/icons" -maxdepth 1 -type f 2>/dev/null)" ]]; then
+        cp -a "$EXTRACT_DIR/config/icons/." "$INSTALL_PATH/icons/" 2>/dev/null || true
+    fi
+fi
+
+# Ensure runtime icon filename exists for dashboard/tray fallback logic.
+# Package may contain only generic Kodachi icon names (e.g., kodachi.png).
+if [[ ! -f "$INSTALL_PATH/icons/kodachi-dashboard.png" ]]; then
+    for icon_candidate in \
+        "$INSTALL_PATH/config/icons/kodachi-dashboard.png" \
+        "$INSTALL_PATH/icons/kodachi.png" \
+        "$INSTALL_PATH/icons/kodachi32.png" \
+        "$INSTALL_PATH/icons/Kodachi_Green_big.png" \
+        "$INSTALL_PATH/icons/Kodachi_White_big.png" \
+        "$INSTALL_PATH/icons/Kodachi_Black_big.png"
+    do
+        if [[ -f "$icon_candidate" ]]; then
+            cp -f "$icon_candidate" "$INSTALL_PATH/icons/kodachi-dashboard.png"
+            break
+        fi
+    done
 fi
 
 if [[ -d "$EXTRACT_DIR/licenses" ]]; then
@@ -538,10 +816,233 @@ if [[ -d "$EXTRACT_DIR/binaries-update-scripts" ]]; then
     fi
 fi
 
+# Copy AI model files
+if [[ -d "$EXTRACT_DIR/models" ]]; then
+    cp -r "$EXTRACT_DIR/models/"* "$INSTALL_PATH/models/" 2>/dev/null || true
+    model_count=$(find "$INSTALL_PATH/models" -type f | wc -l)
+    if [[ $model_count -gt 0 ]]; then
+        print_success "AI model files installed ($model_count files)"
+    fi
+fi
+
+# Step 8.5: Install Conky assets and startup entry
+install_conky_assets() {
+    print_step "Installing Conky assets..."
+
+    local conky_source=""
+    local candidates=()
+
+    # Preferred source: bundled package assets
+    if [[ -n "${EXTRACT_DIR:-}" ]]; then
+        candidates+=("$EXTRACT_DIR/conky")
+    fi
+
+    # Local development fallbacks
+    candidates+=("$CONKY_PACKAGE_LOCAL_SOURCE" "$HOME/k900/livebuild-assets/conky")
+
+    for candidate in "${candidates[@]}"; do
+        if [[ -d "$candidate/configs" ]] && [[ -d "$candidate/scripts" ]]; then
+            conky_source="$candidate"
+            break
+        fi
+    done
+
+    if [[ -z "$conky_source" ]]; then
+        print_warning "Conky source not found in package or local assets. Skipping Conky setup."
+        return 1
+    fi
+
+    mkdir -p "$(dirname "$CONKY_INSTALL_DIR")"
+    rm -rf "$CONKY_INSTALL_DIR"
+    cp -a "$conky_source" "$CONKY_INSTALL_DIR"
+
+    if [[ -d "$CONKY_INSTALL_DIR/scripts" ]]; then
+        find "$CONKY_INSTALL_DIR/scripts" -type f -name "*.sh" -exec chmod 755 {} + 2>/dev/null || true
+    fi
+
+    print_success "Conky assets installed: $CONKY_INSTALL_DIR"
+    return 0
+}
+
+install_conky_autostart() {
+    local watchdog_script="$CONKY_INSTALL_DIR/scripts/conky-watchdog.sh"
+    local launcher="$CONKY_INSTALL_DIR/scripts/conky-launcher.sh"
+    local systemd_service_file="$CONKY_CONFIG_BASE/systemd/user/conky-watchdog.service"
+    local autostart_exec=""
+    local autostart_tryexec=""
+
+    if command -v systemctl >/dev/null 2>&1 && [[ -x "$watchdog_script" ]] && [[ -f "$systemd_service_file" ]]; then
+        autostart_exec="/usr/bin/systemctl --user start conky-watchdog.service"
+        autostart_tryexec="/usr/bin/systemctl"
+    elif [[ -x "$launcher" ]]; then
+        autostart_exec="$launcher --restart"
+        autostart_tryexec="$launcher"
+        print_warning "Conky watchdog is unavailable, falling back to launcher autostart."
+    else
+        print_warning "Conky launcher not found at $launcher. Skipping autostart setup."
+        return 1
+    fi
+
+    mkdir -p "$(dirname "$CONKY_AUTOSTART_FILE")"
+    cat > "$CONKY_AUTOSTART_FILE" << EOF
+[Desktop Entry]
+Type=Application
+Name=Kodachi Conky
+Comment=Kodachi 9 Desktop Status Panels
+GenericName=System Monitor
+Exec=$autostart_exec
+TryExec=$autostart_tryexec
+Terminal=false
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=5
+Categories=System;Monitor;
+Keywords=conky;monitor;system;status;privacy;security;
+StartupNotify=false
+EOF
+    chmod 644 "$CONKY_AUTOSTART_FILE"
+
+    print_success "Conky autostart enabled: $CONKY_AUTOSTART_FILE"
+    if ! command -v conky &>/dev/null; then
+        print_warning "Conky binary is not installed yet. Run kodachi-deps-install.sh to install conky-all."
+    fi
+    return 0
+}
+
+install_conky_watchdog() {
+    local watchdog_script="$CONKY_INSTALL_DIR/scripts/conky-watchdog.sh"
+    local launcher="$CONKY_INSTALL_DIR/scripts/conky-launcher.sh"
+    local service_source="$CONKY_INSTALL_DIR/systemd/conky-watchdog.service"
+    local systemd_user_dir="$CONKY_CONFIG_BASE/systemd/user"
+    local service_file="$systemd_user_dir/conky-watchdog.service"
+    local wants_dir="$systemd_user_dir/default.target.wants"
+
+    if [[ ! -x "$watchdog_script" ]]; then
+        if [[ ! -x "$launcher" ]]; then
+            print_warning "Conky launcher not found at $launcher. Skipping watchdog setup."
+            return 1
+        fi
+
+        print_warning "Conky watchdog script missing in assets. Creating compatibility watchdog."
+        cat > "$watchdog_script" << EOF
+#!/usr/bin/env bash
+set -euo pipefail
+
+LOG_DIR="\${XDG_CACHE_HOME:-\$HOME/.cache}/kodachi"
+LOG_FILE="\$LOG_DIR/conky-watchdog.log"
+CHECK_INTERVAL="\${CONKY_WATCHDOG_INTERVAL:-5}"
+EXPECTED_PANELS="\${CONKY_EXPECTED_PANELS:-4}"
+
+mkdir -p "\$LOG_DIR"
+export DISPLAY="\${DISPLAY:-:0}"
+export XAUTHORITY="\${XAUTHORITY:-\$HOME/.Xauthority}"
+
+count_conky() { pgrep -x conky 2>/dev/null | wc -l || true; }
+restart_conky() { "$launcher" --restart >> "\$LOG_FILE" 2>&1 || true; }
+
+if [[ "\$(count_conky)" -lt "\$EXPECTED_PANELS" ]]; then
+    restart_conky
+fi
+
+while true; do
+    if [[ "\$(count_conky)" -lt "\$EXPECTED_PANELS" ]]; then
+        restart_conky
+        sleep 2
+    fi
+    sleep "\$CHECK_INTERVAL"
+done
+EOF
+        chmod 755 "$watchdog_script"
+    fi
+
+    mkdir -p "$systemd_user_dir" "$wants_dir"
+
+    if [[ -f "$service_source" ]]; then
+        cp -f "$service_source" "$service_file"
+    else
+        cat > "$service_file" << EOF
+[Unit]
+Description=Kodachi Conky Watchdog
+After=graphical-session.target
+Wants=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.config/kodachi/conky/scripts/conky-watchdog.sh
+Restart=always
+RestartSec=3
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=%h/.Xauthority
+
+[Install]
+WantedBy=default.target
+EOF
+    fi
+    chmod 644 "$service_file"
+    ln -sfn "$service_file" "$wants_dir/conky-watchdog.service"
+
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl --user daemon-reload >/dev/null 2>&1 || true
+        systemctl --user enable --now conky-watchdog.service >/dev/null 2>&1 || \
+            systemctl --user start conky-watchdog.service >/dev/null 2>&1 || true
+    fi
+
+    print_success "Conky watchdog configured: $service_file"
+    return 0
+}
+
+setup_conky() {
+    # Check build variant marker file (written by build-iso.sh during ISO creation)
+    local _build_variant=""
+    if [[ -f /opt/kodachi-offline-packages/build-variant ]]; then
+        _build_variant=$(tr -cd 'a-z-' < /opt/kodachi-offline-packages/build-variant)
+    fi
+    if [[ "$_build_variant" == "terminal" ]] || [[ "$_build_variant" == "minimal" ]]; then
+        print_info "Build variant is '${_build_variant}'. Skipping Conky bootup setup."
+        return 0
+    fi
+    if ! detect_gui_environment; then
+        print_info "No GUI desktop detected (terminal/headless system). Skipping Conky setup."
+        return 0
+    fi
+
+    if install_conky_assets; then
+        install_conky_watchdog || true
+        if install_conky_autostart; then
+            CONKY_SETUP_DONE=true
+        fi
+    fi
+}
+
+setup_conky
+
 # Step 9: Create desktop shortcuts
 mark_desktop_file_trusted() {
     local desktop_file="$1"
     local checksum=""
+    local trust_ok=false
+    local uri="file://$desktop_file"
+
+    _run_gio_set() {
+        local target="$1"
+        local key="$2"
+        local value="$3"
+        if gio set "$target" "$key" "$value" 2>/dev/null; then
+            return 0
+        fi
+        if command -v dbus-launch &>/dev/null; then
+            if dbus-launch gio set "$target" "$key" "$value" 2>/dev/null; then
+                return 0
+            fi
+        fi
+        if command -v dbus-run-session &>/dev/null; then
+            if dbus-run-session -- gio set "$target" "$key" "$value" 2>/dev/null; then
+                return 0
+            fi
+        fi
+        return 1
+    }
 
     if command -v sha256sum &>/dev/null; then
         checksum=$(sha256sum "$desktop_file" | awk '{print $1}')
@@ -549,15 +1050,18 @@ mark_desktop_file_trusted() {
 
     # GNOME/Nautilus and XFCE trust metadata (best-effort)
     if command -v gio &>/dev/null; then
-        gio set "$desktop_file" metadata::trusted true 2>/dev/null || \
-            gio set "$desktop_file" metadata::trusted yes 2>/dev/null || true
+        _run_gio_set "$desktop_file" metadata::trusted true || \
+            _run_gio_set "$desktop_file" metadata::trusted yes || \
+            _run_gio_set "$uri" metadata::trusted true || \
+            _run_gio_set "$uri" metadata::trusted yes || true
         if [[ -n "$checksum" ]]; then
-            gio set "$desktop_file" metadata::xfce-exe-checksum "$checksum" 2>/dev/null || true
+            _run_gio_set "$desktop_file" metadata::xfce-exe-checksum "$checksum" || \
+                _run_gio_set "$uri" metadata::xfce-exe-checksum "$checksum" || true
         fi
     fi
 
     if command -v gvfs-set-attribute &>/dev/null; then
-        gvfs-set-attribute -t string "$desktop_file" metadata::trusted "true" 2>/dev/null || true
+        gvfs-set-attribute -t string "$desktop_file" metadata::trusted "true" 2>/dev/null && trust_ok=true || true
         if [[ -n "$checksum" ]]; then
             gvfs-set-attribute -t string "$desktop_file" metadata::xfce-exe-checksum "$checksum" 2>/dev/null || true
         fi
@@ -565,6 +1069,18 @@ mark_desktop_file_trusted() {
 
     if command -v setfattr &>/dev/null; then
         setfattr -n user.xfce.executable -v true "$desktop_file" 2>/dev/null || true
+    fi
+
+    # Verify trust marker was really applied.
+    if command -v gio &>/dev/null; then
+        if gio info "$desktop_file" 2>/dev/null | grep -q "metadata::trusted: true"; then
+            trust_ok=true
+        fi
+    fi
+
+    if [[ "$trust_ok" != true ]]; then
+        print_warning "Could not persist desktop trust metadata for: $desktop_file"
+        print_warning "If XFCE shows untrusted prompt, right-click -> Allow Launching once."
     fi
 }
 
@@ -590,14 +1106,22 @@ create_desktop_shortcuts() {
         return 0
     fi
 
-    # Determine icon path - prefer 128x128 icon if available in config/icons
-    local ICON_PATH="$INSTALL_PATH/config/icons/kodachi-dashboard.png"
+    # Determine icon path (prefer hooks/icons first, then config/icons)
+    local ICON_PATH="$INSTALL_PATH/icons/kodachi-dashboard.png"
     if [[ ! -f "$ICON_PATH" ]]; then
-        # Fallback to generic system icon
+        ICON_PATH="$INSTALL_PATH/config/icons/kodachi-dashboard.png"
+    fi
+    if [[ ! -f "$ICON_PATH" ]]; then
         ICON_PATH="utilities-terminal"
     fi
 
+    # Remove legacy launcher wrapper from older installer versions
+    # (Desktop shortcut now uses direct Exec + Path)
+    rm -f "$INSTALL_PATH/kodachi-dashboard-launcher.sh" 2>/dev/null || true
+
     # 1. Kodachi Dashboard shortcut
+    # Match the proven Desktop-02 test style:
+    # direct binary Exec + explicit Path to hooks directory.
     cat > "$DESKTOP_DIR/kodachi-dashboard.desktop" << EOF
 [Desktop Entry]
 Version=1.0
@@ -605,10 +1129,13 @@ Type=Application
 Name=Kodachi Dashboard
 Comment=Kodachi Security Dashboard
 Exec=$INSTALL_PATH/kodachi-dashboard
+TryExec=$INSTALL_PATH/kodachi-dashboard
+Path=$INSTALL_PATH
 Icon=$ICON_PATH
 Terminal=false
 Categories=Security;System;
 StartupNotify=true
+StartupWMClass=kodachi-dashboard
 X-XFCE-TrustedApplication=true
 EOF
     chmod +x "$DESKTOP_DIR/kodachi-dashboard.desktop"
@@ -619,13 +1146,14 @@ EOF
     fi
 
     # 2. Kodachi Binaries folder shortcut
+    # Match the proven Folder-02 style (thunar launcher).
     cat > "$DESKTOP_DIR/kodachi-binaries.desktop" << EOF
 [Desktop Entry]
 Version=1.0
 Type=Application
 Name=Kodachi Binaries
 Comment=Open Kodachi binaries folder
-Exec=xdg-open $INSTALL_PATH
+Exec=thunar $INSTALL_PATH
 Icon=folder-open
 Terminal=false
 Categories=Utility;
@@ -634,7 +1162,10 @@ EOF
     chmod +x "$DESKTOP_DIR/kodachi-binaries.desktop"
     mark_desktop_file_trusted "$DESKTOP_DIR/kodachi-binaries.desktop"
 
-    print_success "Desktop shortcuts created: kodachi-dashboard, kodachi-binaries"
+    # Ensure legacy folder symlink is removed; desktop shortcuts only.
+    rm -f "$DESKTOP_DIR/kodachi-binaries" 2>/dev/null || true
+
+    print_success "Desktop shortcuts created: kodachi-dashboard.desktop, kodachi-binaries.desktop"
 }
 
 # Create desktop shortcuts
@@ -687,6 +1218,12 @@ print_success "Kodachi binaries installed to: $INSTALL_PATH"
 print_info "Binaries installed: $TOTAL_COUNT"
 print_info "Signatures verified: $VERIFIED_COUNT"
 print_info "Desktop shortcuts: kodachi-dashboard, kodachi-binaries"
+if [[ "$CONKY_SETUP_DONE" == "true" ]]; then
+    print_info "Conky installed to: $CONKY_INSTALL_DIR"
+    print_info "Conky startup file: $CONKY_AUTOSTART_FILE"
+elif ! detect_gui_environment; then
+    print_info "Conky: skipped (no GUI detected)"
+fi
 
 if [[ $FAILED_COUNT -gt 0 ]]; then
     print_warning "Signatures not verified: $FAILED_COUNT"
