@@ -15,7 +15,7 @@
 #
 # Author: Warith Al Maawali
 # Version: 9.0.1
-# Last updated: 2026-02-12
+# Last updated: 2026-02-16
 #
 # Description:
 # This script downloads and installs Kodachi security tool binaries
@@ -93,6 +93,8 @@ CONKY_CONFIG_BASE="${XDG_CONFIG_HOME:-$HOME/.config}"
 CONKY_INSTALL_DIR="$CONKY_CONFIG_BASE/kodachi/conky"
 CONKY_AUTOSTART_FILE="$CONKY_CONFIG_BASE/autostart/kodachi-conky.desktop"
 CONKY_SETUP_DONE=false
+PERMISSION_GUARD_SKIPPED=false
+SKIPPED_COUNT=0
 
 # Detect whether this system has a GUI desktop environment (XFCE/GNOME/etc.)
 detect_gui_environment() {
@@ -364,24 +366,97 @@ stop_permission_guard_if_running() {
         # If we reach here, need sudo to stop
         print_error "Cannot stop permission-guard daemon - requires sudo privileges"
         echo ""
-        print_highlight "ACTION REQUIRED: Choose one of the following options:"
-        echo ""
-        echo "  Option 1: Stop daemon directly (if in PATH):"
-        echo -e "    ${BOLD}sudo permission-guard --stop-daemon${NC}"
-        echo ""
-        echo "  Option 2: Stop daemon directly (direct path):"
-        echo -e "    ${BOLD}sudo $INSTALL_PATH/permission-guard --stop-daemon${NC}"
-        echo ""
-        echo "  Option 3: Logout (daemon stops automatically):"
-        echo -e "    ${BOLD}sudo online-auth logout${NC}"
-        echo ""
-        print_info "To verify the daemon is stopped, run:"
-        echo -e "  ${BOLD}sudo permission-guard --daemon-status${NC}"
-        echo ""
-        print_info "Note: The daemon will automatically start again when you log in - no manual restart needed"
-        echo ""
-        print_warning "After stopping the daemon, re-run this installation script"
-        exit 1
+
+        # Non-interactive fallback (e.g., curl ... | bash with no TTY)
+        if [[ ! -t 0 ]] && ! [[ -c /dev/tty ]]; then
+            print_warning "Non-interactive mode: skipping permission-guard binary update"
+            PERMISSION_GUARD_SKIPPED=true
+            return 0
+        fi
+
+        local pg_attempts=0
+        local pg_max_attempts=3
+
+        while true; do
+            echo ""
+            print_highlight "ACTION REQUIRED: permission-guard daemon is still running"
+            echo ""
+            echo "  To stop it, open another terminal and run:"
+            echo -e "    ${BOLD}sudo permission-guard --stop-daemon${NC}"
+            echo -e "    ${BOLD}sudo $INSTALL_PATH/permission-guard --stop-daemon${NC}"
+            echo ""
+
+            if [[ $pg_attempts -ge $pg_max_attempts ]]; then
+                # After max attempts, only offer skip or abort
+                echo -e "  ${YELLOW}[1]${NC} Continue anyway - skip permission-guard binary"
+                echo -e "  ${YELLOW}[2]${NC} Abort installation"
+                echo ""
+                echo -n "  Choose [1-2]: "
+                local fallback_choice=""
+                read -r fallback_choice < /dev/tty 2>/dev/null || fallback_choice="1"
+                case "$fallback_choice" in
+                    2)
+                        print_error "Installation aborted by user"
+                        exit 1
+                        ;;
+                    *)
+                        print_warning "Skipping permission-guard binary update"
+                        PERMISSION_GUARD_SKIPPED=true
+                        return 0
+                        ;;
+                esac
+            fi
+
+            echo -e "  ${YELLOW}[1]${NC} I stopped it - verify and continue"
+            echo -e "  ${YELLOW}[2]${NC} Continue anyway - skip permission-guard binary"
+            echo -e "  ${YELLOW}[3]${NC} Abort installation"
+            echo ""
+            echo -n "  Choose [1-3]: "
+            local pg_choice=""
+            read -r pg_choice < /dev/tty 2>/dev/null || pg_choice="2"
+
+            case "$pg_choice" in
+                1)
+                    pg_attempts=$((pg_attempts + 1))
+                    print_step "Re-checking permission-guard status (attempt $pg_attempts/$pg_max_attempts)..."
+                    sleep 1
+
+                    # Re-verify using all 4 detection methods
+                    local still_running=false
+                    if sudo -n $pg_binary --daemon-status --json 2>/dev/null | grep -q '"running":true'; then
+                        still_running=true
+                    elif $pg_binary --daemon-status --json 2>/dev/null | grep -q '"running":true'; then
+                        still_running=true
+                    elif $pg_binary --daemon-status --json 2>/dev/null | grep -q 'EPERM.*Operation not permitted'; then
+                        # Can't check via daemon-status (no sudo), fall back to pgrep
+                        if pgrep -f "permission-guard.*daemon" >/dev/null 2>&1; then
+                            still_running=true
+                        fi
+                    elif pgrep -f "permission-guard.*daemon" >/dev/null 2>&1; then
+                        still_running=true
+                    fi
+
+                    if [[ "$still_running" == "false" ]]; then
+                        print_success "permission-guard daemon is no longer running"
+                        return 0
+                    fi
+
+                    print_error "permission-guard daemon is still running"
+                    ;;
+                2)
+                    print_warning "Skipping permission-guard binary update"
+                    PERMISSION_GUARD_SKIPPED=true
+                    return 0
+                    ;;
+                3)
+                    print_error "Installation aborted by user"
+                    exit 1
+                    ;;
+                *)
+                    print_warning "Invalid choice, please try again"
+                    ;;
+            esac
+        done
     fi
 }
 
@@ -411,6 +486,10 @@ collect_install_path_pids() {
     for binary_file in "$EXTRACT_DIR/binaries/"*; do
         [[ -f "$binary_file" ]] || continue
         binary_name="$(basename "$binary_file")"
+        # Skip permission-guard when user chose to keep it running
+        if [[ "$PERMISSION_GUARD_SKIPPED" == "true" ]] && [[ "$binary_name" == "permission-guard" ]]; then
+            continue
+        fi
         target="$INSTALL_PATH/$binary_name"
         [[ -e "$target" ]] || continue
         targets+=("$target")
@@ -526,6 +605,10 @@ remove_old_hook_binaries() {
     for binary_file in "$EXTRACT_DIR/binaries/"*; do
         if [[ -f "$binary_file" ]]; then
             binary_name="$(basename "$binary_file")"
+            # Skip permission-guard when user chose to keep it running
+            if [[ "$PERMISSION_GUARD_SKIPPED" == "true" ]] && [[ "$binary_name" == "permission-guard" ]]; then
+                continue
+            fi
             if [[ -f "$INSTALL_PATH/$binary_name" ]]; then
                 rm -f "$INSTALL_PATH/$binary_name" 2>/dev/null || true
                 if [[ -f "$INSTALL_PATH/$binary_name" ]] && sudo -n true 2>/dev/null; then
@@ -543,13 +626,25 @@ remove_old_hook_binaries() {
 
 # Ensure hooks folder is safe for binary replacement
 prepare_hooks_for_binary_replace() {
-    # First stop permission-guard (may be protecting/chmod'ing binaries)
-    stop_permission_guard_if_running
+    # Lightweight re-check: pg may have restarted during download
+    if [[ "$PERMISSION_GUARD_SKIPPED" != "true" ]]; then
+        local pg_restarted=false
+        if pgrep -f "permission-guard.*daemon" >/dev/null 2>&1; then
+            pg_restarted=true
+        fi
+        if [[ "$pg_restarted" == "true" ]]; then
+            print_warning "permission-guard daemon appears to have restarted during download"
+            stop_permission_guard_if_running
+        fi
+    fi
     # Then drain all running processes using hooks path
     drain_install_path_processes
     # Finally remove old target binaries before writing new files
     remove_old_hook_binaries
 }
+
+# Early permission-guard check BEFORE downloading (avoid wasting download time)
+stop_permission_guard_if_running
 
 echo ""
 print_highlight "======= Downloading Kodachi Binaries ======="
@@ -703,6 +798,13 @@ for binary_file in "$EXTRACT_DIR/binaries/"*; do
     if [[ -f "$binary_file" ]]; then
         binary_name=$(basename "$binary_file")
         TOTAL_COUNT=$((TOTAL_COUNT + 1))
+
+        # Skip permission-guard when user chose to keep it running
+        if [[ "$PERMISSION_GUARD_SKIPPED" == "true" ]] && [[ "$binary_name" == "permission-guard" ]]; then
+            SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+            echo -e "  ${YELLOW}⊘${NC} $binary_name - SKIPPED (daemon still running)"
+            continue
+        fi
 
         # Verify signature BEFORE copying
         if verify_signature "$binary_file" "$EXTRACT_DIR/signatures"; then
@@ -1215,7 +1317,11 @@ echo -e "${GREEN}║    Script #1 Complete - Binaries Installed!  ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════════╝${NC}"
 echo ""
 print_success "Kodachi binaries installed to: $INSTALL_PATH"
-print_info "Binaries installed: $TOTAL_COUNT"
+print_info "Binaries total: $TOTAL_COUNT"
+print_info "Binaries installed: $VERIFIED_COUNT"
+if [[ $SKIPPED_COUNT -gt 0 ]]; then
+    print_warning "Binaries skipped: $SKIPPED_COUNT"
+fi
 print_info "Signatures verified: $VERIFIED_COUNT"
 print_info "Desktop shortcuts: kodachi-dashboard, kodachi-binaries"
 if [[ "$CONKY_SETUP_DONE" == "true" ]]; then
@@ -1227,6 +1333,20 @@ fi
 
 if [[ $FAILED_COUNT -gt 0 ]]; then
     print_warning "Signatures not verified: $FAILED_COUNT"
+fi
+
+if [[ "$PERMISSION_GUARD_SKIPPED" == "true" ]]; then
+    echo ""
+    echo -e "${RED}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${RED}║  WARNING: permission-guard binary was NOT updated!         ║${NC}"
+    echo -e "${RED}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "  To update it:"
+    echo -e "    1. Stop the daemon:  ${BOLD}sudo permission-guard --stop-daemon${NC}"
+    echo -e "    2. Re-run this script"
+    echo ""
+    echo -e "  The daemon will auto-restart on next login."
+    echo ""
 fi
 
 echo ""

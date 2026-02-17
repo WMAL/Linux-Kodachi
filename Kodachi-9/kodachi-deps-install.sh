@@ -15,7 +15,7 @@
 #
 # Author: Warith Al Maawali
 # Version: 9.0.1
-# Last updated: 2026-01-29
+# Last updated: 2026-02-16
 #
 # Features:
 # =========
@@ -162,6 +162,46 @@ EOF
     fi
 
     print_success "Fallback DNS applied: 1.1.1.1, 9.9.9.9, 149.112.112.112, 94.140.14.14"
+}
+
+# Function to wait for DNS resolution to become available
+# Retries DNS resolution with fallback DNS servers if needed
+wait_for_dns() {
+    local max_wait=30
+    local waited=0
+
+    print_step "Waiting for DNS resolution to become available..."
+
+    while [[ $waited -lt $max_wait ]]; do
+        # Test DNS with a lightweight lookup
+        if timeout 3 getent hosts cloudflare.com >/dev/null 2>&1 || \
+           timeout 3 getent hosts deb.debian.org >/dev/null 2>&1; then
+            print_success "DNS resolution is working"
+            return 0
+        fi
+
+        # Every 10 seconds, try applying fallback DNS
+        if [[ $((waited % 10)) -eq 0 ]] && [[ $waited -gt 0 ]]; then
+            print_verbose "DNS still not working after ${waited}s, reapplying fallback DNS..."
+            apply_fallback_dns
+        fi
+
+        sleep 2
+        waited=$((waited + 2))
+    done
+
+    # Final attempt: force fallback DNS
+    print_warning "DNS not available after ${max_wait}s, forcing fallback DNS..."
+    apply_fallback_dns
+    sleep 2
+
+    if timeout 5 getent hosts cloudflare.com >/dev/null 2>&1; then
+        print_success "DNS resolution restored after fallback"
+        return 0
+    fi
+
+    print_error "DNS resolution still unavailable after ${max_wait}s"
+    return 1
 }
 
 # Function to configure sudoers for Kodachi binaries (NOPASSWD access)
@@ -334,6 +374,27 @@ $actual_user ALL=(ALL) NOPASSWD: /usr/bin/timedatectl
 
 # End of Kodachi NOPASSWD rules
 EOF
+
+    # Dashboard TUI Terminal Tools (System Monitor tab)
+    # Only add entries for tools that exist and aren't already in the file
+    local tui_tools=("iftop" "nethogs" "lsof" "du")
+    local tui_added=0
+    for tui_bin in "${tui_tools[@]}"; do
+        # Find the actual path of the binary
+        local tui_path
+        tui_path=$(command -v "$tui_bin" 2>/dev/null || true)
+        if [[ -n "$tui_path" ]] && ! grep -q "$tui_path" "$sudoers_file" 2>/dev/null; then
+            if [[ $tui_added -eq 0 ]]; then
+                # Insert section header before "End of" marker
+                sed -i '/# End of Kodachi NOPASSWD rules/i \\n# ============================================================\n# Dashboard TUI Terminal Tools (System Monitor tab)\n# ============================================================' "$sudoers_file"
+                tui_added=1
+            fi
+            sed -i "/# End of Kodachi NOPASSWD rules/i $actual_user ALL=(ALL) NOPASSWD: $tui_path" "$sudoers_file"
+        fi
+    done
+    if [[ $tui_added -gt 0 ]]; then
+        print_info "Added NOPASSWD rules for Dashboard TUI tools"
+    fi
 
     # Set correct permissions (0440 = read-only, root:root)
     chmod 0440 "$sudoers_file"
@@ -2505,8 +2566,7 @@ install_mieru() {
         return 0
     elif [[ "$status" == "upgrade" ]]; then
         print_warning "mieru found (v$installed) - upgrading to v$target..."
-        # Remove old version before upgrading
-        apt-get remove -y mieru 2>/dev/null || true
+        # Old version will be removed after successful download (not before)
     else
         print_step "Installing mieru v$MIERU_VERSION..."
     fi
@@ -2522,6 +2582,9 @@ install_mieru() {
 
         # Make sure no apt is running
         cleanup_apt
+
+        # Remove old version only after download succeeds (safe upgrade)
+        apt-get remove -y mieru 2>/dev/null || true
 
         # Install with dpkg then fix dependencies
         if dpkg -i "$temp_file"; then
@@ -5275,6 +5338,83 @@ deploy_kodachi_binaries_globally() {
 
 deploy_kodachi_binaries_globally
 install_kodachi_conky_for_user
+
+# ============================================================================
+# FIX /usr/sbin PATH FOR NON-ROOT USERS
+# ============================================================================
+# Debian Trixie removed /usr/sbin from non-root user PATH by default.
+# Tools like iftop, nethogs, nft, arptables are installed to /usr/sbin
+# and become invisible to 'which' and direct invocation without this fix.
+
+ensure_sbin_in_path() {
+    # --- Method 1: profile.d for login shells (only create if missing) ---
+    local profile_file="/etc/profile.d/kodachi-path.sh"
+    if [[ -f "$profile_file" ]] || [[ -f "/etc/profile.d/10-kodachi-path.sh" ]]; then
+        print_info "/usr/sbin PATH fix already installed (profile.d)"
+    else
+        print_step "Ensuring /usr/sbin is in user PATH (Debian Trixie fix)..."
+        cat > "$profile_file" << 'SBIN_PATH_EOF'
+#!/bin/sh
+# Kodachi OS - Add admin directories to PATH
+# Required for: iftop, nethogs, nft, arptables, ebtables, and other sbin tools
+# Debian Trixie removed /usr/sbin from non-root PATH by default
+case ":${PATH}:" in
+    *:/usr/sbin:*) ;;
+    *) export PATH="/usr/sbin:/sbin:${PATH}" ;;
+esac
+SBIN_PATH_EOF
+        chmod 644 "$profile_file"
+        print_success "/usr/sbin added to PATH for all users (via $profile_file)"
+    fi
+
+    # --- Method 2: Symlinks in /usr/local/bin for sbin tools (always runs, idempotent) ---
+    local sbin_tools="iftop nethogs nft arptables ebtables ethtool"
+    local symlink_count=0
+    for tool in $sbin_tools; do
+        if command -v "$tool" &>/dev/null; then
+            continue
+        fi
+        local tool_path=""
+        if [[ -x "/usr/sbin/$tool" ]]; then
+            tool_path="/usr/sbin/$tool"
+        elif [[ -x "/sbin/$tool" ]]; then
+            tool_path="/sbin/$tool"
+        fi
+        if [[ -n "$tool_path" ]]; then
+            ln -sf "$tool_path" "/usr/local/bin/$tool" 2>/dev/null && symlink_count=$((symlink_count + 1))
+        fi
+    done
+    if [[ $symlink_count -gt 0 ]]; then
+        print_success "Created $symlink_count symlink(s) in /usr/local/bin for sbin tools"
+    fi
+
+    # --- Method 3: /etc/bash.bashrc for non-login interactive shells (guarded by marker) ---
+    local bashrc_file="/etc/bash.bashrc"
+    if [[ -f "$bashrc_file" ]] && ! grep -q "kodachi-sbin-path" "$bashrc_file" 2>/dev/null; then
+        cat >> "$bashrc_file" << 'BASHRC_PATH_EOF'
+
+# kodachi-sbin-path: Add /usr/sbin to PATH for non-login shells (Debian Trixie fix)
+case ":${PATH}:" in
+    *:/usr/sbin:*) ;;
+    *) export PATH="/usr/sbin:/sbin:${PATH}" ;;
+esac
+BASHRC_PATH_EOF
+        print_success "Added /usr/sbin PATH fix to $bashrc_file"
+    fi
+
+    print_info "Takes effect on next login/terminal. For current session: export PATH=\"/usr/sbin:\$PATH\""
+}
+
+ensure_sbin_in_path
+
+# ============================================================================
+# RE-RUN SUDOERS SETUP (post-install pass)
+# ============================================================================
+# The first call at script start ran BEFORE apt installed packages, so TUI tools
+# (iftop, nethogs) were missing from the system and got skipped by command -v.
+# Now that all packages and sbin symlinks are in place, re-run to pick them up.
+print_step "Updating sudoers with newly installed tools..."
+configure_kodachi_sudoers
 
 # ============================================================================
 # CLEANUP TEMPORARY FILES
