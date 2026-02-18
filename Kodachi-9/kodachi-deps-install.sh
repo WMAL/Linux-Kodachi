@@ -1545,15 +1545,15 @@ install_qrencode_github() {
         fi
     fi
 
-    # Fallback to GitHub compilation if APT fails
+    # Fallback to GitHub compilation if APT fails (uses cmake — GitHub archives lack ./configure)
     print_warning "APT installation failed, falling back to GitHub compilation..."
     local url="https://github.com/fukuchi/libqrencode/archive/v${QRENCODE_VERSION}.tar.gz"
     local temp_dir="/tmp/qrencode-install-$$"
 
     echo "Installing build dependencies for compilation..."
-    # Install build dependencies
+    # Install build dependencies (cmake for build, libpng-dev for PNG QR output)
     apt-get update 2>/dev/null || true
-    apt-get install -y build-essential libpng-dev 2>&1 | tail -5
+    apt-get install -y build-essential cmake libpng-dev 2>&1 | tail -5
 
     echo "Downloading QRencode v${QRENCODE_VERSION} source..."
     mkdir -p "$temp_dir"
@@ -1562,21 +1562,22 @@ install_qrencode_github() {
     # Download source from GitHub (using fixed archive URL)
     if curl -L --connect-timeout 30 --max-time 120 -O "$url" 2>/dev/null; then
         echo "Downloaded QRencode source from GitHub"
-        
-        # Extract and compile
+
+        # Extract and compile using cmake (GitHub archives don't include ./configure)
         if tar xf "v${QRENCODE_VERSION}.tar.gz" 2>/dev/null; then
             cd "libqrencode-${QRENCODE_VERSION}" || return 1
-            
-            if ./configure --prefix=/usr/local >/dev/null 2>&1 && \
+            mkdir -p build && cd build
+
+            if cmake -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_POLICY_VERSION_MINIMUM=3.5 .. >/dev/null 2>&1 && \
                make >/dev/null 2>&1 && \
                make install >/dev/null 2>&1; then
-                
+
                 # Update library cache
                 ldconfig 2>/dev/null || true
-                
+
                 # Verify installation
                 if command -v qrencode &>/dev/null || [ -x /usr/local/bin/qrencode ]; then
-                    print_success "QRencode compiled and installed successfully from GitHub"
+                    print_success "QRencode compiled and installed successfully from GitHub (cmake)"
                     install_success=true
                 fi
             fi
