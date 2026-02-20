@@ -37,9 +37,9 @@ We believe security tools should be as open in design as they are strong in defe
 
 ---
 
-## ![Coming Soon](https://img.shields.io/badge/-Upcoming%20Topics-yellow?style=flat-square&logo=construction) Upcoming Topics
-- DNS Manager
-Stay tuned for future updates.
+## ![Milestones](https://img.shields.io/badge/-Recent%20Milestones-brightgreen?style=flat-square&logo=check) Recent Milestones
+- ![Complete](https://img.shields.io/badge/-Complete-brightgreen?style=flat-square) **[Kodachi Claw](https://www.kodachi.cloud/wiki/bina/installation.html)** – Completed and integrated
+- ![Complete](https://img.shields.io/badge/-Complete-brightgreen?style=flat-square) **[Kodachi Desktop (Debian XFCE)](https://www.kodachi.cloud/wiki/bina/desktop-debian.html)** – Full desktop edition completed
 
 ---
 

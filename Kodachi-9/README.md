@@ -2,6 +2,14 @@
 
 This roadmap provides an overview of the current status of key components in the Kodachi project. All code and infrastructure have been written from scratch; however, I have integrated the working code from the old version to avoid reinventing the wheel and accelerate development.
 
+> ### ![New](https://img.shields.io/badge/-NEW-red?style=flat-square) Kodachi Claw
+> **Kodachi Claw** is now available — an AI-powered security companion built into Kodachi. It provides intelligent system monitoring, natural language command execution, and privacy-aware assistance directly from the terminal.
+> [Documentation](https://www.kodachi.cloud/wiki/bina/ai/kodachi-claw.html) | [Installation](https://www.kodachi.cloud/wiki/bina/installation.html)
+
+> ### ![New](https://img.shields.io/badge/-NEW-red?style=flat-square) Kodachi Desktop (Debian XFCE)
+> The **Kodachi Desktop Edition** is now complete — a full desktop experience built on Debian XFCE with the Gambas GUI dashboard, all Kodachi security binaries pre-integrated, and a polished user interface for privacy-first computing.
+> [Download & Guide](https://www.kodachi.cloud/wiki/bina/desktop-debian.html)
+
 | Component                                                                                        | Status                                                                                     | Completion                                                                          |
 | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
 | **Kodachi Workers VPS**                                                                          | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
@@ -12,9 +20,10 @@ This roadmap provides an overview of the current status of key components in the
 | **[Kodachi Terminal Server Version](https://www.kodachi.cloud/wiki/bina/terminal-version.html)** | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **[Kodachi Payment Gateway](https://www.kodachi.cloud/wiki/bina/support.html)**                  | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **Kodachi Admin Dashboard**                                                                      | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
-| **Kodachi Dashboard GUI**                                                                        | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **Kodachi Dashboard GUI** ([Installation](https://www.kodachi.cloud/wiki/bina/installation.html) · [Desktop](https://www.kodachi.cloud/wiki/bina/desktop-debian.html)) | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **[Kodachi AI Capabilities](https://www.kodachi.cloud/wiki/bina/ai/index.html)**                 | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
-| **Kodachi Desktop**                                                                              | ![In Progress](https://img.shields.io/badge/Status-In%20Progress-orange?style=flat-square) | ![80%](https://img.shields.io/badge/Progress-80%25-orange?style=flat-square)        |
+| **[Kodachi Claw](https://www.kodachi.cloud/wiki/bina/installation.html)**                        | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **[Kodachi Desktop (Debian XFCE)](https://www.kodachi.cloud/wiki/bina/desktop-debian.html)**     | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 
 ---
 
@@ -45,6 +54,7 @@ This roadmap provides an overview of the current status of key components in the
 | **Auth-Shared Library**  | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | N/A                                                                       | Centralized authentication framework for all backend services.                 |
 | **Rust-Updater**         | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | N/A                                                                       | Automated dependency updating and API compatibility management.                |
 | **AI Capabilities**      | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | AI-powered intent classification, NLP command processing, and agent framework. |
+| **Kodachi Claw**         | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square) | AI-powered security companion with natural language command execution.          |
 
 ### System-Wide Improvements
 
@@ -61,8 +71,8 @@ This roadmap provides an overview of the current status of key components in the
 ## Kodachi 9 Development Timeline
 
 **Development Started:** August 2024
-**Expected Beta Release:** February 2026
-**Current Status:** Final Development Phase
+**Released:** February 22, 2026
+**Current Status:** Released
 
 ### Project Timeline
 
@@ -78,10 +88,11 @@ This roadmap provides an overview of the current status of key components in the
 |  8  | DNS GUI                          |  ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  |  Jan 20, 2026   | Complete GUI for DNS management                  |
 |  9  | Blender GUI + scoring            |  ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  |  Jan 25, 2026   | Traffic mixing and obfuscation UI                |
 | 10  | Check Reference General MD       |  ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  |  Jan 30, 2026   | Documentation review                             |
-| 11  | Build ISO                        | ![Pending](https://img.shields.io/badge/-Pending-yellow?style=flat-square)  |  **Feb 2026**   | Final ISO build for beta release                 |
+| 11  | Build ISO                        |  ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  |  Feb 20, 2026   | Final ISO build for beta release                 |
 | 12  | Blender in Rust                  | ![Cancelled](https://img.shields.io/badge/-Cancelled-red?style=flat-square) |        -        | Duplicate of Workflow Manager (completed)        |
+| 13  | Desktop Final Release            |  ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  |  Feb 22, 2026   | Kodachi Desktop (Debian XFCE) final release      |
 
-**Beta Release Target:** February 2026
+**Release Date:** February 22, 2026
 
 ---
 
@@ -123,10 +134,11 @@ This roadmap provides an overview of the current status of key components in the
 - Perfect for servers and headless systems
 - Same privacy tools as standalone binaries, but with seamless integration
 
-### Phase 3: Kodachi Desktop Edition (Coming Soon)
+### Phase 3: Kodachi Desktop Edition (Debian XFCE) ![RELEASED](https://img.shields.io/badge/-RELEASED-brightgreen?style=flat-square)
 
-**Target:** February 2026
-**Description:** Full desktop experience with polished GUI and dashboard integration
+**Status:** ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)
+**Documentation:** [Desktop Debian Guide](https://www.kodachi.cloud/wiki/bina/desktop-debian.html)
+**Description:** Full desktop experience with polished GUI and dashboard integration built on Debian XFCE
 **Benefits:**
 
 - Incorporates all feedback from Phases 1 & 2
@@ -140,7 +152,7 @@ This roadmap provides an overview of the current status of key components in the
 
 **• Terminal Server Next** ![Complete](https://img.shields.io/badge/-Complete-brightgreen?style=flat-square) = Stabilize network and security modules on a smaller, lighter attack surface, and harden the core that the Desktop will use.
 
-**• Desktop Last** ![In Progress](https://img.shields.io/badge/-In%20Progress-orange?style=flat-square) = Integrate user feedback, polish UX, and ship the full experience. **Target: Feb 2026**
+**• Desktop Last** ![Complete](https://img.shields.io/badge/-Complete-brightgreen?style=flat-square) = Integrate user feedback, polish UX, and ship the full experience.
 
 ### Technical Progression
 
@@ -165,7 +177,7 @@ This progression ensures that each layer is thoroughly tested and hardened befor
 
 • ![Available](https://img.shields.io/badge/-Available-brightgreen?style=flat-square) **Terminal Server Version**: [Complete system with all binaries pre-integrated](https://www.kodachi.cloud/wiki/bina/terminal-version.html) - Perfect for dedicated privacy systems, servers, and headless deployments
 
-• ![Coming Soon](https://img.shields.io/badge/-Coming%20Soon-yellow?style=flat-square) **Desktop Edition**: Coming February 2026 with complete GUI dashboard built on Terminal Server Version foundation
+• ![Available](https://img.shields.io/badge/-Available-brightgreen?style=flat-square) **Desktop Edition (Debian XFCE)**: [Full desktop experience with complete GUI dashboard](https://www.kodachi.cloud/wiki/bina/desktop-debian.html) built on Terminal Server Version foundation
 
 • **All editions share the same core binaries and security features** - Choose based on your deployment needs
 

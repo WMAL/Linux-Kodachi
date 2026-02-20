@@ -287,6 +287,9 @@ configure_kodachi_sudoers() {
         "ai-monitor"
         "ai-scheduler"
         "ai-discovery"
+        "ai-gateway"
+        # Autonomous AI assistant
+        "kodachi-claw"
     )
 
     # Merge and deduplicate
