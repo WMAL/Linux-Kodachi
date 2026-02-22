@@ -4,7 +4,7 @@ This roadmap provides an overview of the current status of key components in the
 
 > ### ![New](https://img.shields.io/badge/-NEW-red?style=flat-square) Kodachi Claw
 > **Kodachi Claw** is now available — an AI-powered security companion built into Kodachi. It provides intelligent system monitoring, natural language command execution, and privacy-aware assistance directly from the terminal.
-> [Documentation](https://www.kodachi.cloud/wiki/bina/ai/kodachi-claw.html) | [GitHub](kodachi-claw) | [Installation](https://www.kodachi.cloud/wiki/bina/installation.html)
+> [Documentation](https://www.kodachi.cloud/wiki/bina/ai/kodachi-claw.html) | [GitHub](kodachi-claw)
 
 > ### ![New](https://img.shields.io/badge/-NEW-red?style=flat-square) Kodachi Desktop (Debian XFCE)
 > The **Kodachi Desktop Edition** is now complete — a full desktop experience built on Debian XFCE with the Gambas GUI dashboard, all Kodachi security binaries pre-integrated, and a polished user interface for privacy-first computing.
