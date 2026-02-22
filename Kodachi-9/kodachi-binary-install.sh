@@ -15,7 +15,7 @@
 #
 # Author: Warith Al Maawali
 # Version: 9.0.1
-# Last updated: 2026-02-16
+# Last updated: 2026-02-22
 #
 # Description:
 # This script downloads and installs Kodachi security tool binaries
@@ -1119,6 +1119,69 @@ setup_conky() {
 
 setup_conky
 
+# ── Step 8b: Welcome autostart ──────────────────────────────────────
+setup_welcome_autostart() {
+    local _build_variant=""
+    if [[ -f /opt/kodachi-offline-packages/build-variant ]]; then
+        _build_variant=$(tr -cd 'a-z-' < /opt/kodachi-offline-packages/build-variant)
+    fi
+    if [[ "$_build_variant" == "terminal" ]]; then
+        print_info "Build variant is 'terminal'. Skipping Welcome autostart setup."
+        return 0
+    fi
+    if ! detect_gui_environment; then
+        print_info "No GUI desktop detected. Skipping Welcome autostart setup."
+        return 0
+    fi
+
+    local autostart_dir="${XDG_CONFIG_HOME:-$HOME/.config}/autostart"
+    local autostart_file="$autostart_dir/kodachi-welcome.desktop"
+    local welcome_bin="$INSTALL_PATH/kodachi-welcome"
+
+    if [[ ! -f "$welcome_bin" ]]; then
+        print_warning "kodachi-welcome binary not found at $welcome_bin. Skipping autostart."
+        return 0
+    fi
+
+    # Idempotent: skip if already configured with correct full path.
+    # IMPORTANT: We use the full absolute path because $INSTALL_PATH is NOT
+    # guaranteed to be in the user's $PATH at login time. A bare "kodachi-welcome"
+    # would silently fail to launch on boot. Do NOT change this to a bare name.
+    if [[ -f "$autostart_file" ]] && grep -q "Exec=$welcome_bin" "$autostart_file" 2>/dev/null; then
+        print_info "Welcome autostart already configured: $autostart_file"
+        return 0
+    fi
+
+    mkdir -p "$autostart_dir"
+    # NOTE: Using unquoted EOF so $welcome_bin expands to the full absolute path.
+    # This is intentional — the autostart MUST contain the resolved path, not a variable.
+    cat > "$autostart_file" << EOF
+[Desktop Entry]
+Type=Application
+Name=Kodachi Welcome
+Comment=Boot-time auto-configuration wizard for privacy hardening
+GenericName=Privacy Configurator
+Exec=$welcome_bin
+TryExec=$welcome_bin
+Path=$INSTALL_PATH
+Terminal=false
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=3
+Categories=System;Security;
+Keywords=welcome;privacy;mac;hostname;timezone;harden;
+StartupNotify=true
+StartupWMClass=kodachi-welcome
+EOF
+    chmod 644 "$autostart_file"
+
+    print_success "Welcome autostart enabled: $autostart_file"
+    return 0
+}
+
+setup_welcome_autostart
+
 # Step 9: Create desktop shortcuts
 mark_desktop_file_trusted() {
     local desktop_file="$1"
@@ -1264,10 +1327,39 @@ EOF
     chmod +x "$DESKTOP_DIR/kodachi-binaries.desktop"
     mark_desktop_file_trusted "$DESKTOP_DIR/kodachi-binaries.desktop"
 
+    # 3. Kodachi Welcome shortcut (white Kodachi icon)
+    local WELCOME_ICON_PATH="$INSTALL_PATH/icons/kodachi-welcome.png"
+    if [[ ! -f "$WELCOME_ICON_PATH" ]]; then
+        WELCOME_ICON_PATH="$INSTALL_PATH/config/icons/kodachi-welcome.png"
+    fi
+    if [[ ! -f "$WELCOME_ICON_PATH" ]]; then
+        WELCOME_ICON_PATH="utilities-terminal"
+    fi
+
+    local welcome_desktop="$DESKTOP_DIR/kodachi-welcome.desktop"
+    cat > "$welcome_desktop" << EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Kodachi Welcome
+Comment=Kodachi Privacy Configuration Wizard
+Exec=$INSTALL_PATH/kodachi-welcome
+TryExec=$INSTALL_PATH/kodachi-welcome
+Path=$INSTALL_PATH
+Icon=$WELCOME_ICON_PATH
+Terminal=false
+Categories=Security;System;
+StartupNotify=true
+StartupWMClass=kodachi-welcome
+X-XFCE-TrustedApplication=true
+EOF
+    chmod +x "$welcome_desktop"
+    mark_desktop_file_trusted "$welcome_desktop"
+
     # Ensure legacy folder symlink is removed; desktop shortcuts only.
     rm -f "$DESKTOP_DIR/kodachi-binaries" 2>/dev/null || true
 
-    print_success "Desktop shortcuts created: kodachi-dashboard.desktop, kodachi-binaries.desktop"
+    print_success "Desktop shortcuts created: kodachi-dashboard.desktop, kodachi-binaries.desktop, kodachi-welcome.desktop"
 }
 
 # Create desktop shortcuts
@@ -1323,7 +1415,7 @@ if [[ $SKIPPED_COUNT -gt 0 ]]; then
     print_warning "Binaries skipped: $SKIPPED_COUNT"
 fi
 print_info "Signatures verified: $VERIFIED_COUNT"
-print_info "Desktop shortcuts: kodachi-dashboard, kodachi-binaries"
+print_info "Desktop shortcuts: kodachi-dashboard, kodachi-binaries, kodachi-welcome"
 if [[ "$CONKY_SETUP_DONE" == "true" ]]; then
     print_info "Conky installed to: $CONKY_INSTALL_DIR"
     print_info "Conky startup file: $CONKY_AUTOSTART_FILE"
