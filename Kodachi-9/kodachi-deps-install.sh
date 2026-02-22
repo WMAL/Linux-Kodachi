@@ -15,7 +15,7 @@
 #
 # Author: Warith Al Maawali
 # Version: 9.0.1
-# Last updated: 2026-02-16
+# Last updated: 2026-02-22
 #
 # Features:
 # =========
@@ -375,6 +375,14 @@ $actual_user ALL=(ALL) NOPASSWD: /usr/sbin/ntpdate
 $actual_user ALL=(ALL) NOPASSWD: /usr/sbin/ntpd
 $actual_user ALL=(ALL) NOPASSWD: /usr/bin/timedatectl
 
+# ============================================================
+# Oniux Launcher - Kernel Namespace Configuration
+# ============================================================
+$actual_user ALL=(ALL) NOPASSWD: /usr/sbin/sysctl -w kernel.unprivileged_userns_clone=*
+$actual_user ALL=(ALL) NOPASSWD: /usr/sbin/sysctl -w kernel.apparmor_restrict_unprivileged_userns=*
+$actual_user ALL=(ALL) NOPASSWD: /sbin/sysctl -w kernel.unprivileged_userns_clone=*
+$actual_user ALL=(ALL) NOPASSWD: /sbin/sysctl -w kernel.apparmor_restrict_unprivileged_userns=*
+
 # End of Kodachi NOPASSWD rules
 EOF
 
@@ -593,6 +601,224 @@ EOF
         print_warning "Conky binary not found. Install package 'conky-all' to run desktop panels."
     fi
 }
+
+# ── Welcome autostart setup ──────────────────────────────────────
+setup_welcome_autostart() {
+    local _build_variant=""
+    if [[ -f /opt/kodachi-offline-packages/build-variant ]]; then
+        _build_variant=$(tr -cd 'a-z-' < /opt/kodachi-offline-packages/build-variant)
+    fi
+    if [[ "$_build_variant" == "terminal" ]]; then
+        print_info "Build variant is 'terminal'. Skipping Welcome autostart setup."
+        return 0
+    fi
+    if ! detect_gui_environment; then
+        print_info "No GUI desktop detected. Skipping Welcome autostart setup."
+        return 0
+    fi
+
+    # Detect actual non-root user (same pattern as conky setup)
+    local actual_user=""
+    local real_user_home=""
+
+    if [[ -n "${SUDO_USER:-}" ]] && [[ "$SUDO_USER" != "root" ]]; then
+        actual_user="$SUDO_USER"
+    elif [[ -n "${LOGNAME:-}" ]] && [[ "$LOGNAME" != "root" ]]; then
+        actual_user="$LOGNAME"
+    fi
+
+    if [[ -z "$actual_user" ]] || [[ ! "$actual_user" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+        print_warning "Could not determine target non-root user. Skipping Welcome autostart."
+        return 0
+    fi
+
+    real_user_home=$(getent passwd "$actual_user" | cut -d: -f6)
+    if [[ -z "$real_user_home" ]]; then
+        real_user_home="/home/$actual_user"
+    fi
+
+    local autostart_dir="$real_user_home/.config/autostart"
+    local autostart_file="$autostart_dir/kodachi-welcome.desktop"
+
+    # Detect the kodachi-welcome binary location.
+    # IMPORTANT: We MUST use the full absolute path in the Exec= line because
+    # the hooks directory is NOT guaranteed to be in the user's $PATH at login time.
+    # A bare "kodachi-welcome" would silently fail to launch on boot.
+    # Do NOT change this to a bare command name without ensuring PATH is set.
+    local welcome_bin=""
+    for candidate in "$real_user_home/dashboard/hooks/kodachi-welcome" \
+                     "$real_user_home/Desktop/dashboard/hooks/kodachi-welcome" \
+                     "$real_user_home/k900/dashboard/hooks/kodachi-welcome"; do
+        if [[ -x "$candidate" ]]; then
+            welcome_bin="$candidate"
+            break
+        fi
+    done
+    # Fallback: check if it's in PATH (e.g. installed globally via /usr/local/bin)
+    if [[ -z "$welcome_bin" ]]; then
+        welcome_bin=$(command -v kodachi-welcome 2>/dev/null || true)
+    fi
+    if [[ -z "$welcome_bin" ]]; then
+        print_warning "kodachi-welcome binary not found. Skipping Welcome autostart."
+        return 0
+    fi
+    local welcome_dir
+    welcome_dir=$(dirname "$welcome_bin")
+
+    # Idempotent: skip if already configured with the correct full path.
+    if [[ -f "$autostart_file" ]] && grep -q "Exec=$welcome_bin" "$autostart_file" 2>/dev/null; then
+        print_info "Welcome autostart already configured: $autostart_file"
+        return 0
+    fi
+
+    mkdir -p "$autostart_dir"
+    # NOTE: Using unquoted EOF so $welcome_bin expands to the full absolute path.
+    # This is intentional — the autostart MUST contain the resolved path, not a variable.
+    cat > "$autostart_file" << EOF
+[Desktop Entry]
+Type=Application
+Name=Kodachi Welcome
+Comment=Boot-time auto-configuration wizard for privacy hardening
+GenericName=Privacy Configurator
+Exec=$welcome_bin
+TryExec=$welcome_bin
+Path=$welcome_dir
+Terminal=false
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=3
+Categories=System;Security;
+Keywords=welcome;privacy;mac;hostname;timezone;harden;
+StartupNotify=true
+StartupWMClass=kodachi-welcome
+EOF
+    chmod 644 "$autostart_file"
+    chown "$actual_user:$actual_user" "$autostart_dir" 2>/dev/null || true
+    chown "$actual_user:$actual_user" "$autostart_file" 2>/dev/null || true
+
+    print_success "Welcome autostart enabled for $actual_user: $autostart_file"
+    return 0
+}
+
+# NOTE: setup_welcome_autostart and create_welcome_desktop_shortcut are invoked
+# after detect_gui_environment() is defined (see below detect_gui_environment).
+
+# ── Welcome desktop shortcut ──────────────────────────────────────
+create_welcome_desktop_shortcut() {
+    local _build_variant=""
+    if [[ -f /opt/kodachi-offline-packages/build-variant ]]; then
+        _build_variant=$(tr -cd 'a-z-' < /opt/kodachi-offline-packages/build-variant)
+    fi
+    if [[ "$_build_variant" == "terminal" ]]; then
+        print_info "Build variant is 'terminal'. Skipping Welcome desktop shortcut."
+        return 0
+    fi
+    if ! detect_gui_environment; then
+        print_info "No GUI desktop detected. Skipping Welcome desktop shortcut."
+        return 0
+    fi
+
+    # Detect actual non-root user
+    local actual_user=""
+    local real_user_home=""
+    if [[ -n "${SUDO_USER:-}" ]] && [[ "$SUDO_USER" != "root" ]]; then
+        actual_user="$SUDO_USER"
+    elif [[ -n "${LOGNAME:-}" ]] && [[ "$LOGNAME" != "root" ]]; then
+        actual_user="$LOGNAME"
+    fi
+    if [[ -z "$actual_user" ]] || [[ ! "$actual_user" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+        print_warning "Could not determine target non-root user. Skipping Welcome desktop shortcut."
+        return 0
+    fi
+    real_user_home=$(getent passwd "$actual_user" | cut -d: -f6)
+    if [[ -z "$real_user_home" ]]; then
+        real_user_home="/home/$actual_user"
+    fi
+
+    # Detect desktop directory (multilingual)
+    local desktop_dir=""
+    for candidate in "$real_user_home/Desktop" "$real_user_home/Escritorio" "$real_user_home/Bureau" "$real_user_home/Schreibtisch"; do
+        if [[ -d "$candidate" ]]; then
+            desktop_dir="$candidate"
+            break
+        fi
+    done
+    if [[ -z "$desktop_dir" ]]; then
+        if command -v xdg-user-dir &>/dev/null; then
+            desktop_dir=$(su - "$actual_user" -c "xdg-user-dir DESKTOP" 2>/dev/null)
+        fi
+    fi
+    if [[ -z "$desktop_dir" ]] || [[ ! -d "$desktop_dir" ]]; then
+        print_warning "Desktop directory not found for $actual_user. Skipping Welcome desktop shortcut."
+        return 0
+    fi
+
+    # Detect install path
+    local install_path=""
+    for path in "$real_user_home/dashboard/hooks" "$real_user_home/Desktop/dashboard/hooks" "$real_user_home/k900/dashboard/hooks"; do
+        if [[ -x "$path/kodachi-welcome" ]]; then
+            install_path="$path"
+            break
+        fi
+    done
+    if [[ -z "$install_path" ]]; then
+        print_warning "kodachi-welcome binary not found. Skipping Welcome desktop shortcut."
+        return 0
+    fi
+
+    local welcome_desktop="$desktop_dir/kodachi-welcome.desktop"
+
+    # Idempotent: skip if already configured correctly
+    if [[ -f "$welcome_desktop" ]] && grep -q "Exec=$install_path/kodachi-welcome" "$welcome_desktop" 2>/dev/null; then
+        print_info "Welcome desktop shortcut already configured: $welcome_desktop"
+        return 0
+    fi
+
+    # Icon fallback (white Kodachi icon)
+    local icon_path="$install_path/icons/kodachi-welcome.png"
+    if [[ ! -f "$icon_path" ]]; then
+        icon_path="$install_path/config/icons/kodachi-welcome.png"
+    fi
+    if [[ ! -f "$icon_path" ]]; then
+        icon_path="utilities-terminal"
+    fi
+
+    cat > "$welcome_desktop" << EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Kodachi Welcome
+Comment=Kodachi Privacy Configuration Wizard
+Exec=$install_path/kodachi-welcome
+TryExec=$install_path/kodachi-welcome
+Path=$install_path
+Icon=$icon_path
+Terminal=false
+Categories=Security;System;
+StartupNotify=true
+StartupWMClass=kodachi-welcome
+X-XFCE-TrustedApplication=true
+EOF
+    chmod +x "$welcome_desktop"
+    chown "$actual_user:$actual_user" "$welcome_desktop" 2>/dev/null || true
+
+    # Trust metadata (best-effort, same pattern as binary-install.sh)
+    if command -v gio &>/dev/null; then
+        gio set "$welcome_desktop" metadata::trusted true 2>/dev/null || true
+    fi
+    if command -v gvfs-set-attribute &>/dev/null; then
+        gvfs-set-attribute -t string "$welcome_desktop" metadata::trusted "true" 2>/dev/null || true
+    fi
+    if command -v setfattr &>/dev/null; then
+        setfattr -n user.xfce.executable -v true "$welcome_desktop" 2>/dev/null || true
+    fi
+
+    print_success "Welcome desktop shortcut created for $actual_user: $welcome_desktop"
+    return 0
+}
+
+# NOTE: create_welcome_desktop_shortcut is invoked after detect_gui_environment() is defined.
 
 # Function to download with retry logic for DNS failures
 retry_download() {
@@ -931,6 +1157,10 @@ detect_gui_environment() {
 
     return 1  # No GUI detected
 }
+
+# Now that detect_gui_environment() is defined, invoke the welcome setup functions.
+setup_welcome_autostart
+create_welcome_desktop_shortcut
 
 # Build GUI package list for current system.
 # Conky is GUI-desktop-specific and should be skipped on terminal/headless systems.
@@ -5161,6 +5391,145 @@ EOF
     echo ""
 }
 
+# =============================================================================
+# Install Oniux Launcher
+# =============================================================================
+# This function installs the oniux-launcher script to /usr/local/bin so that
+# non-ISO installations (via the two-step installer) receive it. The script
+# enables kernel user namespaces before launching applications via oniux.
+#
+# Installed files:
+#   - /usr/local/bin/oniux-launcher (namespace enabler + oniux exec wrapper)
+# =============================================================================
+
+install_oniux_launcher() {
+    echo ""
+    print_highlight "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    print_highlight "Installing Oniux Launcher"
+    print_highlight "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+
+    local ONIUX_SCRIPT=""
+    local INSTALLED="/usr/local/bin/oniux-launcher"
+
+    # Search paths in priority order
+    local search_paths=(
+        "$HOOKS_DIR/binaries-update-scripts"
+        "$HOME/dashboard/hooks/binaries-update-scripts"
+    )
+
+    # Add glob pattern for other users' dashboard/hooks
+    for user_home in /home/*; do
+        if [[ -d "$user_home/dashboard/hooks/binaries-update-scripts" ]]; then
+            search_paths+=("$user_home/dashboard/hooks/binaries-update-scripts")
+        fi
+    done
+
+    # Find the script in package
+    for base_dir in "${search_paths[@]}"; do
+        if [[ -f "$base_dir/oniux-launcher" ]]; then
+            ONIUX_SCRIPT="$base_dir/oniux-launcher"
+            break
+        fi
+    done
+
+    if [[ -n "$ONIUX_SCRIPT" ]]; then
+        # Compare versions if already installed
+        local SHOULD_INSTALL=true
+        if [[ -f "$INSTALLED" ]]; then
+            local NEW_VER
+            local OLD_VER
+            NEW_VER=$(grep '^# Version:' "$ONIUX_SCRIPT" 2>/dev/null | awk '{print $NF}' || echo "")
+            OLD_VER=$(grep '^# Version:' "$INSTALLED" 2>/dev/null | awk '{print $NF}' || echo "")
+            if [[ -n "$NEW_VER" ]] && [[ "$NEW_VER" == "$OLD_VER" ]]; then
+                print_info "oniux-launcher already current (version $OLD_VER)"
+                SHOULD_INSTALL=false
+            elif [[ -n "$NEW_VER" ]]; then
+                print_info "Updating oniux-launcher ($OLD_VER -> $NEW_VER)..."
+            fi
+        fi
+
+        if [[ "$SHOULD_INSTALL" == true ]]; then
+            cp "$ONIUX_SCRIPT" "$INSTALLED"
+            chmod 755 "$INSTALLED"
+            print_success "oniux-launcher installed to $INSTALLED"
+        fi
+    else
+        # Fallback: create inline if not in package and not already installed
+        if [[ -f "$INSTALLED" ]]; then
+            print_info "oniux-launcher already present at $INSTALLED (no package update)"
+        else
+            print_info "oniux-launcher not found in package, creating inline fallback..."
+            cat > "$INSTALLED" << 'ONIUX_EOF'
+#!/bin/bash
+
+# Oniux Launcher - Safe Oniux Wrapper with Namespace Enablement
+# ==============================================================
+#
+# SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.0
+# Copyright (c) 2013-2026 Warith Al Maawali
+#
+# This file is part of Kodachi OS.
+# For full license terms, see LICENSE.md or visit:
+# http://kodachi.cloud/wiki/bina/license.html
+#
+# Version: 9.0.1
+
+USERNS_PATH="/proc/sys/kernel/unprivileged_userns_clone"
+APPARMOR_PATH="/proc/sys/kernel/apparmor_restrict_unprivileged_userns"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/kodachi"
+SUPPRESS_FILE="$CONFIG_DIR/oniux-suppress-notification"
+
+changed=0
+failed=0
+
+# Check and enable unprivileged user namespace cloning
+if [ -f "$USERNS_PATH" ]; then
+    current=$(cat "$USERNS_PATH" 2>/dev/null)
+    if [ "$current" = "0" ]; then
+        if sudo sysctl -w kernel.unprivileged_userns_clone=1 >/dev/null 2>&1; then
+            changed=1
+        else
+            failed=1
+        fi
+    fi
+fi
+
+# Check and disable AppArmor userns restriction (if the sysctl exists)
+if [ -f "$APPARMOR_PATH" ]; then
+    current=$(cat "$APPARMOR_PATH" 2>/dev/null)
+    if [ "$current" = "1" ]; then
+        if sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 >/dev/null 2>&1; then
+            changed=1
+        else
+            failed=1
+        fi
+    fi
+fi
+
+# Notifications
+if [ "$failed" = "1" ]; then
+    if command -v notify-send >/dev/null 2>&1; then
+        notify-send -i dialog-warning -t 6000 "Oniux" \
+            "Failed to enable user namespaces. Oniux may not work."
+    fi
+elif [ "$changed" = "1" ]; then
+    if [ ! -f "$SUPPRESS_FILE" ] && command -v notify-send >/dev/null 2>&1; then
+        notify-send -i tor -t 4000 "Oniux" \
+            "Enabled unprivileged user namespaces for Tor isolation"
+    fi
+fi
+
+exec oniux "$@"
+ONIUX_EOF
+            chmod 755 "$INSTALLED"
+            print_success "oniux-launcher created (inline fallback) at $INSTALLED"
+        fi
+    fi
+
+    echo ""
+}
+
 # Call the installation function
 if [[ "$EUID" -eq 0 ]]; then
     install_welcome_commands
@@ -5341,6 +5710,11 @@ deploy_kodachi_binaries_globally() {
 }
 
 deploy_kodachi_binaries_globally
+
+if [[ "$EUID" -eq 0 ]]; then
+    install_oniux_launcher
+fi
+
 install_kodachi_conky_for_user
 
 # ============================================================================
