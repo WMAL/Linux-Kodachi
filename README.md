@@ -33,7 +33,7 @@
 > **Recent Platform Updates:**
 >
 > - **[Kodachi Desktop (Debian XFCE)](https://www.kodachi.cloud/wiki/bina/desktop-debian.html)** - Full desktop edition released! Complete GUI experience built on Debian XFCE with all security binaries pre-integrated
-> - **[Kodachi Claw](https://www.kodachi.cloud/wiki/bina/ai/kodachi-claw.html)** - AI-powered security companion with intelligent system monitoring and natural language command execution ([GitHub](Kodachi-9/kodachi-claw) · [Installation](https://www.kodachi.cloud/wiki/bina/installation.html))
+> - **[Kodachi Claw](https://www.kodachi.cloud/wiki/bina/ai/kodachi-claw.html)** - AI-powered security companion with intelligent system monitoring and natural language command execution ([GitHub](Kodachi-9/kodachi-claw))
 > - **[Kodachi AI Capabilities](https://www.kodachi.cloud/wiki/bina/ai/index.html)** - KAICS (Kodachi AI Command Intelligence System) brings 7 AI-powered binaries for intelligent command processing, NLP-driven service control, and proactive security automation
 > - **[Kodachi Dashboard GUI](https://www.kodachi.cloud/wiki/bina/installation.html)** - Modern Tauri + Svelte desktop application providing centralized control over all security services
 > - **[Domain Checker](https://www.kodachi.cloud/domain-checker.html)** - Global DNS propagation checker with multi-server verification
