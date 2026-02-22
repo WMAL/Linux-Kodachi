@@ -4,7 +4,7 @@ This roadmap provides an overview of the current status of key components in the
 
 > ### ![New](https://img.shields.io/badge/-NEW-red?style=flat-square) Kodachi Claw
 > **Kodachi Claw** is now available — an AI-powered security companion built into Kodachi. It provides intelligent system monitoring, natural language command execution, and privacy-aware assistance directly from the terminal.
-> [Documentation](https://www.kodachi.cloud/wiki/bina/ai/kodachi-claw.html) | [Installation](https://www.kodachi.cloud/wiki/bina/installation.html)
+> [Documentation](https://www.kodachi.cloud/wiki/bina/ai/kodachi-claw.html) | [GitHub](kodachi-claw) | [Installation](https://www.kodachi.cloud/wiki/bina/installation.html)
 
 > ### ![New](https://img.shields.io/badge/-NEW-red?style=flat-square) Kodachi Desktop (Debian XFCE)
 > The **Kodachi Desktop Edition** is now complete — a full desktop experience built on Debian XFCE with the Gambas GUI dashboard, all Kodachi security binaries pre-integrated, and a polished user interface for privacy-first computing.
@@ -22,7 +22,7 @@ This roadmap provides an overview of the current status of key components in the
 | **Kodachi Admin Dashboard**                                                                      | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **Kodachi Dashboard GUI** ([Installation](https://www.kodachi.cloud/wiki/bina/installation.html) · [Desktop](https://www.kodachi.cloud/wiki/bina/desktop-debian.html)) | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **[Kodachi AI Capabilities](https://www.kodachi.cloud/wiki/bina/ai/index.html)**                 | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
-| **[Kodachi Claw](https://www.kodachi.cloud/wiki/bina/installation.html)**                        | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **[Kodachi Claw](https://www.kodachi.cloud/wiki/bina/ai/kodachi-claw.html)** ([GitHub](kodachi-claw) · [Docs](https://www.kodachi.cloud/wiki/bina/ai/kodachi-claw.html)) | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **[Kodachi Desktop (Debian XFCE)](https://www.kodachi.cloud/wiki/bina/desktop-debian.html)**     | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 
 ---
