@@ -1,11 +1,3 @@
-<div align="center">
-
-[Kodachi OS](https://www.digi77.com/linux-kodachi/) · [Desktop](https://www.kodachi.cloud/wiki/bina/desktop-debian.html) · [Terminal Server](https://www.kodachi.cloud/wiki/bina/terminal-version.html) · [Binaries](https://www.kodachi.cloud/wiki/bina/binaries-overview.html) · [kodachi-claw](https://www.kodachi.cloud/wiki/bina/ai/kodachi-claw.html) · [Donate / Buy](https://www.kodachi.cloud/wiki/bina/support.html) · [License](https://github.com/WMAL/Linux-Kodachi/blob/main/LICENSE.md) · [Verify Anonymity](https://www.kodachi.cloud/) · [System Status](https://www.kodachi.cloud/apps/status.php) · [API](https://www.kodachi.cloud/api-docs.html) · [GitHub](https://github.com/WMAL/Linux-Kodachi) · [Discord Support](https://discord.gg/KEFErEx) · [GPT Assistant](https://www.kodachi.cloud/wiki/bina/ai/index.html) · [Official Blog](https://www.digi77.com)
-
-</div>
-
----
-
 ## Overview
 
 <div align="center">
