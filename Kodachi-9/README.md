@@ -71,7 +71,7 @@ This roadmap provides an overview of the current status of key components in the
 ## Kodachi 9 Development Timeline
 
 **Development Started:** August 2024
-**Released:** February 22, 2026
+**Released:** February 26, 2026
 **Current Status:** Released
 
 ### Project Timeline
@@ -92,7 +92,7 @@ This roadmap provides an overview of the current status of key components in the
 | 12  | Blender in Rust                  | ![Cancelled](https://img.shields.io/badge/-Cancelled-red?style=flat-square) |        -        | Duplicate of Workflow Manager (completed)        |
 | 13  | Desktop Final Release            |  ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  |  Feb 22, 2026   | Kodachi Desktop (Debian XFCE) final release      |
 
-**Release Date:** February 22, 2026
+**Release Date:** February 26, 2026
 
 ---
 
