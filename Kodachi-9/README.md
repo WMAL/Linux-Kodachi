@@ -90,7 +90,7 @@ This roadmap provides an overview of the current status of key components in the
 | 10  | Check Reference General MD       |  ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  |  Jan 30, 2026   | Documentation review                             |
 | 11  | Build ISO                        |  ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  |  Feb 20, 2026   | Final ISO build for beta release                 |
 | 12  | Blender in Rust                  | ![Cancelled](https://img.shields.io/badge/-Cancelled-red?style=flat-square) |        -        | Duplicate of Workflow Manager (completed)        |
-| 13  | Desktop Final Release            |  ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  |  Feb 22, 2026   | Kodachi Desktop (Debian XFCE) final release      |
+| 13  | Desktop Final Release            |  ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  |  Feb 26, 2026   | Kodachi Desktop (Debian XFCE) final release      |
 
 **Release Date:** February 26, 2026
 
