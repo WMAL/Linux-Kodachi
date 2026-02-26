@@ -73,7 +73,7 @@ This roadmap provides an overview of the current status of key components in the
 
 ### **Kodachi 9: Released!**
 
-**Kodachi 9** is based on **<span style="color:blue;">Debian</span>** and is now **<span style="color:green;">fully released</span>** (February 22, 2026). Every script has been rewritten from scratch to enhance performance and functionality. Available as standalone binaries, terminal server version, and the complete desktop edition (Debian XFCE).
+**Kodachi 9** is based on **<span style="color:blue;">Debian</span>** and is now **<span style="color:green;">fully released</span>** (February 26, 2026). Every script has been rewritten from scratch to enhance performance and functionality. Available as standalone binaries, terminal server version, and the complete desktop edition (Debian XFCE).
 
 Check out the [R&D progress](https://github.com/WMAL/Linux-Kodachi/tree/main/Kodachi-9/v9-behind-scenes-progress) for Kodachi 9 development history.
 

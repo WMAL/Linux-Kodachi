@@ -1,4 +1,4 @@
-					   #!/bin/bash
+#!/bin/bash
 
 # Kodachi Welcome Script - Login Session Information Display
 # ===========================================================
@@ -63,7 +63,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Skip if environment variable is set
-if [ "$KODACHI_SKIP_WELCOME" = "1" ]; then
+if [ "${KODACHI_SKIP_WELCOME:-0}" = "1" ]; then
     return 0 2>/dev/null || exit 0
 fi
 
@@ -72,12 +72,18 @@ if [[ $- != *i* ]]; then
     return 0 2>/dev/null || exit 0
 fi
 
+# Default behavior is manual invocation only (`welcome` command).
+# Enable automatic startup explicitly by exporting KODACHI_WELCOME_AUTO=1.
+if [ "${KODACHI_WELCOME_FORCE:-0}" != "1" ] && [ "${KODACHI_WELCOME_AUTO:-0}" != "1" ] && [ "$FORCE_DNS_SETUP" != "true" ]; then
+    return 0 2>/dev/null || exit 0
+fi
+
 # Build signature - AUTO-UPDATED BY pack-kodachi.sh
 # Source: main-info.json (terminal section)
 # DO NOT EDIT MANUALLY - Run pack-kodachi.sh to update these values
 BUILD_VERSION="9.0.1"  # From: terminal.main_version
-BUILD_NUM="23"          # From: terminal.build_number (auto-incremented)
-BUILD_DATE="2026-02-22"  # From: terminal.last_build_date
+BUILD_NUM="26"          # From: terminal.build_number (auto-incremented)
+BUILD_DATE="2026-02-26"  # From: terminal.last_build_date
 SCRIPT_VERSION="${BUILD_VERSION}.${BUILD_NUM}"
 
 # Color codes for compact display (optimized for black terminal)

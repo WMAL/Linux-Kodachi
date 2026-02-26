@@ -918,13 +918,51 @@ if [[ -d "$EXTRACT_DIR/binaries-update-scripts" ]]; then
     fi
 fi
 
-# Copy AI model files
-if [[ -d "$EXTRACT_DIR/models" ]]; then
-    cp -r "$EXTRACT_DIR/models/"* "$INSTALL_PATH/models/" 2>/dev/null || true
+# Copy AI model files (support multiple package layouts)
+MODEL_SOURCE_DIR=""
+for candidate in \
+    "$EXTRACT_DIR/models" \
+    "$EXTRACT_DIR/kodachi-ai/models" \
+    "$EXTRACT_DIR/rust/kodachi-ai/models"
+do
+    if [[ -d "$candidate" ]]; then
+        MODEL_SOURCE_DIR="$candidate"
+        break
+    fi
+done
+
+if [[ -n "$MODEL_SOURCE_DIR" ]]; then
+    cp -a "$MODEL_SOURCE_DIR/." "$INSTALL_PATH/models/" 2>/dev/null || true
     model_count=$(find "$INSTALL_PATH/models" -type f | wc -l)
     if [[ $model_count -gt 0 ]]; then
         print_success "AI model files installed ($model_count files)"
+        print_info "Model source used: $MODEL_SOURCE_DIR"
     fi
+else
+    print_warning "AI model directory not found in package (expected models/ or rust/kodachi-ai/models/)"
+fi
+
+# Compatibility links for tools expecting nested model layouts.
+# Production layout: <hooks>/models
+# Compatibility layouts:
+#   - <hooks>/kodachi-ai/models
+#   - <hooks>/rust/kodachi-ai/models
+mkdir -p "$INSTALL_PATH/kodachi-ai" "$INSTALL_PATH/rust/kodachi-ai"
+
+if [[ -L "$INSTALL_PATH/kodachi-ai/models" ]]; then
+    :
+elif [[ -d "$INSTALL_PATH/kodachi-ai/models" ]]; then
+    cp -an "$INSTALL_PATH/models/." "$INSTALL_PATH/kodachi-ai/models/" 2>/dev/null || true
+else
+    ln -s ../models "$INSTALL_PATH/kodachi-ai/models" 2>/dev/null || true
+fi
+
+if [[ -L "$INSTALL_PATH/rust/kodachi-ai/models" ]]; then
+    :
+elif [[ -d "$INSTALL_PATH/rust/kodachi-ai/models" ]]; then
+    cp -an "$INSTALL_PATH/models/." "$INSTALL_PATH/rust/kodachi-ai/models/" 2>/dev/null || true
+else
+    ln -s ../../models "$INSTALL_PATH/rust/kodachi-ai/models" 2>/dev/null || true
 fi
 
 # Step 8.5: Install Conky assets and startup entry

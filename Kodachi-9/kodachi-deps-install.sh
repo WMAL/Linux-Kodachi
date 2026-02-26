@@ -239,6 +239,8 @@ configure_kodachi_sudoers() {
         dashboard_dir="$real_user_home/dashboard/hooks"
     elif [[ -d "$real_user_home/Desktop/dashboard/hooks" ]]; then
         dashboard_dir="$real_user_home/Desktop/dashboard/hooks"
+    elif [[ -d "$real_user_home/k900/dashboard/hooks" ]]; then
+        dashboard_dir="$real_user_home/k900/dashboard/hooks"
     fi
 
     if [[ -n "$dashboard_dir" ]]; then
@@ -294,7 +296,15 @@ configure_kodachi_sudoers() {
 
     # Merge and deduplicate
     for common in "${common_binaries[@]}"; do
-        if [[ ! " ${binaries[@]} " =~ " ${common} " ]]; then
+        local already_present=false
+        for existing_binary in "${binaries[@]}"; do
+            if [[ "$existing_binary" == "$common" ]]; then
+                already_present=true
+                break
+            fi
+        done
+
+        if [[ "$already_present" == "false" ]]; then
             # Check if it exists in the directory or /usr/local/bin
             if [[ -f "$dashboard_dir/$common" ]] || [[ -f "/usr/local/bin/$common" ]]; then
                 binaries+=("$common")
@@ -429,12 +439,62 @@ EOF
         print_warning "Removing invalid sudoers file for safety..."
         rm -f "$sudoers_file"
         # Restore backup if exists
-        if [[ -f "${sudoers_file}.backup."* ]]; then
-            local latest_backup=$(ls -t "${sudoers_file}.backup."* | head -1)
-            cp "$latest_backup" "$sudoers_file"
-            print_info "Restored previous backup: $latest_backup"
+        if compgen -G "${sudoers_file}.backup.*" > /dev/null; then
+            local latest_backup
+            latest_backup=$(find /etc/sudoers.d -maxdepth 1 -type f -name "kodachi-binaries.backup.*" -printf '%T@ %p\n' \
+                | sort -nr \
+                | head -1 \
+                | cut -d' ' -f2-)
+            if [[ -n "$latest_backup" ]]; then
+                cp "$latest_backup" "$sudoers_file"
+                print_info "Restored previous backup: $latest_backup"
+            fi
         fi
         return 1
+    fi
+}
+
+# Ensure model paths are compatible across development and production layouts.
+# Dev layout:  <hooks>/rust/kodachi-ai/models
+# Prod layout: <hooks>/models
+ensure_ai_model_path_compatibility() {
+    local real_user_home="${1:-$HOME}"
+    local hooks_roots=(
+        "$real_user_home/dashboard/hooks"
+        "$real_user_home/Desktop/dashboard/hooks"
+        "$real_user_home/k900/dashboard/hooks"
+        "/opt/kodachi/dashboard/hooks"
+    )
+    local fixed_count=0
+    local hooks_root=""
+
+    for hooks_root in "${hooks_roots[@]}"; do
+        [[ -d "$hooks_root" ]] || continue
+
+        local prod_models="$hooks_root/models"
+        local dev_parent="$hooks_root/rust/kodachi-ai"
+        local dev_models="$dev_parent/models"
+
+        if [[ -d "$prod_models" ]] && [[ ! -e "$dev_models" ]]; then
+            mkdir -p "$dev_parent"
+            ln -s ../../models "$dev_models" 2>/dev/null || true
+            if [[ -e "$dev_models" ]]; then
+                print_info "Model path linked: $dev_models -> ../../models"
+                fixed_count=$((fixed_count + 1))
+            fi
+        elif [[ -d "$dev_models" ]] && [[ ! -e "$prod_models" ]]; then
+            ln -s rust/kodachi-ai/models "$prod_models" 2>/dev/null || true
+            if [[ -e "$prod_models" ]]; then
+                print_info "Model path linked: $prod_models -> rust/kodachi-ai/models"
+                fixed_count=$((fixed_count + 1))
+            fi
+        fi
+    done
+
+    if [[ $fixed_count -gt 0 ]]; then
+        print_success "AI model path compatibility fixed in $fixed_count location(s)"
+    else
+        print_info "AI model paths already compatible"
     fi
 }
 
@@ -485,6 +545,7 @@ install_kodachi_conky_for_user() {
         "$real_user_home/k900/livebuild-assets/conky"
         "$real_user_home/dashboard/hooks/conky"
         "$real_user_home/Desktop/dashboard/hooks/conky"
+        "$real_user_home/k900/dashboard/hooks/conky"
         "/opt/kodachi/dashboard/hooks/conky"
     )
 
@@ -746,7 +807,7 @@ create_welcome_desktop_shortcut() {
     done
     if [[ -z "$desktop_dir" ]]; then
         if command -v xdg-user-dir &>/dev/null; then
-            desktop_dir=$(su - "$actual_user" -c "xdg-user-dir DESKTOP" 2>/dev/null)
+            desktop_dir=$(su - "$actual_user" -c "xdg-user-dir DESKTOP" 2>/dev/null) || true
         fi
     fi
     if [[ -z "$desktop_dir" ]] || [[ ! -d "$desktop_dir" ]]; then
@@ -1303,6 +1364,7 @@ test_and_fix_dns() {
         local possible_locations=(
             "$real_user_home/dashboard/hooks/dns-switch"           # Default installation
             "$real_user_home/Desktop/dashboard/hooks/dns-switch"   # Desktop installation
+            "$real_user_home/k900/dashboard/hooks/dns-switch"      # Development installation
             "/opt/kodachi/dashboard/hooks/dns-switch"              # System-wide installation
             "/usr/local/bin/dns-switch"                            # System binary path
             "/usr/bin/dns-switch"                                  # System binary path
@@ -1340,7 +1402,7 @@ test_and_fix_dns() {
         print_warning "DNS still broken after primary fix, trying fallback..."
     else
         print_warning "dns-switch binary NOT FOUND in any location!"
-        print_info "Searched: which dns-switch, $real_user_home/dashboard/hooks, /opt/kodachi/dashboard/hooks, /usr/local/bin, /usr/bin"
+        print_info "Searched: which dns-switch, $real_user_home/dashboard/hooks, $real_user_home/k900/dashboard/hooks, /opt/kodachi/dashboard/hooks, /usr/local/bin, /usr/bin"
         print_info "Skipping primary fix, will use fallback method..."
     fi
 
@@ -1480,6 +1542,7 @@ EOF
         local possible_locations=(
             "$HOME/dashboard/hooks/dns-switch"           # Default installation
             "$HOME/Desktop/dashboard/hooks/dns-switch"   # Desktop installation
+            "$HOME/k900/dashboard/hooks/dns-switch"      # Development installation
             "/opt/kodachi/dashboard/hooks/dns-switch"    # System-wide installation
             "/usr/local/bin/dns-switch"                  # System binary path
             "/usr/bin/dns-switch"                        # System binary path
@@ -1509,7 +1572,7 @@ EOF
         sleep 2
     else
         print_warning "dns-switch binary not found in common locations"
-        print_info "Searched locations: $HOME/dashboard/hooks/dns-switch, /opt/kodachi/dashboard/hooks/dns-switch"
+        print_info "Searched locations: $HOME/dashboard/hooks/dns-switch, $HOME/k900/dashboard/hooks/dns-switch, /opt/kodachi/dashboard/hooks/dns-switch"
         print_info "Skipping primary DNS fix, will use fallback method"
     fi
 
@@ -1997,6 +2060,7 @@ BINARIES_LOCATION=""
 BINARY_LOCATIONS=(
     "$REAL_USER_HOME/dashboard/hooks"
     "$REAL_USER_HOME/Desktop/dashboard/hooks"
+    "$REAL_USER_HOME/k900/dashboard/hooks"
     "/opt/kodachi/dashboard/hooks"
     "/usr/local/bin"
 )
@@ -2041,7 +2105,7 @@ if [[ "$BINARIES_FOUND" == "false" ]]; then
     echo -e "  ${CYAN}Script #2 (Run After):${NC}"
     echo -e "  ${BOLD}curl -sSL https://www.kodachi.cloud/apps/os/install/kodachi-deps-install.sh | sudo bash${NC}"
     echo ""
-    print_info "The binaries script installs Kodachi tools to ~/dashboard/hooks"
+    print_info "The binaries script installs Kodachi tools to ~/dashboard/hooks (or ~/k900/dashboard/hooks)"
     print_info "This deps script installs system dependencies and configures sudoers"
     echo ""
     print_error "Aborting installation - please run kodachi-binary-install.sh first"
@@ -2052,6 +2116,10 @@ else
     print_info "Found $FOUND_COUNT required binaries"
 fi
 
+echo ""
+
+print_step "Ensuring AI model path compatibility..."
+ensure_ai_model_path_compatibility "$REAL_USER_HOME"
 echo ""
 
 # ============================================================================
@@ -3480,7 +3548,7 @@ install_pihole() {
 
         # Try to get Pi-hole status
         if command -v pihole &>/dev/null; then
-            pihole status &>/dev/null | head -5 || true
+            pihole status 2>/dev/null | head -5 || true
         fi
 
         # Ensure Pi-hole is configured for port 5353
@@ -5220,9 +5288,11 @@ GLOBAL_LAUNCHER_PATH=""
 for search_dir in \
     "/home/*/k900/dashboard/hooks" \
     "/home/*/dashboard/hooks" \
+    "/home/*/Desktop/dashboard/hooks" \
     "/home/*/Desktop/k900/dashboard/hooks" \
     "$HOME/k900/dashboard/hooks" \
     "$HOME/dashboard/hooks" \
+    "$HOME/Desktop/dashboard/hooks" \
     "$HOME/Desktop/k900/dashboard/hooks"; do
 
     # Expand glob pattern
@@ -5307,12 +5377,16 @@ install_welcome_commands() {
     local search_paths=(
         "$HOOKS_DIR/binaries-update-scripts"
         "$HOME/dashboard/hooks/binaries-update-scripts"
+        "$HOME/k900/dashboard/hooks/binaries-update-scripts"
     )
 
     # Add glob pattern for other users' dashboard/hooks
     for user_home in /home/*; do
         if [[ -d "$user_home/dashboard/hooks/binaries-update-scripts" ]]; then
             search_paths+=("$user_home/dashboard/hooks/binaries-update-scripts")
+        fi
+        if [[ -d "$user_home/k900/dashboard/hooks/binaries-update-scripts" ]]; then
+            search_paths+=("$user_home/k900/dashboard/hooks/binaries-update-scripts")
         fi
     done
 
@@ -5359,7 +5433,7 @@ install_welcome_commands() {
     # Install profile.d script if needed
     if [[ "$SHOULD_INSTALL" == true ]]; then
         cp "$PROFILE_SCRIPT" "$INSTALLED_SCRIPT"
-        chmod 644 "$INSTALLED_SCRIPT"
+        chmod 755 "$INSTALLED_SCRIPT"
     fi
 
     # Always verify/recreate wrapper and symlinks (idempotent)
@@ -5416,12 +5490,16 @@ install_oniux_launcher() {
     local search_paths=(
         "$HOOKS_DIR/binaries-update-scripts"
         "$HOME/dashboard/hooks/binaries-update-scripts"
+        "$HOME/k900/dashboard/hooks/binaries-update-scripts"
     )
 
     # Add glob pattern for other users' dashboard/hooks
     for user_home in /home/*; do
         if [[ -d "$user_home/dashboard/hooks/binaries-update-scripts" ]]; then
             search_paths+=("$user_home/dashboard/hooks/binaries-update-scripts")
+        fi
+        if [[ -d "$user_home/k900/dashboard/hooks/binaries-update-scripts" ]]; then
+            search_paths+=("$user_home/k900/dashboard/hooks/binaries-update-scripts")
         fi
     done
 
@@ -5641,11 +5719,19 @@ deploy_kodachi_binaries_globally() {
         local sudo_home
         sudo_home=$(getent passwd "$SUDO_USER" | cut -d: -f6)
         if [[ -n "$sudo_home" ]]; then
-            candidates+=("$sudo_home/dashboard/hooks" "$sudo_home/Desktop/dashboard/hooks")
+            candidates+=(
+                "$sudo_home/dashboard/hooks"
+                "$sudo_home/Desktop/dashboard/hooks"
+                "$sudo_home/k900/dashboard/hooks"
+            )
         fi
     fi
     # Use $HOME as fallback (no hardcoded usernames)
-    candidates+=("$HOME/dashboard/hooks" "$HOME/Desktop/dashboard/hooks")
+    candidates+=(
+        "$HOME/dashboard/hooks"
+        "$HOME/Desktop/dashboard/hooks"
+        "$HOME/k900/dashboard/hooks"
+    )
 
     local install_path=""
     for path in "${candidates[@]}"; do
@@ -5861,10 +5947,19 @@ INSTALL_LOCATIONS=()
 if [[ -n "$SUDO_USER" ]]; then
     _real_home=$(getent passwd "$SUDO_USER" | cut -d: -f6)
     if [[ -n "$_real_home" ]]; then
-        INSTALL_LOCATIONS+=("$_real_home/dashboard/hooks" "$_real_home/Desktop/dashboard/hooks")
+        INSTALL_LOCATIONS+=(
+            "$_real_home/dashboard/hooks"
+            "$_real_home/Desktop/dashboard/hooks"
+            "$_real_home/k900/dashboard/hooks"
+        )
     fi
 fi
-INSTALL_LOCATIONS+=("$HOME/dashboard/hooks" "$HOME/Desktop/dashboard/hooks" "/usr/local/bin")
+INSTALL_LOCATIONS+=(
+    "$HOME/dashboard/hooks"
+    "$HOME/Desktop/dashboard/hooks"
+    "$HOME/k900/dashboard/hooks"
+    "/usr/local/bin"
+)
 CORE_BINARIES=("ip-fetch" "health-control" "tor-switch")
 FOUND_LOCATION=""
 
@@ -5919,7 +6014,7 @@ echo "  2. Or in terminal: type 'kitty' to launch it"
 echo "  3. In Kitty, run: ip-fetch (from hooks folder or if in PATH)"
 echo ""
 print_info "Alternatively, in this session just type: kitty"
-echo "  Then run: cd ~/dashboard/hooks && ./ip-fetch"
+echo "  Then run: cd ~/dashboard/hooks && ./ip-fetch  (or cd ~/k900/dashboard/hooks && ./ip-fetch)"
 echo ""
 
 # ============================================================================
