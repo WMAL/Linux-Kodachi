@@ -5582,8 +5582,9 @@ EOF
     # Create symlinks (force to handle existing)
     ln -sf /usr/local/bin/welcome /usr/local/bin/kodachi
     ln -sf /usr/local/bin/welcome /usr/local/bin/Kodachi
+    ln -sf /usr/local/bin/welcome /usr/local/bin/shield
 
-    print_success "Kodachi commands verified: kodachi, welcome, Kodachi"
+    print_success "Kodachi commands verified: kodachi, welcome, Kodachi, shield"
     echo ""
 }
 
