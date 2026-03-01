@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Kodachi Binary Installation Script (NO SUDO REQUIRED)
+# Kodachi Binary Installation Script
 # ======================================================
 #
 # SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.0
@@ -19,8 +19,8 @@
 #
 # Description:
 # This script downloads and installs Kodachi security tool binaries
-# WITHOUT requiring sudo or root access. It installs everything to
-# the user's home directory by default (~/dashboard/hooks).
+# Installs Kodachi security binaries to /opt/kodachi/dashboard/hooks/
+# by default. May request sudo once to create the /opt/kodachi/ directory.
 # Supports alternative installation paths including Desktop and custom directories.
 #
 # Links:
@@ -32,7 +32,7 @@
 # - X (Twitter): https://x.com/warith2020
 #
 # Usage:
-#   # Default installation to ~/dashboard/hooks
+#   # Default installation to /opt/kodachi/dashboard/hooks
 #   curl -sSL https://www.kodachi.cloud/apps/os/install/kodachi-binary-install.sh | bash
 #
 #   # Install to Desktop
@@ -88,7 +88,7 @@ print_highlight() { echo -e "${MAGENTA}${BOLD}$1${NC}"; }
 # Configuration
 CDN_BASE="https://www.kodachi.cloud/apps/os/install"
 KODACHI_VERSION="9.0.1"
-CONKY_PACKAGE_LOCAL_SOURCE="/home/kodachi/k900/livebuild-assets/conky"
+CONKY_PACKAGE_LOCAL_SOURCE="$HOME/k900/livebuild-assets/conky"
 CONKY_CONFIG_BASE="${XDG_CONFIG_HOME:-$HOME/.config}"
 CONKY_INSTALL_DIR="$CONKY_CONFIG_BASE/kodachi/conky"
 CONKY_AUTOSTART_FILE="$CONKY_CONFIG_BASE/autostart/kodachi-conky.desktop"
@@ -154,7 +154,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --help)
-            echo "Kodachi Binary Installation Script (No Sudo Required)"
+            echo "Kodachi Binary Installation Script"
             echo ""
             echo "Usage:"
             echo "  curl -sSL $CDN_BASE/kodachi-binary-install.sh | bash"
@@ -177,27 +177,48 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Set default install path if not specified
-if [[ -z "$INSTALL_PATH" ]]; then
-    if [[ -x "$PWD/dashboard/hooks/kodachi-dashboard" ]]; then
-        INSTALL_PATH="$PWD/dashboard/hooks"
-    elif [[ -x "$HOME/k900/dashboard/hooks/kodachi-dashboard" ]]; then
-        INSTALL_PATH="$HOME/k900/dashboard/hooks"
-    else
-        INSTALL_PATH="$HOME/dashboard/hooks"
-    fi
-fi
-
-# Welcome message
+# Welcome message (shown before path detection so user has context)
 echo ""
 echo -e "${CYAN}╔══════════════════════════════════════════════╗${NC}"
 echo -e "${CYAN}║     Kodachi Binary Installation Script       ║${NC}"
-echo -e "${CYAN}║            (No Sudo Required)                ║${NC}"
+echo -e "${CYAN}║        Default: /opt/kodachi/                ║${NC}"
 echo -e "${CYAN}╚══════════════════════════════════════════════╝${NC}"
 echo ""
 
-print_info "This script will install Kodachi binaries to: $INSTALL_PATH"
-print_info "No sudo or root access is required."
+# Set default install path if not specified
+if [[ -z "$INSTALL_PATH" ]]; then
+    INSTALL_PATH="/opt/kodachi/dashboard/hooks"
+
+    # Ensure /opt/kodachi/ exists and is writable by current user
+    if [[ ! -d "/opt/kodachi" ]]; then
+        print_info "Creating /opt/kodachi/ (requires sudo)..."
+        if sudo mkdir -p "/opt/kodachi/dashboard/hooks" && sudo chown -R "$(id -u):$(id -g)" "/opt/kodachi"; then
+            print_success "Created /opt/kodachi/ owned by $(whoami)"
+        else
+            print_warning "Could not create /opt/kodachi/ — falling back to home directory"
+            if [[ -x "$HOME/k900/dashboard/hooks/kodachi-dashboard" ]]; then
+                INSTALL_PATH="$HOME/k900/dashboard/hooks"
+            else
+                INSTALL_PATH="$HOME/dashboard/hooks"
+            fi
+        fi
+    elif [[ ! -w "/opt/kodachi/dashboard/hooks" ]]; then
+        # Directory exists but isn't writable — fix ownership
+        print_info "Fixing /opt/kodachi/ ownership (requires sudo)..."
+        if sudo chown -R "$(id -u):$(id -g)" "/opt/kodachi"; then
+            print_success "Fixed ownership of /opt/kodachi/"
+        else
+            print_warning "Cannot write to /opt/kodachi/ — falling back to home directory"
+            if [[ -x "$HOME/k900/dashboard/hooks/kodachi-dashboard" ]]; then
+                INSTALL_PATH="$HOME/k900/dashboard/hooks"
+            else
+                INSTALL_PATH="$HOME/dashboard/hooks"
+            fi
+        fi
+    fi
+fi
+
+print_info "Installing Kodachi binaries to: $INSTALL_PATH"
 echo ""
 
 # Check for curl prerequisite
@@ -1173,17 +1194,17 @@ setup_welcome_autostart() {
     fi
 
     local autostart_dir="${XDG_CONFIG_HOME:-$HOME/.config}/autostart"
-    local autostart_file="$autostart_dir/kodachi-welcome.desktop"
-    local welcome_bin="$INSTALL_PATH/kodachi-welcome"
+    local autostart_file="$autostart_dir/kodachi-autoshield.desktop"
+    local welcome_bin="$INSTALL_PATH/kodachi-autoshield"
 
     if [[ ! -f "$welcome_bin" ]]; then
-        print_warning "kodachi-welcome binary not found at $welcome_bin. Skipping autostart."
+        print_warning "kodachi-autoshield binary not found at $welcome_bin. Skipping autostart."
         return 0
     fi
 
     # Idempotent: skip if already configured with correct full path.
     # IMPORTANT: We use the full absolute path because $INSTALL_PATH is NOT
-    # guaranteed to be in the user's $PATH at login time. A bare "kodachi-welcome"
+    # guaranteed to be in the user's $PATH at login time. A bare "kodachi-autoshield"
     # would silently fail to launch on boot. Do NOT change this to a bare name.
     if [[ -f "$autostart_file" ]] && grep -q "Exec=$welcome_bin" "$autostart_file" 2>/dev/null; then
         print_info "Welcome autostart already configured: $autostart_file"
@@ -1196,7 +1217,7 @@ setup_welcome_autostart() {
     cat > "$autostart_file" << EOF
 [Desktop Entry]
 Type=Application
-Name=Kodachi Welcome
+Name=Kodachi AutoShield
 Comment=Boot-time auto-configuration wizard for privacy hardening
 GenericName=Privacy Configurator
 Exec=$welcome_bin
@@ -1210,7 +1231,7 @@ X-GNOME-Autostart-Delay=3
 Categories=System;Security;
 Keywords=welcome;privacy;mac;hostname;timezone;harden;
 StartupNotify=true
-StartupWMClass=kodachi-welcome
+StartupWMClass=kodachi-autoshield
 EOF
     chmod 644 "$autostart_file"
 
@@ -1365,30 +1386,30 @@ EOF
     chmod +x "$DESKTOP_DIR/kodachi-binaries.desktop"
     mark_desktop_file_trusted "$DESKTOP_DIR/kodachi-binaries.desktop"
 
-    # 3. Kodachi Welcome shortcut (white Kodachi icon)
-    local WELCOME_ICON_PATH="$INSTALL_PATH/icons/kodachi-welcome.png"
+    # 3. Kodachi AutoShield shortcut (white Kodachi icon)
+    local WELCOME_ICON_PATH="$INSTALL_PATH/icons/kodachi-autoshield.png"
     if [[ ! -f "$WELCOME_ICON_PATH" ]]; then
-        WELCOME_ICON_PATH="$INSTALL_PATH/config/icons/kodachi-welcome.png"
+        WELCOME_ICON_PATH="$INSTALL_PATH/config/icons/kodachi-autoshield.png"
     fi
     if [[ ! -f "$WELCOME_ICON_PATH" ]]; then
         WELCOME_ICON_PATH="utilities-terminal"
     fi
 
-    local welcome_desktop="$DESKTOP_DIR/kodachi-welcome.desktop"
+    local welcome_desktop="$DESKTOP_DIR/kodachi-autoshield.desktop"
     cat > "$welcome_desktop" << EOF
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=Kodachi Welcome
+Name=Kodachi AutoShield
 Comment=Kodachi Privacy Configuration Wizard
-Exec=$INSTALL_PATH/kodachi-welcome
-TryExec=$INSTALL_PATH/kodachi-welcome
+Exec=$INSTALL_PATH/kodachi-autoshield
+TryExec=$INSTALL_PATH/kodachi-autoshield
 Path=$INSTALL_PATH
 Icon=$WELCOME_ICON_PATH
 Terminal=false
 Categories=Security;System;
 StartupNotify=true
-StartupWMClass=kodachi-welcome
+StartupWMClass=kodachi-autoshield
 X-XFCE-TrustedApplication=true
 EOF
     chmod +x "$welcome_desktop"
@@ -1397,7 +1418,48 @@ EOF
     # Ensure legacy folder symlink is removed; desktop shortcuts only.
     rm -f "$DESKTOP_DIR/kodachi-binaries" 2>/dev/null || true
 
-    print_success "Desktop shortcuts created: kodachi-dashboard.desktop, kodachi-binaries.desktop, kodachi-welcome.desktop"
+    print_success "Desktop shortcuts created: kodachi-dashboard.desktop, kodachi-binaries.desktop, kodachi-autoshield.desktop"
+
+    # Also install/update system-wide Whisker menu entries in /usr/share/applications/
+    # NOTE: This will only succeed when running as root or during ISO build.
+    # For regular user installs, the deps-install.sh (which runs as root) handles this.
+    local sys_apps="/usr/share/applications"
+    if [[ -d "$sys_apps" ]] && [[ -w "$sys_apps" ]]; then
+        cat > "$sys_apps/kodachi-dashboard.desktop" << SYSEOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Kodachi Dashboard
+GenericName=Security Dashboard
+Comment=Kodachi Security Dashboard - control privacy, networking, and system hardening
+Exec=kodachi-dashboard
+Icon=/usr/share/icons/kodachi/kodachi32.png
+Terminal=false
+Categories=System;Security;
+Keywords=kodachi;dashboard;security;privacy;tor;vpn;dns;firewall;
+StartupNotify=true
+StartupWMClass=kodachi-dashboard
+SYSEOF
+        chmod 644 "$sys_apps/kodachi-dashboard.desktop"
+
+        cat > "$sys_apps/kodachi-autoshield.desktop" << SYSEOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Kodachi AutoShield
+GenericName=Privacy Setup Wizard
+Comment=Kodachi AutoShield - privacy configuration wizard and system overview
+Exec=kodachi-autoshield
+Icon=/usr/share/icons/kodachi/Kodachi_White_big.png
+Terminal=false
+Categories=System;Security;
+Keywords=kodachi;welcome;wizard;setup;privacy;configuration;
+StartupNotify=true
+StartupWMClass=kodachi-autoshield
+SYSEOF
+        chmod 644 "$sys_apps/kodachi-autoshield.desktop"
+        print_success "System-wide Whisker menu entries updated in $sys_apps"
+    fi
 }
 
 # Create desktop shortcuts
@@ -1449,11 +1511,14 @@ echo ""
 print_success "Kodachi binaries installed to: $INSTALL_PATH"
 print_info "Binaries total: $TOTAL_COUNT"
 print_info "Binaries installed: $VERIFIED_COUNT"
+if [[ -x "$INSTALL_PATH/kodachi-claw" || -x "$INSTALL_PATH/zeroclaw" ]]; then
+    print_info "Agent binaries available: kodachi-claw and zeroclaw (shipped as separate binaries)"
+fi
 if [[ $SKIPPED_COUNT -gt 0 ]]; then
     print_warning "Binaries skipped: $SKIPPED_COUNT"
 fi
 print_info "Signatures verified: $VERIFIED_COUNT"
-print_info "Desktop shortcuts: kodachi-dashboard, kodachi-binaries, kodachi-welcome"
+print_info "Desktop shortcuts: kodachi-dashboard, kodachi-binaries, kodachi-autoshield"
 if [[ "$CONKY_SETUP_DONE" == "true" ]]; then
     print_info "Conky installed to: $CONKY_INSTALL_DIR"
     print_info "Conky startup file: $CONKY_AUTOSTART_FILE"
@@ -1542,5 +1607,5 @@ echo ""
 # Check sudoers status and provide appropriate next steps
 check_sudoers_status
 echo ""
-print_success "Binary installation complete! No sudo was required."
+print_success "Binary installation complete!"
 echo ""

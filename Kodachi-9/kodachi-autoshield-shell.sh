@@ -1,6 +1,7 @@
 #!/bin/bash
+set -o pipefail
 
-# Kodachi Welcome Script - Login Session Information Display
+# Kodachi AutoShield Script - Login Session Information Display
 # ===========================================================
 #
 # SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.0
@@ -31,13 +32,13 @@
 # - X (Twitter): https://x.com/warith2020
 #
 # Installation:
-#   sudo cp kodachi-welcome.sh /etc/profile.d/kodachi-welcome.sh
-#   sudo chmod +x /etc/profile.d/kodachi-welcome.sh
+#   sudo cp kodachi-autoshield.sh /etc/profile.d/kodachi-autoshield.sh
+#   sudo chmod +x /etc/profile.d/kodachi-autoshield.sh
 #
 # Usage:
 #   Automatically runs on login for interactive shell sessions.
 #   To skip: export KODACHI_SKIP_WELCOME=1 before login
-#   To force DNSCrypt configuration: ./kodachi-welcome-shell.sh --force-dns-setup
+#   To force DNSCrypt configuration: ./kodachi-autoshield-shell.sh --force-dns-setup
 #
 # Features:
 #   - Binary deployment verification
@@ -66,8 +67,8 @@ done
 # Source: main-info.json (terminal section)
 # DO NOT EDIT MANUALLY - Run pack-kodachi.sh to update these values
 BUILD_VERSION="9.0.1"  # From: terminal.main_version
-BUILD_NUM="26"          # From: terminal.build_number (auto-incremented)
-BUILD_DATE="2026-02-26"  # From: terminal.last_build_date
+BUILD_NUM="27"          # From: terminal.build_number (auto-incremented)
+BUILD_DATE="2026-02-28"  # From: terminal.last_build_date
 SCRIPT_VERSION="${BUILD_VERSION}.${BUILD_NUM}"
 
 # Color codes for compact display (optimized for black terminal)
@@ -83,6 +84,25 @@ NC='\033[0m' # No Color
 # Kodachi version and website
 KODACHI_VERSION="9.0.1"
 KODACHI_WEBSITE="kodachi.cloud"
+
+# Detect edition label from runtime branding so Terminal/XFCE builds show distinct headers.
+detect_edition_label() {
+    local edition=""
+
+    # /etc/issue.net is generated per build variant and includes "<Edition> Edition".
+    if [ -r /etc/issue.net ]; then
+        edition=$(sed -n '1{s/^Kodachi[[:space:]][0-9.]\+[[:space:]]\+\(.* Edition\).*/\1/p;q}' /etc/issue.net 2>/dev/null)
+    fi
+
+    # Fallback: derive from PRETTY_NAME when issue.net is unavailable.
+    if [ -z "$edition" ] && [ -r /etc/os-release ]; then
+        edition=$(sed -n 's/^PRETTY_NAME="\(.*\)"/\1/p' /etc/os-release 2>/dev/null | head -1)
+    fi
+
+    [ -n "$edition" ] && echo "$edition" || echo "Privacy & Security OS"
+}
+
+KODACHI_EDITION_LABEL="$(detect_edition_label)"
 
 # Auto-refresh timeout in seconds (600 = 10 minutes)
 # Change this value to adjust auto-refresh interval
@@ -128,6 +148,151 @@ SKIP_REFRESH=false
 
 # Hooks directory
 HOOKS_DIR=""
+
+# Command resolution and runtime safety settings
+SAFE_COMMAND_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+DNS_LOCK_FILE="/tmp/kodachi-autoshield-dns.lock"
+RUNTIME_TMP_DIR=""
+GRUB_THEME_LOG=""
+VERIFY_CHECK_JSON=""
+VERIFY_RESULT_JSON=""
+DEPLOY_OUTPUT_LOG=""
+DNS_SWITCH_LOG=""
+
+is_allowed_run_command() {
+    case "$1" in
+        health-control|ip-fetch|tor-switch|online-auth|dns-switch|routing-switch|workflow-manager|permission-guard|online-info-switch)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+init_runtime_environment() {
+    if [ -n "$RUNTIME_TMP_DIR" ] && [ -d "$RUNTIME_TMP_DIR" ]; then
+        return 0
+    fi
+
+    local tmp_dir
+    tmp_dir=$(mktemp -d 2>/dev/null) || tmp_dir=$(mktemp -d "/tmp/kodachi-autoshield.XXXXXX") || {
+        echo "ERROR: failed to create secure runtime temp directory" >&2
+        return 1
+    }
+    chmod 700 "$tmp_dir" 2>/dev/null || true
+
+    RUNTIME_TMP_DIR="$tmp_dir"
+    GRUB_THEME_LOG="$RUNTIME_TMP_DIR/kodachi-grub-theme.log"
+    VERIFY_CHECK_JSON="$RUNTIME_TMP_DIR/verify-check.json"
+    VERIFY_RESULT_JSON="$RUNTIME_TMP_DIR/verify-result.json"
+    DEPLOY_OUTPUT_LOG="$RUNTIME_TMP_DIR/deploy-output.txt"
+    DNS_SWITCH_LOG="$RUNTIME_TMP_DIR/dns-switch.log"
+}
+
+cleanup_runtime_environment() {
+    if [ -n "$RUNTIME_TMP_DIR" ] && [ -d "$RUNTIME_TMP_DIR" ]; then
+        rm -rf "$RUNTIME_TMP_DIR" 2>/dev/null || true
+    fi
+    RUNTIME_TMP_DIR=""
+    GRUB_THEME_LOG=""
+    VERIFY_CHECK_JSON=""
+    VERIFY_RESULT_JSON=""
+    DEPLOY_OUTPUT_LOG=""
+    DNS_SWITCH_LOG=""
+}
+
+handle_runtime_sigint() {
+    cleanup_runtime_environment
+    return 130 2>/dev/null || exit 130
+}
+
+handle_runtime_sigterm() {
+    cleanup_runtime_environment
+    return 143 2>/dev/null || exit 143
+}
+
+setup_runtime_signal_traps() {
+    trap handle_runtime_sigint INT
+    trap handle_runtime_sigterm TERM
+    if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+        trap cleanup_runtime_environment EXIT
+    fi
+}
+
+clear_runtime_signal_traps() {
+    trap - INT TERM
+    if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+        trap - EXIT
+    fi
+}
+
+resolve_run_command_path() {
+    local cmd="$1"
+    local resolved=""
+
+    if ! is_allowed_run_command "$cmd"; then
+        echo "ERROR: command '$cmd' is not in AutoShield allowlist" >&2
+        return 1
+    fi
+
+    if [ "$DEPLOY_STATUS" = "${GREEN}[GDeploy:+]${NC}" ] && [ -x "/usr/local/bin/$cmd" ]; then
+        resolved="/usr/local/bin/$cmd"
+    elif [ -n "$HOOKS_DIR" ] && [ -x "$HOOKS_DIR/$cmd" ]; then
+        resolved="$HOOKS_DIR/$cmd"
+    else
+        resolved=$(PATH="$SAFE_COMMAND_PATH" command -v -- "$cmd" 2>/dev/null || true)
+        if [ -z "$resolved" ] || [ ! -x "$resolved" ]; then
+            echo "ERROR: failed to resolve executable path for '$cmd'" >&2
+            return 1
+        fi
+    fi
+
+    echo "$resolved"
+}
+
+execute_sudo_command_with_timeout() {
+    local resolved_cmd="$1"
+    local timeout_val="$2"
+    shift 2
+    local -a args=("$@")
+    local -a timeout_cmd=()
+
+    if [ -n "$timeout_val" ] && [ "$timeout_val" != "0" ]; then
+        if [[ ! "$timeout_val" =~ ^[0-9]+$ ]]; then
+            echo "ERROR: invalid timeout value '$timeout_val'" >&2
+            return 1
+        fi
+        timeout_cmd=(timeout "$timeout_val")
+    fi
+
+    # Use sudo -n (non-interactive) to fail fast if NOPASSWD is missing
+    if [ "${#timeout_cmd[@]}" -gt 0 ]; then
+        "${timeout_cmd[@]}" sudo -n "$resolved_cmd" "${args[@]}"
+    else
+        sudo -n "$resolved_cmd" "${args[@]}"
+    fi
+}
+
+with_dns_lock() {
+    local lock_fd
+    exec {lock_fd}>"$DNS_LOCK_FILE" || {
+        echo "ERROR: unable to open DNS lock file: $DNS_LOCK_FILE" >&2
+        return 1
+    }
+
+    if ! flock -w 30 "$lock_fd"; then
+        echo "ERROR: timeout waiting for DNS lock" >&2
+        exec {lock_fd}>&-
+        return 1
+    fi
+
+    "$@"
+    local action_status=$?
+    flock -u "$lock_fd" 2>/dev/null || true
+    exec {lock_fd}>&-
+    return $action_status
+}
 
 # Detect if we are running from the live ISO environment
 is_live_session() {
@@ -176,10 +341,11 @@ ensure_grub_theme() {
 
     if [ $needs_fix -eq 1 ]; then
         echo -e "${CYAN}▸ Restoring Kodachi GRUB theme...${NC}"
-        if sudo "$helper" >/tmp/kodachi-grub-theme.log 2>&1; then
+        init_runtime_environment || return 1
+        if sudo "$helper" >"$GRUB_THEME_LOG" 2>&1; then
             echo -e "${GREEN}+ GRUB theme synchronized${NC}"
         else
-            echo -e "${YELLOW}! Unable to apply GRUB theme (see /tmp/kodachi-grub-theme.log)${NC}"
+            echo -e "${YELLOW}! Unable to apply GRUB theme (see $GRUB_THEME_LOG)${NC}"
         fi
     else
         echo -e "${GREEN}+ GRUB theme already applied${NC}"
@@ -214,9 +380,11 @@ parse_json() {
 
 # Function to display compact header
 show_header() {
+    local header_text=" Linux Kodachi ${KODACHI_VERSION} - ${KODACHI_EDITION_LABEL} - ${KODACHI_WEBSITE}"
     clear
     echo -e "${CYAN}╔══════════════════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║${NC}${BOLD}  Linux Kodachi ${KODACHI_VERSION} - Privacy & Security OS - ${KODACHI_WEBSITE} | digi77.com    ${NC}${CYAN}║${NC}"
+    # Keep output fixed-width for clean 80-column rendering even when edition text changes.
+    printf "%b║%b%-78.78s%b%b║%b\n" "${CYAN}" "${NC}${BOLD}" "$header_text" "${NC}" "${CYAN}" "${NC}"
     echo -e "${CYAN}╚══════════════════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
 }
@@ -413,39 +581,23 @@ run_command() {
     local cmd="$1"
     local timeout_val="${2:-0}"  # Second arg is timeout (default: 0 = no timeout)
     shift 2
-    local args="$@"
+    local -a args=("$@")
+    local resolved_cmd=""
 
-    # Build timeout command if specified
-    local timeout_cmd=""
-    if [ "$timeout_val" -gt 0 ] 2>/dev/null; then
-        timeout_cmd="timeout $timeout_val"
+    if ! resolved_cmd=$(resolve_run_command_path "$cmd"); then
+        return 1
     fi
 
-    # If deployment succeeded, use global command
-    # Use sudo -n (non-interactive) to fail fast if NOPASSWD is missing
-    if [ "$DEPLOY_STATUS" = "${GREEN}[GDeploy:+]${NC}" ]; then
-        if ! $timeout_cmd sudo -n "$cmd" $args; then
-            echo "ERROR: sudo failed for $cmd - check /etc/sudoers.d/kodachi-binaries" >&2
-            return 1
-        fi
-    elif [ -n "$HOOKS_DIR" ] && [ -f "$HOOKS_DIR/$cmd" ]; then
-        # Fallback to hooks directory
-        if ! $timeout_cmd sudo -n "$HOOKS_DIR/$cmd" $args; then
-            echo "ERROR: sudo failed for $HOOKS_DIR/$cmd - check /etc/sudoers.d/kodachi-binaries" >&2
-            return 1
-        fi
-    else
-        # Try global command anyway
-        if ! $timeout_cmd sudo -n "$cmd" $args; then
-            echo "ERROR: sudo failed for $cmd - check /etc/sudoers.d/kodachi-binaries" >&2
-            return 1
-        fi
+    if ! execute_sudo_command_with_timeout "$resolved_cmd" "$timeout_val" "${args[@]}"; then
+        echo "ERROR: sudo failed for $resolved_cmd - check /etc/sudoers.d/kodachi-binaries" >&2
+        return 1
     fi
 }
 
 # Function to deploy binaries with proper verification
 deploy_binaries() {
     echo -e "${YELLOW}▸ Checking binary deployment...${NC}"
+    init_runtime_environment || return 1
 
     # Try to detect hooks directory
     if ! detect_hooks_dir; then
@@ -472,17 +624,17 @@ deploy_binaries() {
 
     # First check if already deployed and verified
     echo -e "${GREEN}  • Checking existing deployment...${NC}"
-    if ./global-launcher verify --json >/tmp/verify-check.json 2>&1; then
+    if ./global-launcher verify --json >"$VERIFY_CHECK_JSON" 2>&1; then
         # Use grep-first approach (reliable, no jq dependency)
-        if grep -q '"verification_success":true' /tmp/verify-check.json 2>/dev/null; then
+        if grep -q '"verification_success":true' "$VERIFY_CHECK_JSON" 2>/dev/null; then
             # Extract count using grep/sed (works without jq)
-            local count=$(grep -o '"total_verified":[0-9]*' /tmp/verify-check.json 2>/dev/null | grep -o '[0-9]*' | head -1)
+            local count=$(grep -o '"total_verified":[0-9]*' "$VERIFY_CHECK_JSON" 2>/dev/null | grep -o '[0-9]*' | head -1)
 
             # Validate we got a count
             if [ -n "$count" ] && [ "$count" -gt 0 ]; then
                 echo -e "${GREEN}  + Already deployed ($count binaries verified)${NC}"
                 DEPLOY_STATUS="${GREEN}[GDeploy:+]${NC}"
-                rm -f /tmp/verify-check.json
+                rm -f "$VERIFY_CHECK_JSON"
                 return 0
             fi
         fi
@@ -493,58 +645,60 @@ deploy_binaries() {
 
     # Need to deploy
     echo -e "  • Deploying binaries to /usr/local/bin/..."
-    if sudo ./global-launcher deploy 2>&1 | tee /tmp/deploy-output.txt; then
+    sudo ./global-launcher deploy 2>&1 | tee "$DEPLOY_OUTPUT_LOG"
+    local deploy_exit=${PIPESTATUS[0]}
+    if [ "$deploy_exit" -eq 0 ]; then
         # Deployment command succeeded - now VERIFY it actually worked
         echo -e "  • Verifying deployment..."
         sleep 1
 
-        if ./global-launcher verify --json >/tmp/verify-result.json 2>&1; then
+        if ./global-launcher verify --json >"$VERIFY_RESULT_JSON" 2>&1; then
             if check_jq; then
-                local verified=$(jq -r '.verification_success // empty' /tmp/verify-result.json 2>/dev/null)
-                local count=$(jq -r '.total_verified // empty' /tmp/verify-result.json 2>/dev/null)
-                local broken=$(jq -r '.total_broken // empty' /tmp/verify-result.json 2>/dev/null)
+                local verified=$(jq -r '.verification_success // empty' "$VERIFY_RESULT_JSON" 2>/dev/null)
+                local count=$(jq -r '.total_verified // empty' "$VERIFY_RESULT_JSON" 2>/dev/null)
+                local broken=$(jq -r '.total_broken // empty' "$VERIFY_RESULT_JSON" 2>/dev/null)
 
                 # Check if jq actually returned values (not null/empty)
                 if [ -n "$verified" ] && [ -n "$count" ] && [ -n "$broken" ]; then
                     if [ "$verified" = "true" ] && [ "$count" -gt 0 ] && [ "$broken" = "0" ]; then
                         echo -e "${GREEN}  + Deployment successful ($count/$count binaries verified)${NC}"
                         DEPLOY_STATUS="${GREEN}[GDeploy:+]${NC}"
-                        rm -f /tmp/verify-result.json /tmp/deploy-output.txt /tmp/verify-check.json
+                        rm -f "$VERIFY_RESULT_JSON" "$DEPLOY_OUTPUT_LOG" "$VERIFY_CHECK_JSON"
                         return 0
                     else
                         echo -e "${RED}  - Verification failed ($count verified, $broken broken)${NC}"
                         echo -e "${YELLOW}  ! Falling back to local execution from hooks directory${NC}"
                         DEPLOY_STATUS="${YELLOW}[GDeploy:Local]${NC}"
-                        rm -f /tmp/verify-result.json /tmp/deploy-output.txt /tmp/verify-check.json
+                        rm -f "$VERIFY_RESULT_JSON" "$DEPLOY_OUTPUT_LOG" "$VERIFY_CHECK_JSON"
                         return 0
                     fi
                 else
                     # jq returned null/empty - fallback to grep
-                    if grep -q '"verification_success":true' /tmp/verify-result.json 2>/dev/null; then
+                    if grep -q '"verification_success":true' "$VERIFY_RESULT_JSON" 2>/dev/null; then
                         echo -e "${GREEN}  + Deployment successful (verified via grep)${NC}"
                         DEPLOY_STATUS="${GREEN}[GDeploy:+]${NC}"
-                        rm -f /tmp/verify-result.json /tmp/deploy-output.txt /tmp/verify-check.json
+                        rm -f "$VERIFY_RESULT_JSON" "$DEPLOY_OUTPUT_LOG" "$VERIFY_CHECK_JSON"
                         return 0
                     else
                         echo -e "${RED}  - Verification parsing failed${NC}"
                         echo -e "${YELLOW}  ! Falling back to local execution from hooks directory${NC}"
                         DEPLOY_STATUS="${YELLOW}[GDeploy:Local]${NC}"
-                        rm -f /tmp/verify-result.json /tmp/deploy-output.txt /tmp/verify-check.json
+                        rm -f "$VERIFY_RESULT_JSON" "$DEPLOY_OUTPUT_LOG" "$VERIFY_CHECK_JSON"
                         return 0
                     fi
                 fi
             else
                 # No jq - check if verify command succeeded
-                if grep -q '"verification_success":true' /tmp/verify-result.json 2>/dev/null; then
+                if grep -q '"verification_success":true' "$VERIFY_RESULT_JSON" 2>/dev/null; then
                     echo -e "${GREEN}  + Deployment successful${NC}"
                     DEPLOY_STATUS="${GREEN}[GDeploy:+]${NC}"
-                    rm -f /tmp/verify-result.json /tmp/deploy-output.txt /tmp/verify-check.json
+                    rm -f "$VERIFY_RESULT_JSON" "$DEPLOY_OUTPUT_LOG" "$VERIFY_CHECK_JSON"
                     return 0
                 else
                     echo -e "${RED}  - Verification failed${NC}"
                     echo -e "${YELLOW}  ! Falling back to local execution from hooks directory${NC}"
                     DEPLOY_STATUS="${YELLOW}[GDeploy:Local]${NC}"
-                    rm -f /tmp/verify-result.json /tmp/deploy-output.txt /tmp/verify-check.json
+                    rm -f "$VERIFY_RESULT_JSON" "$DEPLOY_OUTPUT_LOG" "$VERIFY_CHECK_JSON"
                     return 0
                 fi
             fi
@@ -552,18 +706,18 @@ deploy_binaries() {
             echo -e "${RED}  - Verification command failed${NC}"
             echo -e "${YELLOW}  ! Falling back to local execution from hooks directory${NC}"
             DEPLOY_STATUS="${YELLOW}[GDeploy:Local]${NC}"
-            rm -f /tmp/verify-result.json /tmp/deploy-output.txt /tmp/verify-check.json
+            rm -f "$VERIFY_RESULT_JSON" "$DEPLOY_OUTPUT_LOG" "$VERIFY_CHECK_JSON"
             return 0
         fi
     else
         # Deployment failed
         echo -e "${RED}  - Deployment failed${NC}"
-        if [ -f /tmp/deploy-output.txt ]; then
-            echo -e "${YELLOW}  ! Error: $(cat /tmp/deploy-output.txt | head -1)${NC}"
+        if [ -f "$DEPLOY_OUTPUT_LOG" ]; then
+            echo -e "${YELLOW}  ! Error: $(cat "$DEPLOY_OUTPUT_LOG" | head -1)${NC}"
         fi
         echo -e "${YELLOW}  ! Falling back to local execution from hooks directory${NC}"
         DEPLOY_STATUS="${YELLOW}[GDeploy:Local]${NC}"
-        rm -f /tmp/deploy-output.txt /tmp/verify-check.json
+        rm -f "$DEPLOY_OUTPUT_LOG" "$VERIFY_CHECK_JSON"
         return 0
     fi
 }
@@ -677,10 +831,11 @@ setup_dnscrypt() {
 
             # Re-configure DNSCrypt as resolver (dns-switch handles systemd-resolved automatically)
             echo -e "${YELLOW}  • Configuring DNSCrypt as DNS resolver...${NC}"
-            if run_command dns-switch 120 switch --names dnscrypt 2>&1 | tee /tmp/dns-switch.log; then
+            run_command dns-switch 120 switch --names dnscrypt 2>&1 | tee "$DNS_SWITCH_LOG"
+            if [ "${PIPESTATUS[0]}" -eq 0 ]; then
                 echo -e "${GREEN}  + DNSCrypt configuration fixed${NC}"
             else
-                echo -e "${RED}  - Failed to fix DNSCrypt (see /tmp/dns-switch.log)${NC}"
+                echo -e "${RED}  - Failed to fix DNSCrypt (see $DNS_SWITCH_LOG)${NC}"
             fi
             sleep 2
 
@@ -757,10 +912,11 @@ setup_dnscrypt() {
                         echo -e "${YELLOW}! DNSCrypt configured but not running - starting service (first boot)...${NC}"
                         echo -e "${YELLOW}  • Starting DNSCrypt service...${NC}"
 
-                        if run_command dns-switch 120 switch --names dnscrypt 2>&1 | tee -a /tmp/dns-switch.log; then
+                        run_command dns-switch 120 switch --names dnscrypt 2>&1 | tee -a "$DNS_SWITCH_LOG"
+                        if [ "${PIPESTATUS[0]}" -eq 0 ]; then
                             echo -e "${GREEN}  + DNSCrypt service started${NC}"
                         else
-                            echo -e "${RED}  - Failed to start DNSCrypt (see /tmp/dns-switch.log)${NC}"
+                            echo -e "${RED}  - Failed to start DNSCrypt (see $DNS_SWITCH_LOG)${NC}"
                         fi
                         sleep 3
 
@@ -802,10 +958,11 @@ setup_dnscrypt() {
 
                     # Start and configure DNSCrypt service
                     echo -e "${YELLOW}  • Starting DNSCrypt service and setting as resolver...${NC}"
-                    if run_command dns-switch 120 switch --names dnscrypt 2>&1 | tee -a /tmp/dns-switch.log; then
+                    run_command dns-switch 120 switch --names dnscrypt 2>&1 | tee -a "$DNS_SWITCH_LOG"
+                    if [ "${PIPESTATUS[0]}" -eq 0 ]; then
                         echo -e "${GREEN}  + DNSCrypt service started and configured${NC}"
                     else
-                        echo -e "${RED}  - Failed to start DNSCrypt (see /tmp/dns-switch.log)${NC}"
+                        echo -e "${RED}  - Failed to start DNSCrypt (see $DNS_SWITCH_LOG)${NC}"
                     fi
                     sleep 3
 
@@ -843,10 +1000,11 @@ setup_dnscrypt() {
 
                 # Set DNSCrypt as system resolver
                 echo -e "${YELLOW}  • Configuring DNSCrypt resolver...${NC}"
-                if run_command dns-switch 120 switch --names dnscrypt 2>&1 | tee -a /tmp/dns-switch.log; then
+                run_command dns-switch 120 switch --names dnscrypt 2>&1 | tee -a "$DNS_SWITCH_LOG"
+                if [ "${PIPESTATUS[0]}" -eq 0 ]; then
                     echo -e "${GREEN}  + DNSCrypt resolver configured${NC}"
                 else
-                    echo -e "${RED}  - Failed to configure DNSCrypt resolver (see /tmp/dns-switch.log)${NC}"
+                    echo -e "${RED}  - Failed to configure DNSCrypt resolver (see $DNS_SWITCH_LOG)${NC}"
                 fi
                 sleep 2
 
@@ -879,6 +1037,10 @@ setup_dnscrypt() {
     return 1
 }
 
+setup_dnscrypt_locked() {
+    with_dns_lock setup_dnscrypt
+}
+
 # Function to verify Tor DNS at firewall level using which-is-active
 verify_tor_dns_firewall() {
     # Reset firewall verification variables
@@ -893,6 +1055,10 @@ verify_tor_dns_firewall() {
     local ACTIVE_FIREWALL="none"
     local TOR_DNS_IPTABLES="false"
     local TOR_DNS_NFTABLES="false"
+    local SERVICE_REPORTED="false"
+    local INDEPENDENT_CHECKED="false"
+    local INDEPENDENT_VERIFIED="false"
+    local INDEPENDENT_BACKEND="none"
 
     if check_jq; then
         ACTIVE_FIREWALL=$(echo "$FIREWALL_JSON" | jq -r '.data.active_firewall // "none"' 2>/dev/null)
@@ -905,19 +1071,66 @@ verify_tor_dns_firewall() {
         TOR_DNS_NFTABLES=$(parse_json "$FIREWALL_JSON" ".data.tor_dns_nftables" || echo "false")
     fi
 
-    # Store firewall backend
-    TOR_DNS_FIREWALL_BACKEND="$ACTIVE_FIREWALL"
-
-    # Check if either iptables or nftables has Tor DNS active
+    # Record service-reported state
     if [ "$TOR_DNS_IPTABLES" = "true" ] || [ "$TOR_DNS_NFTABLES" = "true" ]; then
+        SERVICE_REPORTED="true"
+    fi
+
+    # Independent iptables verification (only if command is readable with sudo -n)
+    if command -v iptables >/dev/null 2>&1; then
+        local iptables_ruleset=""
+        if iptables_ruleset=$(sudo -n iptables -t nat -S 2>/dev/null); then
+            INDEPENDENT_CHECKED="true"
+            if echo "$iptables_ruleset" | grep -Eq 'dport[[:space:]]+53.*9053|--dport[[:space:]]+53.*--to-ports[[:space:]]+9053|REDIRECT.*9053'; then
+                INDEPENDENT_VERIFIED="true"
+                INDEPENDENT_BACKEND="iptables"
+            fi
+        fi
+    fi
+
+    # Independent nftables verification (only if command is readable with sudo -n)
+    if command -v nft >/dev/null 2>&1; then
+        local nft_ruleset=""
+        if nft_ruleset=$(sudo -n nft list ruleset 2>/dev/null); then
+            INDEPENDENT_CHECKED="true"
+            if echo "$nft_ruleset" | grep -Eq 'dport[[:space:]]+53.*9053|9053.*dport[[:space:]]+53'; then
+                INDEPENDENT_VERIFIED="true"
+                INDEPENDENT_BACKEND="nftables"
+            fi
+        fi
+    fi
+
+    # Prefer independent verification when available; otherwise fallback to service report.
+    if [ "$INDEPENDENT_CHECKED" = "true" ]; then
+        if [ "$INDEPENDENT_VERIFIED" = "true" ]; then
+            TOR_DNS_FIREWALL_VERIFIED="true"
+            TOR_DNS_FIREWALL_STATUS="active"
+            TOR_DNS_FIREWALL_BACKEND="$INDEPENDENT_BACKEND"
+            if [ "$SERVICE_REPORTED" != "true" ]; then
+                echo -e "${YELLOW}  ! Firewall rules detected but tor-switch reports inactive${NC}"
+            fi
+            return 0
+        fi
+
+        TOR_DNS_FIREWALL_VERIFIED="false"
+        TOR_DNS_FIREWALL_STATUS="inactive"
+        TOR_DNS_FIREWALL_BACKEND="$ACTIVE_FIREWALL"
+        if [ "$SERVICE_REPORTED" = "true" ]; then
+            echo -e "${YELLOW}  ! tor-switch reports Tor DNS active but independent firewall check found no matching rules${NC}"
+        fi
+        return 1
+    fi
+
+    TOR_DNS_FIREWALL_BACKEND="$ACTIVE_FIREWALL"
+    if [ "$SERVICE_REPORTED" = "true" ]; then
         TOR_DNS_FIREWALL_VERIFIED="true"
         TOR_DNS_FIREWALL_STATUS="active"
         return 0
-    else
-        TOR_DNS_FIREWALL_VERIFIED="false"
-        TOR_DNS_FIREWALL_STATUS="inactive"
-        return 1
     fi
+
+    TOR_DNS_FIREWALL_VERIFIED="false"
+    TOR_DNS_FIREWALL_STATUS="inactive"
+    return 1
 }
 
 # Function to verify Tor DNS with both direct and port methods
@@ -1825,9 +2038,12 @@ execute_profile() {
             echo -e "\n${GREEN}Exiting to shell...${NC}\n"
             return 1
             ;;
+        # IMPORTANT: Keep these workflow launches behind run_command.
+        # It enforces sudo/context consistently; raw workflow-manager calls here
+        # previously caused routing state permission errors and connect failures.
         22)
             echo -e "\n${YELLOW}Connecting to Dante SOCKS5...${NC}\n"
-            workflow-manager run initial_terminal_setup_dante_only
+            run_command workflow-manager 0 run initial_terminal_setup_dante_only
             echo ""
             echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
             echo -e "${BOLD}Return to Menu Options:${NC}"
@@ -1840,7 +2056,7 @@ execute_profile() {
             ;;
         23)
             echo -e "\n${YELLOW}Connecting to Shadowsocks...${NC}\n"
-            workflow-manager run initial_terminal_setup_shadowsocks_only
+            run_command workflow-manager 0 run initial_terminal_setup_shadowsocks_only
             echo ""
             echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
             echo -e "${BOLD}Return to Menu Options:${NC}"
@@ -1853,7 +2069,7 @@ execute_profile() {
             ;;
         24)
             echo -e "\n${YELLOW}Connecting Remote Tor via RedSocks...${NC}\n"
-            workflow-manager run initial_terminal_setup_tor_only
+            run_command workflow-manager 0 run initial_terminal_setup_tor_only
             echo ""
             echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
             echo -e "${BOLD}Return to Menu Options:${NC}"
@@ -1866,7 +2082,7 @@ execute_profile() {
             ;;
         25)
             echo -e "\n${YELLOW}Torrifying Single Default Node...${NC}\n"
-            workflow-manager run initial_terminal_setup_auth_torrify_only
+            run_command workflow-manager 0 run initial_terminal_setup_auth_torrify_only
             echo ""
             echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
             echo -e "${BOLD}Return to Menu Options:${NC}"
@@ -2090,6 +2306,11 @@ handle_submenu() {
 
 # Main execution
 main() {
+    if ! init_runtime_environment; then
+        return 1
+    fi
+    setup_runtime_signal_traps
+
     # Display header
     show_header
 
@@ -2151,7 +2372,7 @@ main() {
             # Authenticated - use DNSCrypt (requires auth)
             echo -ne "${YELLOW}▸ Configuring DNSCrypt...${NC}"
             start_timer
-            setup_dnscrypt
+            setup_dnscrypt_locked
             end_timer
             echo -e " ${GREEN}+ DNSCrypt configured${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
         else
@@ -2168,7 +2389,7 @@ main() {
                 # Authenticated - use DNSCrypt (requires auth)
                 echo -ne "${YELLOW}▸ Configuring DNSCrypt...${NC}"
                 start_timer
-                setup_dnscrypt
+                setup_dnscrypt_locked
                 end_timer
                 echo -e " ${GREEN}+ DNSCrypt configured${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
             else
@@ -2539,7 +2760,7 @@ main() {
 
             # Re-fetch dynamic data (respects offline mode)
             if [ "$HAS_INTERNET" = "true" ]; then
-                setup_dnscrypt  # Re-detect DNS configuration (requires internet)
+                setup_dnscrypt_locked  # Re-detect DNS configuration (requires internet)
             fi
             fetch_system_info
             count_profiles
@@ -2589,6 +2810,11 @@ main() {
 
 # Run main function
 main
+main_status=$?
+
+# Restore shell signal handlers and cleanup runtime artifacts
+clear_runtime_signal_traps
+cleanup_runtime_environment
 
 # Return to shell
-return 0 2>/dev/null || exit 0
+return $main_status 2>/dev/null || exit $main_status

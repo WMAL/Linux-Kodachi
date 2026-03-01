@@ -233,9 +233,11 @@ configure_kodachi_sudoers() {
     print_info "User: $actual_user"
     print_info "Home: $real_user_home"
 
-    # Find dashboard location
+    # Find dashboard location (system-wide first, then user-relative)
     local dashboard_dir=""
-    if [[ -d "$real_user_home/dashboard/hooks" ]]; then
+    if [[ -d "/opt/kodachi/dashboard/hooks" ]]; then
+        dashboard_dir="/opt/kodachi/dashboard/hooks"
+    elif [[ -d "$real_user_home/dashboard/hooks" ]]; then
         dashboard_dir="$real_user_home/dashboard/hooks"
     elif [[ -d "$real_user_home/Desktop/dashboard/hooks" ]]; then
         dashboard_dir="$real_user_home/Desktop/dashboard/hooks"
@@ -292,6 +294,7 @@ configure_kodachi_sudoers() {
         "ai-gateway"
         # Autonomous AI assistant
         "kodachi-claw"
+        "zeroclaw"
     )
 
     # Merge and deduplicate
@@ -332,17 +335,15 @@ configure_kodachi_sudoers() {
     fi
 
     # Create the kodachi-binaries sudoers file with ALL binaries for BOTH paths
-    cat > "$sudoers_file" << EOF
+    # Uses %sudo group instead of specific username so any sudoer gets access
+    # (works for both live kodachi user and Calamares-created users after install)
+    cat > "$sudoers_file" << 'HEADER'
 # Kodachi System Binaries - Passwordless Sudo Access
-# Generated: $(date)
-# User: $actual_user
-# Hooks Path: $dashboard_dir
-# System Path: /usr/local/bin
-#
-# This file grants NOPASSWD sudo access to all Kodachi binaries
-# deployed to /usr/local/bin/ and user's dashboard/hooks directory
+# This file grants NOPASSWD sudo access to all members of the sudo group
+# for Kodachi binaries deployed to /usr/local/bin/ and hooks directory
 #
 # Security justification:
+# - Group-based (%sudo) works for any admin user (live or installed)
 # - Full paths prevent PATH hijacking attacks
 # - Binaries are cryptographically signed by Kodachi PKI
 # - User already authenticated with password at login
@@ -355,43 +356,49 @@ configure_kodachi_sudoers() {
 # ============================================================
 # Kodachi Binaries - Dual Path Configuration
 # ============================================================
-EOF
+HEADER
+
+    # Add generated metadata as comments
+    echo "# Generated: $(date)" >> "$sudoers_file"
+    echo "# Hooks Path: $dashboard_dir" >> "$sudoers_file"
+    echo "# System Path: /usr/local/bin" >> "$sudoers_file"
+    echo "" >> "$sudoers_file"
 
     # Add entries for each binary with BOTH paths
     for binary in "${binaries[@]}"; do
         if [[ -n "$dashboard_dir" ]]; then
             # Add hooks path entry
-            echo "$actual_user ALL=(ALL) NOPASSWD: $dashboard_dir/$binary" >> "$sudoers_file"
+            echo "%sudo ALL=(ALL) NOPASSWD: $dashboard_dir/$binary" >> "$sudoers_file"
         fi
         # Add /usr/local/bin path entry
-        echo "$actual_user ALL=(ALL) NOPASSWD: /usr/local/bin/$binary" >> "$sudoers_file"
+        echo "%sudo ALL=(ALL) NOPASSWD: /usr/local/bin/$binary" >> "$sudoers_file"
     done
 
     # Add system management commands
-    cat >> "$sudoers_file" << EOF
+    cat >> "$sudoers_file" << 'EOF'
 
 # ============================================================
 # System Power Management (menu options)
 # ============================================================
-$actual_user ALL=(ALL) NOPASSWD: /usr/sbin/reboot
-$actual_user ALL=(ALL) NOPASSWD: /usr/sbin/shutdown
-$actual_user ALL=(ALL) NOPASSWD: /usr/sbin/poweroff
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/reboot
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/shutdown
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/poweroff
 
 # ============================================================
 # Time Synchronization (welcome script)
 # ============================================================
-$actual_user ALL=(ALL) NOPASSWD: /usr/sbin/ntpdig
-$actual_user ALL=(ALL) NOPASSWD: /usr/sbin/ntpdate
-$actual_user ALL=(ALL) NOPASSWD: /usr/sbin/ntpd
-$actual_user ALL=(ALL) NOPASSWD: /usr/bin/timedatectl
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/ntpdig
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/ntpdate
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/ntpd
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/timedatectl
 
 # ============================================================
 # Oniux Launcher - Kernel Namespace Configuration
 # ============================================================
-$actual_user ALL=(ALL) NOPASSWD: /usr/sbin/sysctl -w kernel.unprivileged_userns_clone=*
-$actual_user ALL=(ALL) NOPASSWD: /usr/sbin/sysctl -w kernel.apparmor_restrict_unprivileged_userns=*
-$actual_user ALL=(ALL) NOPASSWD: /sbin/sysctl -w kernel.unprivileged_userns_clone=*
-$actual_user ALL=(ALL) NOPASSWD: /sbin/sysctl -w kernel.apparmor_restrict_unprivileged_userns=*
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/sysctl -w kernel.unprivileged_userns_clone=*
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/sysctl -w kernel.apparmor_restrict_unprivileged_userns=*
+%sudo ALL=(ALL) NOPASSWD: /sbin/sysctl -w kernel.unprivileged_userns_clone=*
+%sudo ALL=(ALL) NOPASSWD: /sbin/sysctl -w kernel.apparmor_restrict_unprivileged_userns=*
 
 # End of Kodachi NOPASSWD rules
 EOF
@@ -410,7 +417,7 @@ EOF
                 sed -i '/# End of Kodachi NOPASSWD rules/i \\n# ============================================================\n# Dashboard TUI Terminal Tools (System Monitor tab)\n# ============================================================' "$sudoers_file"
                 tui_added=1
             fi
-            sed -i "/# End of Kodachi NOPASSWD rules/i $actual_user ALL=(ALL) NOPASSWD: $tui_path" "$sudoers_file"
+            sed -i "/# End of Kodachi NOPASSWD rules/i %sudo ALL=(ALL) NOPASSWD: $tui_path" "$sudoers_file"
         fi
     done
     if [[ $tui_added -gt 0 ]]; then
@@ -424,7 +431,7 @@ EOF
     # Validate sudoers file syntax
     if visudo -c -f "$sudoers_file" >/dev/null 2>&1; then
         local entry_count=$(grep -c "NOPASSWD" "$sudoers_file")
-        print_success "Sudoers configured for user: $actual_user"
+        print_success "Sudoers configured for group: sudo (includes user: $actual_user)"
         print_info "Total NOPASSWD entries: $entry_count"
         print_info "Binaries configured: ${#binaries[@]}"
         if [[ -n "$dashboard_dir" ]]; then
@@ -541,7 +548,6 @@ install_kodachi_conky_for_user() {
 
     local conky_source=""
     local candidates=(
-        "/home/kodachi/k900/livebuild-assets/conky"
         "$real_user_home/k900/livebuild-assets/conky"
         "$real_user_home/dashboard/hooks/conky"
         "$real_user_home/Desktop/dashboard/hooks/conky"
@@ -699,17 +705,19 @@ setup_welcome_autostart() {
     fi
 
     local autostart_dir="$real_user_home/.config/autostart"
-    local autostart_file="$autostart_dir/kodachi-welcome.desktop"
+    local autostart_file="$autostart_dir/kodachi-autoshield.desktop"
 
-    # Detect the kodachi-welcome binary location.
+    # Detect the kodachi-autoshield binary location.
     # IMPORTANT: We MUST use the full absolute path in the Exec= line because
     # the hooks directory is NOT guaranteed to be in the user's $PATH at login time.
-    # A bare "kodachi-welcome" would silently fail to launch on boot.
+    # A bare "kodachi-autoshield" would silently fail to launch on boot.
     # Do NOT change this to a bare command name without ensuring PATH is set.
     local welcome_bin=""
-    for candidate in "$real_user_home/dashboard/hooks/kodachi-welcome" \
-                     "$real_user_home/Desktop/dashboard/hooks/kodachi-welcome" \
-                     "$real_user_home/k900/dashboard/hooks/kodachi-welcome"; do
+    for candidate in "/usr/local/bin/kodachi-autoshield" \
+                     "/opt/kodachi/dashboard/hooks/kodachi-autoshield" \
+                     "$real_user_home/dashboard/hooks/kodachi-autoshield" \
+                     "$real_user_home/Desktop/dashboard/hooks/kodachi-autoshield" \
+                     "$real_user_home/k900/dashboard/hooks/kodachi-autoshield"; do
         if [[ -x "$candidate" ]]; then
             welcome_bin="$candidate"
             break
@@ -717,10 +725,10 @@ setup_welcome_autostart() {
     done
     # Fallback: check if it's in PATH (e.g. installed globally via /usr/local/bin)
     if [[ -z "$welcome_bin" ]]; then
-        welcome_bin=$(command -v kodachi-welcome 2>/dev/null || true)
+        welcome_bin=$(command -v kodachi-autoshield 2>/dev/null || true)
     fi
     if [[ -z "$welcome_bin" ]]; then
-        print_warning "kodachi-welcome binary not found. Skipping Welcome autostart."
+        print_warning "kodachi-autoshield binary not found. Skipping Welcome autostart."
         return 0
     fi
     local welcome_dir
@@ -738,7 +746,7 @@ setup_welcome_autostart() {
     cat > "$autostart_file" << EOF
 [Desktop Entry]
 Type=Application
-Name=Kodachi Welcome
+Name=Kodachi AutoShield
 Comment=Boot-time auto-configuration wizard for privacy hardening
 GenericName=Privacy Configurator
 Exec=$welcome_bin
@@ -752,7 +760,7 @@ X-GNOME-Autostart-Delay=3
 Categories=System;Security;
 Keywords=welcome;privacy;mac;hostname;timezone;harden;
 StartupNotify=true
-StartupWMClass=kodachi-welcome
+StartupWMClass=kodachi-autoshield
 EOF
     chmod 644 "$autostart_file"
     chown "$actual_user:$actual_user" "$autostart_dir" 2>/dev/null || true
@@ -817,29 +825,29 @@ create_welcome_desktop_shortcut() {
 
     # Detect install path
     local install_path=""
-    for path in "$real_user_home/dashboard/hooks" "$real_user_home/Desktop/dashboard/hooks" "$real_user_home/k900/dashboard/hooks"; do
-        if [[ -x "$path/kodachi-welcome" ]]; then
+    for path in "/opt/kodachi/dashboard/hooks" "$real_user_home/dashboard/hooks" "$real_user_home/Desktop/dashboard/hooks" "$real_user_home/k900/dashboard/hooks"; do
+        if [[ -x "$path/kodachi-autoshield" ]]; then
             install_path="$path"
             break
         fi
     done
     if [[ -z "$install_path" ]]; then
-        print_warning "kodachi-welcome binary not found. Skipping Welcome desktop shortcut."
+        print_warning "kodachi-autoshield binary not found. Skipping Welcome desktop shortcut."
         return 0
     fi
 
-    local welcome_desktop="$desktop_dir/kodachi-welcome.desktop"
+    local welcome_desktop="$desktop_dir/kodachi-autoshield.desktop"
 
     # Idempotent: skip if already configured correctly
-    if [[ -f "$welcome_desktop" ]] && grep -q "Exec=$install_path/kodachi-welcome" "$welcome_desktop" 2>/dev/null; then
+    if [[ -f "$welcome_desktop" ]] && grep -q "Exec=$install_path/kodachi-autoshield" "$welcome_desktop" 2>/dev/null; then
         print_info "Welcome desktop shortcut already configured: $welcome_desktop"
         return 0
     fi
 
     # Icon fallback (white Kodachi icon)
-    local icon_path="$install_path/icons/kodachi-welcome.png"
+    local icon_path="$install_path/icons/kodachi-autoshield.png"
     if [[ ! -f "$icon_path" ]]; then
-        icon_path="$install_path/config/icons/kodachi-welcome.png"
+        icon_path="$install_path/config/icons/kodachi-autoshield.png"
     fi
     if [[ ! -f "$icon_path" ]]; then
         icon_path="utilities-terminal"
@@ -849,16 +857,16 @@ create_welcome_desktop_shortcut() {
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=Kodachi Welcome
+Name=Kodachi AutoShield
 Comment=Kodachi Privacy Configuration Wizard
-Exec=$install_path/kodachi-welcome
-TryExec=$install_path/kodachi-welcome
+Exec=$install_path/kodachi-autoshield
+TryExec=$install_path/kodachi-autoshield
 Path=$install_path
 Icon=$icon_path
 Terminal=false
 Categories=Security;System;
 StartupNotify=true
-StartupWMClass=kodachi-welcome
+StartupWMClass=kodachi-autoshield
 X-XFCE-TrustedApplication=true
 EOF
     chmod +x "$welcome_desktop"
@@ -876,6 +884,46 @@ EOF
     fi
 
     print_success "Welcome desktop shortcut created for $actual_user: $welcome_desktop"
+
+    # Also install/update system-wide Whisker menu entries in /usr/share/applications/
+    local sys_apps="/usr/share/applications"
+    if [[ -d "$sys_apps" ]]; then
+        cat > "$sys_apps/kodachi-autoshield.desktop" << SYSEOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Kodachi AutoShield
+GenericName=Privacy Setup Wizard
+Comment=Kodachi AutoShield - privacy configuration wizard and system overview
+Exec=kodachi-autoshield
+Icon=/usr/share/icons/kodachi/Kodachi_White_big.png
+Terminal=false
+Categories=System;Security;
+Keywords=kodachi;welcome;wizard;setup;privacy;configuration;
+StartupNotify=true
+StartupWMClass=kodachi-autoshield
+SYSEOF
+        chmod 644 "$sys_apps/kodachi-autoshield.desktop"
+
+        cat > "$sys_apps/kodachi-dashboard.desktop" << SYSEOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Kodachi Dashboard
+GenericName=Security Dashboard
+Comment=Kodachi Security Dashboard - control privacy, networking, and system hardening
+Exec=kodachi-dashboard
+Icon=/usr/share/icons/kodachi/kodachi32.png
+Terminal=false
+Categories=System;Security;
+Keywords=kodachi;dashboard;security;privacy;tor;vpn;dns;firewall;
+StartupNotify=true
+StartupWMClass=kodachi-dashboard
+SYSEOF
+        chmod 644 "$sys_apps/kodachi-dashboard.desktop"
+        print_success "System-wide Whisker menu entries updated in $sys_apps"
+    fi
+
     return 0
 }
 
@@ -2052,16 +2100,25 @@ else
     REAL_USER_HOME="$HOME"
 fi
 
+# Ensure /opt/kodachi/ exists for canonical install location
+if [[ ! -d "/opt/kodachi/dashboard/hooks" ]]; then
+    print_step "Creating /opt/kodachi/dashboard/hooks/ for canonical binary location..."
+    mkdir -p /opt/kodachi/dashboard/hooks
+fi
+if [[ -n "$SUDO_USER" ]]; then
+    chown -R "$(id -u "$SUDO_USER"):$(id -g "$SUDO_USER")" /opt/kodachi
+fi
+
 # Check for binaries in standard locations
 BINARIES_FOUND=false
 BINARIES_LOCATION=""
 
 # Possible binary locations
 BINARY_LOCATIONS=(
+    "/opt/kodachi/dashboard/hooks"
     "$REAL_USER_HOME/dashboard/hooks"
     "$REAL_USER_HOME/Desktop/dashboard/hooks"
     "$REAL_USER_HOME/k900/dashboard/hooks"
-    "/opt/kodachi/dashboard/hooks"
     "/usr/local/bin"
 )
 
@@ -2105,7 +2162,7 @@ if [[ "$BINARIES_FOUND" == "false" ]]; then
     echo -e "  ${CYAN}Script #2 (Run After):${NC}"
     echo -e "  ${BOLD}curl -sSL https://www.kodachi.cloud/apps/os/install/kodachi-deps-install.sh | sudo bash${NC}"
     echo ""
-    print_info "The binaries script installs Kodachi tools to ~/dashboard/hooks (or ~/k900/dashboard/hooks)"
+    print_info "The binaries script installs Kodachi tools to /opt/kodachi/dashboard/hooks"
     print_info "This deps script installs system dependencies and configures sudoers"
     echo ""
     print_error "Aborting installation - please run kodachi-binary-install.sh first"
@@ -5284,8 +5341,9 @@ echo ""
 HOOKS_DIR=""
 GLOBAL_LAUNCHER_PATH=""
 
-# Search for hooks directory in common locations
+# Search for hooks directory in common locations (system-wide first)
 for search_dir in \
+    "/opt/kodachi/dashboard/hooks" \
     "/home/*/k900/dashboard/hooks" \
     "/home/*/dashboard/hooks" \
     "/home/*/Desktop/dashboard/hooks" \
@@ -5342,21 +5400,85 @@ else
     print_info "Global launcher not found - skipping deployment"
     print_info "This is normal if Kodachi binaries are not yet compiled"
     print_info "To deploy later:"
-    echo -e "  ${CYAN}1. Build Kodachi binaries: cd dashboard/hooks/rust && cargo build --release${NC}"
+    echo -e "  ${CYAN}1. Build Kodachi binaries:${NC}"
+    echo -e "  ${CYAN}   cd dashboard/hooks/rust/kodachi-claw && ./build.sh${NC}"
+    echo -e "  ${CYAN}   cd ../zero-claw && ./build.sh${NC}"
     echo -e "  ${CYAN}2. Deploy global launcher: cd dashboard/hooks && sudo ./global-launcher deploy${NC}"
 fi
 
 echo ""
 
 # =============================================================================
-# Install Kodachi Welcome Commands
+# Install XFCE Whisker Menu Entries
+# =============================================================================
+# Create .desktop files in /usr/share/applications/ so Kodachi apps appear in
+# the XFCE Whisker menu (and any XDG-compliant application launcher).
+# This runs as root (deps script) so we can write to system directories.
+# Not gated behind GUI detection — harmless on headless systems.
+print_step "Installing Whisker menu entries..."
+
+WHISKER_APPS_DIR="/usr/share/applications"
+if [[ -d "$WHISKER_APPS_DIR" ]]; then
+    # Determine icon paths (prefer system icons, fallback to hooks)
+    DASHBOARD_ICON="/usr/share/icons/kodachi/kodachi32.png"
+    if [[ ! -f "$DASHBOARD_ICON" ]] && [[ -n "${BINARIES_LOCATION:-}" ]]; then
+        DASHBOARD_ICON="$BINARIES_LOCATION/icons/kodachi-dashboard.png"
+    fi
+    WELCOME_ICON="/usr/share/icons/kodachi/Kodachi_White_big.png"
+    if [[ ! -f "$WELCOME_ICON" ]] && [[ -n "${BINARIES_LOCATION:-}" ]]; then
+        WELCOME_ICON="$BINARIES_LOCATION/icons/kodachi-autoshield.png"
+    fi
+
+    cat > "$WHISKER_APPS_DIR/kodachi-dashboard.desktop" << MENUEOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Kodachi Dashboard
+GenericName=Security Dashboard
+Comment=Kodachi Security Dashboard - control privacy, networking, and system hardening
+Exec=kodachi-dashboard
+Icon=$DASHBOARD_ICON
+Terminal=false
+Categories=System;Security;
+Keywords=kodachi;dashboard;security;privacy;tor;vpn;dns;firewall;
+StartupNotify=true
+StartupWMClass=kodachi-dashboard
+MENUEOF
+    chmod 644 "$WHISKER_APPS_DIR/kodachi-dashboard.desktop"
+
+    cat > "$WHISKER_APPS_DIR/kodachi-autoshield.desktop" << MENUEOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Kodachi AutoShield
+GenericName=Privacy Setup Wizard
+Comment=Kodachi AutoShield - privacy configuration wizard and system overview
+Exec=kodachi-autoshield
+Icon=$WELCOME_ICON
+Terminal=false
+Categories=System;Security;
+Keywords=kodachi;welcome;wizard;setup;privacy;configuration;
+StartupNotify=true
+StartupWMClass=kodachi-autoshield
+MENUEOF
+    chmod 644 "$WHISKER_APPS_DIR/kodachi-autoshield.desktop"
+
+    print_success "Whisker menu entries installed: kodachi-dashboard, kodachi-autoshield"
+else
+    print_warning "Directory $WHISKER_APPS_DIR not found — skipping Whisker menu entries"
+fi
+
+echo ""
+
+# =============================================================================
+# Install Kodachi AutoShield Commands
 # =============================================================================
 # This function installs the Kodachi welcome script and commands system-wide
 # to match the live ISO behavior. It handles version comparison and ensures
 # no conflicts when the deps installer runs during ISO build.
 #
 # Installed files:
-#   - /etc/profile.d/kodachi-welcome.sh (profile.d script with skip logic)
+#   - /etc/profile.d/kodachi-autoshield.sh (profile.d script with skip logic)
 #   - /usr/local/bin/welcome (wrapper script)
 #   - /usr/local/bin/kodachi (symlink to welcome)
 #   - /usr/local/bin/Kodachi (symlink to welcome)
@@ -5365,7 +5487,7 @@ echo ""
 install_welcome_commands() {
     echo ""
     print_highlight "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    print_highlight "Installing Kodachi Welcome Commands"
+    print_highlight "Installing Kodachi AutoShield Commands"
     print_highlight "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
 
@@ -5392,8 +5514,8 @@ install_welcome_commands() {
 
     # Find the scripts
     for base_dir in "${search_paths[@]}"; do
-        if [[ -f "$base_dir/kodachi-welcome.sh" ]]; then
-            PROFILE_SCRIPT="$base_dir/kodachi-welcome.sh"
+        if [[ -f "$base_dir/kodachi-autoshield.sh" ]]; then
+            PROFILE_SCRIPT="$base_dir/kodachi-autoshield.sh"
             WRAPPER_SCRIPT="$base_dir/welcome"
             break
         fi
@@ -5409,7 +5531,7 @@ install_welcome_commands() {
     local NEW_VERSION=$(grep '^BUILD_VERSION=' "$PROFILE_SCRIPT" 2>/dev/null | cut -d'"' -f2)
 
     # Check existing installation
-    local INSTALLED_SCRIPT="/etc/profile.d/kodachi-welcome.sh"
+    local INSTALLED_SCRIPT="/etc/profile.d/kodachi-autoshield.sh"
     local SHOULD_INSTALL=true
 
     if [[ -f "$INSTALLED_SCRIPT" ]]; then
@@ -5444,13 +5566,13 @@ install_welcome_commands() {
         # Fallback: create wrapper if not in package
         cat > /usr/local/bin/welcome << 'EOF'
 #!/bin/bash
-# Kodachi Welcome Command Wrapper
+# Kodachi AutoShield Command Wrapper
 export KODACHI_SKIP_WELCOME=0
 
-if [[ -f /etc/profile.d/kodachi-welcome.sh ]]; then
-    source /etc/profile.d/kodachi-welcome.sh
+if [[ -f /etc/profile.d/kodachi-autoshield.sh ]]; then
+    source /etc/profile.d/kodachi-autoshield.sh
 else
-    echo "Error: Kodachi welcome script not found at /etc/profile.d/kodachi-welcome.sh" >&2
+    echo "Error: Kodachi welcome script not found at /etc/profile.d/kodachi-autoshield.sh" >&2
     exit 1
 fi
 EOF
@@ -5714,7 +5836,9 @@ deploy_kodachi_binaries_globally() {
     print_highlight "======= Deploying Kodachi Binaries Globally ======="
     echo ""
 
-    local candidates=()
+    local candidates=(
+        "/opt/kodachi/dashboard/hooks"
+    )
     if [[ -n "$SUDO_USER" ]]; then
         local sudo_home
         sudo_home=$(getent passwd "$SUDO_USER" | cut -d: -f6)
@@ -5942,8 +6066,10 @@ cleanup_github_temp_files
 # Check if binaries are installed - verify at least 3 core binaries exist
 echo ""
 BINARY_COUNT=0
-# Build locations list: real user's home (via SUDO_USER), $HOME fallback, and /usr/local/bin
-INSTALL_LOCATIONS=()
+# Build locations list: system-wide, real user's home (via SUDO_USER), $HOME fallback, and /usr/local/bin
+INSTALL_LOCATIONS=(
+    "/opt/kodachi/dashboard/hooks"
+)
 if [[ -n "$SUDO_USER" ]]; then
     _real_home=$(getent passwd "$SUDO_USER" | cut -d: -f6)
     if [[ -n "$_real_home" ]]; then
@@ -6014,7 +6140,7 @@ echo "  2. Or in terminal: type 'kitty' to launch it"
 echo "  3. In Kitty, run: ip-fetch (from hooks folder or if in PATH)"
 echo ""
 print_info "Alternatively, in this session just type: kitty"
-echo "  Then run: cd ~/dashboard/hooks && ./ip-fetch  (or cd ~/k900/dashboard/hooks && ./ip-fetch)"
+echo "  Then run: cd /opt/kodachi/dashboard/hooks && ./ip-fetch"
 echo ""
 
 # ============================================================================
