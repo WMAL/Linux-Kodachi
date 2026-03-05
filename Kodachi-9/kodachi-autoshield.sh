@@ -84,7 +84,7 @@ fi
 # DO NOT EDIT MANUALLY - Run pack-kodachi.sh to update these values
 BUILD_VERSION="9.0.1"  # From: terminal.main_version
 BUILD_NUM="27"          # From: terminal.build_number (auto-incremented)
-BUILD_DATE="2026-02-28"  # From: terminal.last_build_date
+BUILD_DATE="2026-03-05"  # From: terminal.last_build_date
 SCRIPT_VERSION="${BUILD_VERSION}.${BUILD_NUM}"
 
 # Color codes for compact display (optimized for black terminal)
@@ -167,7 +167,13 @@ HOOKS_DIR=""
 
 # Command resolution and runtime safety settings
 SAFE_COMMAND_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-DNS_LOCK_FILE="/tmp/kodachi-autoshield-dns.lock"
+# Use /run/kodachi/ for cross-process lock files (shared path, proper ownership)
+# Falls back to /tmp if /run/kodachi/ cannot be created
+if [ -d "/run/kodachi" ] || sudo -n mkdir -p /run/kodachi 2>/dev/null; then
+    DNS_LOCK_FILE="/run/kodachi/kodachi-autoshield-dns.lock"
+else
+    DNS_LOCK_FILE="/tmp/kodachi-autoshield-dns.lock"
+fi
 RUNTIME_TMP_DIR=""
 GRUB_THEME_LOG=""
 VERIFY_CHECK_JSON=""
@@ -177,13 +183,32 @@ DNS_SWITCH_LOG=""
 
 is_allowed_run_command() {
     case "$1" in
-        health-control|ip-fetch|tor-switch|online-auth|dns-switch|routing-switch|workflow-manager|permission-guard|online-info-switch)
+        health-control|ip-fetch|tor-switch|online-auth|dns-switch|routing-switch|workflow-manager|permission-guard|online-info-switch|integrity-check|dns-leak)
             return 0
             ;;
         *)
             return 1
             ;;
     esac
+}
+
+# Pre-flight check for critical system dependencies
+check_critical_dependencies() {
+    local missing=()
+    local critical_tools=(curl flock timeout mktemp getent)
+
+    for tool in "${critical_tools[@]}"; do
+        if ! command -v "$tool" >/dev/null 2>&1; then
+            missing+=("$tool")
+        fi
+    done
+
+    if [ ${#missing[@]} -gt 0 ]; then
+        echo -e "${RED}WARNING: Missing critical system tools: ${missing[*]}${NC}" >&2
+        echo -e "${YELLOW}Some AutoShield features may not work correctly.${NC}" >&2
+        return 1
+    fi
+    return 0
 }
 
 init_runtime_environment() {
@@ -624,15 +649,15 @@ deploy_binaries() {
         return 0
     fi
 
-    # Hooks directory found - verify we're in it
-    cd "$HOOKS_DIR" || {
+    # Hooks directory found - verify it's accessible (no cd to avoid changing working directory)
+    if [ ! -d "$HOOKS_DIR" ] || [ ! -r "$HOOKS_DIR" ]; then
         echo -e "${YELLOW}! Cannot access hooks directory${NC}"
         DEPLOY_STATUS="${YELLOW}[GDeploy:Local]${NC}"
         return 0  # Not fatal - will use hooks directory directly
-    }
+    fi
 
     # Check if global-launcher exists
-    if [ ! -f "./global-launcher" ]; then
+    if [ ! -f "$HOOKS_DIR/global-launcher" ]; then
         echo -e "${YELLOW}! global-launcher not found${NC}"
         DEPLOY_STATUS="${GREEN}[GDeploy:N/A]${NC}"
         return 0
@@ -640,7 +665,7 @@ deploy_binaries() {
 
     # First check if already deployed and verified
     echo -e "${GREEN}  • Checking existing deployment...${NC}"
-    if ./global-launcher verify --json >"$VERIFY_CHECK_JSON" 2>&1; then
+    if "$HOOKS_DIR/global-launcher" verify --json >"$VERIFY_CHECK_JSON" 2>&1; then
         # Use grep-first approach (reliable, no jq dependency)
         if grep -q '"verification_success":true' "$VERIFY_CHECK_JSON" 2>/dev/null; then
             # Extract count using grep/sed (works without jq)
@@ -661,14 +686,14 @@ deploy_binaries() {
 
     # Need to deploy
     echo -e "  • Deploying binaries to /usr/local/bin/..."
-    sudo ./global-launcher deploy 2>&1 | tee "$DEPLOY_OUTPUT_LOG"
+    sudo "$HOOKS_DIR/global-launcher" deploy 2>&1 | tee "$DEPLOY_OUTPUT_LOG"
     local deploy_exit=${PIPESTATUS[0]}
     if [ "$deploy_exit" -eq 0 ]; then
         # Deployment command succeeded - now VERIFY it actually worked
         echo -e "  • Verifying deployment..."
         sleep 1
 
-        if ./global-launcher verify --json >"$VERIFY_RESULT_JSON" 2>&1; then
+        if "$HOOKS_DIR/global-launcher" verify --json >"$VERIFY_RESULT_JSON" 2>&1; then
             if check_jq; then
                 local verified=$(jq -r '.verification_success // empty' "$VERIFY_RESULT_JSON" 2>/dev/null)
                 local count=$(jq -r '.total_verified // empty' "$VERIFY_RESULT_JSON" 2>/dev/null)
@@ -1322,22 +1347,40 @@ fetch_latest_version() {
 
     # Compare versions if remote data is available
     if [ "$REMOTE_BUILD" != "N/A" ] && [ -n "$REMOTE_BUILD" ] && [ "$REMOTE_BUILD" != "null" ]; then
-        # Extract build numbers for comparison (assumes format X.X.X.Y)
-        local LOCAL_NUM=$(echo "$LOCAL_BUILD" | awk -F'.' '{print $4}')
-        local REMOTE_NUM=$(echo "$REMOTE_BUILD" | awk -F'.' '{print $4}')
+        # Full version comparison across all octets (e.g., 9.0.1.4 vs 9.1.0.1)
+        # Compares major, minor, patch, then build number sequentially
+        local _ver_result="equal"
+        local _i
+        for _i in 1 2 3 4; do
+            local _local_part=$(echo "$LOCAL_BUILD" | awk -F'.' -v i="$_i" '{print $i}')
+            local _remote_part=$(echo "$REMOTE_BUILD" | awk -F'.' -v i="$_i" '{print $i}')
+            _local_part="${_local_part:-0}"
+            _remote_part="${_remote_part:-0}"
+            if [[ "$_local_part" =~ ^[0-9]+$ ]] && [[ "$_remote_part" =~ ^[0-9]+$ ]]; then
+                if [ "$_local_part" -gt "$_remote_part" ]; then
+                    _ver_result="ahead"; break
+                elif [ "$_local_part" -lt "$_remote_part" ]; then
+                    _ver_result="behind"; break
+                fi
+            else
+                _ver_result="unknown"; break
+            fi
+        done
 
-        if [ -n "$LOCAL_NUM" ] && [ -n "$REMOTE_NUM" ]; then
-            if [ "$LOCAL_NUM" -ge "$REMOTE_NUM" ]; then
+        case "$_ver_result" in
+            equal|ahead)
                 VERSION_STATUS="+"  # Up-to-date or ahead
                 VERSION_COLOR="${GREEN}"
-            else
+                ;;
+            behind)
                 VERSION_STATUS="^"  # Update available
                 VERSION_COLOR="${YELLOW}"
-            fi
-        else
-            VERSION_STATUS="•"  # Cannot compare (fallback)
-            VERSION_COLOR="${GREEN}"
-        fi
+                ;;
+            *)
+                VERSION_STATUS="•"  # Cannot compare (fallback)
+                VERSION_COLOR="${GREEN}"
+                ;;
+        esac
 
         # Build comparison display string - compact format to save space
         LATEST_VERSION="${VERSION_COLOR}${VERSION_STATUS} Build: ${LOCAL_BUILD} | ${REMOTE_BUILD}${NC}"
@@ -1471,7 +1514,13 @@ fetch_system_info() {
         # Check Kodachi Network status (5s timeout - quick check)
         echo -ne "${YELLOW}▸ Checking Kodachi Network...${NC}"
         start_timer
-        KNET_JSON=$(curl -s --max-time 5 "https://kodachi.cloud/apps/ip-extract.php" 2>/dev/null)
+        local curl_cert_args=()
+        if [ -n "$HOOKS_DIR" ] && [ -f "$HOOKS_DIR/tmp/kodachi-cert-bundle.pem" ]; then
+            curl_cert_args=(--cacert "$HOOKS_DIR/tmp/kodachi-cert-bundle.pem")
+        elif [ -f "/etc/kodachi/kodachi-cert-bundle.pem" ]; then
+            curl_cert_args=(--cacert "/etc/kodachi/kodachi-cert-bundle.pem")
+        fi
+        KNET_JSON=$(curl -s --max-time 5 "${curl_cert_args[@]}" "https://kodachi.cloud/apps/ip-extract.php" 2>/dev/null)
         IS_KODACHI=$(parse_json "$KNET_JSON" ".is_kodachi" || echo "false")
         if [ "$IS_KODACHI" = "true" ]; then
             KNET_STATUS="${GREEN}[KNet:+]${NC}"
@@ -2032,7 +2081,7 @@ execute_profile() {
             read -r confirm
             if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
                 echo -e "${GREEN}Rebooting system...${NC}"
-                sudo reboot
+                sudo -n reboot
             else
                 echo -e "${YELLOW}Reboot cancelled.${NC}"
                 sleep 1
@@ -2044,7 +2093,7 @@ execute_profile() {
             read -r confirm
             if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
                 echo -e "${GREEN}Shutting down system...${NC}"
-                sudo shutdown -h now
+                sudo -n shutdown -h now
             else
                 echo -e "${YELLOW}Shutdown cancelled.${NC}"
                 sleep 1
@@ -2146,7 +2195,7 @@ handle_submenu() {
                     2) execute_profile "14"; submenu_executed=true ;; # Enable Tor DNS
                     3) # Set Random Reputable Servers
                         echo -e "\n${YELLOW}Switching to Random Reputable DNS Servers...${NC}\n"
-                        sudo dns-switch random
+                        run_command dns-switch 30 random
                         echo ""
                         echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
                         echo -e "${BOLD}Return to Menu Options:${NC}"
@@ -2160,7 +2209,7 @@ handle_submenu() {
                         ;;
                     4) # Set DNS Fallback
                         echo -e "\n${YELLOW}Switching to Fallback DNS Servers...${NC}\n"
-                        sudo dns-switch fallback
+                        run_command dns-switch 30 fallback
                         echo ""
                         echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
                         echo -e "${BOLD}Return to Menu Options:${NC}"
@@ -2176,7 +2225,7 @@ handle_submenu() {
                     6) execute_profile "25"; submenu_executed=true ;; # Torrify Single Default Node
                     7) # Restart All Tor Instances
                         echo -e "\n${YELLOW}Restarting All Tor Instances...${NC}\n"
-                        sudo tor-switch restart-all-instances
+                        run_command tor-switch 60 restart-all-instances
                         echo ""
                         echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
                         echo -e "${BOLD}Return to Menu Options:${NC}"
@@ -2190,7 +2239,7 @@ handle_submenu() {
                         ;;
                     8) # List Tor Instances (IPs & Countries)
                         echo -e "\n${YELLOW}Listing Tor Instances with IPs and Countries...${NC}\n"
-                        sudo tor-switch list-instances-with-ip
+                        run_command tor-switch 30 list-instances-with-ip
                         echo ""
                         echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
                         echo -e "${BOLD}Return to Menu Options:${NC}"
@@ -2213,7 +2262,7 @@ handle_submenu() {
                     1) execute_profile "18"; submenu_executed=true ;; # Check Security Score
                     2) # System Integrity Check
                         echo -e "\n${YELLOW}Running System Integrity Check...${NC}\n"
-                        sudo integrity-check check-all
+                        run_command integrity-check 120 check-all
                         echo ""
                         echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
                         echo -e "${BOLD}Return to Menu Options:${NC}"
@@ -2227,7 +2276,7 @@ handle_submenu() {
                         ;;
                     3) # Test DNS Leaks
                         echo -e "\n${YELLOW}Testing DNS Leaks...${NC}\n"
-                        dns-leak test
+                        run_command dns-leak 30 test
                         echo ""
                         echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
                         echo -e "${BOLD}Return to Menu Options:${NC}"
@@ -2241,7 +2290,7 @@ handle_submenu() {
                         ;;
                     4) # Check Releases
                         echo -e "\n${YELLOW}Checking Latest Releases...${NC}\n"
-                        online-info-switch releases
+                        run_command online-info-switch 30 releases
                         echo ""
                         echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
                         echo -e "${BOLD}Return to Menu Options:${NC}"
@@ -2255,8 +2304,8 @@ handle_submenu() {
                         ;;
                     5) # Flush iptables and nftables
                         echo -e "\n${YELLOW}Flushing iptables and nftables...${NC}\n"
-                        sudo tor-switch flush-iptables
-                        sudo tor-switch flush-nftables
+                        run_command tor-switch 30 flush-iptables
+                        run_command tor-switch 30 flush-nftables
                         echo ""
                         echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
                         echo -e "${BOLD}Return to Menu Options:${NC}"
@@ -2281,7 +2330,7 @@ handle_submenu() {
                 case "$dns_choice" in
                     1) # Random DNS Selection
                         echo -e "\n${YELLOW}Switching to Random DNS Servers...${NC}\n"
-                        sudo dns-switch random
+                        run_command dns-switch 30 random
                         echo ""
                         echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
                         echo -e "${BOLD}Return to Menu Options:${NC}"
@@ -2295,7 +2344,7 @@ handle_submenu() {
                         ;;
                     2) # Fallback DNS
                         echo -e "\n${YELLOW}Switching to Fallback DNS Servers...${NC}\n"
-                        sudo dns-switch fallback
+                        run_command dns-switch 30 fallback
                         echo ""
                         echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
                         echo -e "${BOLD}Return to Menu Options:${NC}"
@@ -2322,6 +2371,9 @@ handle_submenu() {
 
 # Main execution
 main() {
+    # Pre-flight dependency check (warnings only, non-fatal)
+    check_critical_dependencies
+
     if ! init_runtime_environment; then
         return 1
     fi
@@ -2682,6 +2734,9 @@ main() {
             # Continue to next iteration (show menu again)
             continue
         fi
+
+        # Reset refresh_choice to avoid stale value from previous iteration
+        refresh_choice=""
 
         # Handle menu choices with submenu support
         case "$choice" in

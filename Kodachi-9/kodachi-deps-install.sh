@@ -112,6 +112,169 @@ print_verbose() {
     fi
 }
 
+# Script/runtime path helpers (avoid hardcoded user-home assumptions)
+SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"
+if [[ -n "$SCRIPT_SOURCE" ]] && [[ -e "$SCRIPT_SOURCE" ]]; then
+    SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_SOURCE")" && pwd)"
+else
+    SCRIPT_DIR="$(pwd)"
+fi
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." 2>/dev/null && pwd || true)"
+
+resolve_user_home() {
+    local user="${1:-}"
+    local home=""
+
+    if [[ -n "$user" ]]; then
+        home=$(getent passwd "$user" | cut -d: -f6)
+    fi
+
+    if [[ -z "$home" ]]; then
+        home="${HOME:-}"
+    fi
+
+    if [[ -z "$home" ]] || [[ ! -d "$home" ]]; then
+        local base=""
+        for base in /home /Users /var/home; do
+            if [[ -n "$user" ]] && [[ -d "$base/$user" ]]; then
+                home="$base/$user"
+                break
+            fi
+        done
+    fi
+
+    if [[ -z "$home" ]]; then
+        home="/tmp"
+    fi
+
+    echo "$home"
+}
+
+list_system_user_homes() {
+    getent passwd | awk -F: '{print $6}' | while IFS= read -r home; do
+        [[ -n "$home" && -d "$home" ]] || continue
+        printf '%s\n' "$home"
+    done
+}
+
+find_dashboard_hooks_for_home() {
+    local base_home="${1:-}"
+    local candidates=()
+
+    if [[ -n "$base_home" ]]; then
+        candidates+=(
+            "$base_home/dashboard/hooks"
+            "$base_home/Desktop/dashboard/hooks"
+            "$base_home/k900/dashboard/hooks"
+        )
+    fi
+
+    if [[ -n "$PROJECT_ROOT" ]]; then
+        candidates+=("$PROJECT_ROOT/dashboard/hooks")
+    fi
+
+    local candidate=""
+    for candidate in "${candidates[@]}"; do
+        if [[ -d "$candidate" ]]; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+detect_kodachi_update_mode() {
+    local user_home="${1:-}"
+    local marker=""
+    local markers=(
+        "/etc/sudoers.d/kodachi-binaries"
+        "/etc/profile.d/kodachi-path.sh"
+        "/opt/kodachi/dashboard/hooks/.kodachi-managed-binaries.list"
+        "/opt/kodachi/dashboard/hooks/results/signatures"
+    )
+
+    if [[ -n "$user_home" ]]; then
+        markers+=(
+            "$user_home/.config/autostart/kodachi-dashboard.desktop"
+            "$user_home/.config/autostart/kodachi-conky.desktop"
+            "$user_home/.config/kodachi/conky"
+        )
+    fi
+
+    for marker in "${markers[@]}"; do
+        if [[ -e "$marker" ]]; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+# Process-scope helpers
+# Ensure service/process cleanup in live-build chroot never touches host daemons.
+current_root_signature() {
+    stat -Lc '%d:%i' / 2>/dev/null || true
+}
+
+pid_in_current_root() {
+    local pid="${1:-}"
+    local current_sig=""
+    local pid_sig=""
+
+    [ -n "$pid" ] || return 1
+    current_sig="$(current_root_signature)"
+    [ -n "$current_sig" ] || return 1
+
+    pid_sig="$(stat -Lc '%d:%i' "/proc/$pid/root" 2>/dev/null || true)"
+    [ -n "$pid_sig" ] || return 1
+    [ "$pid_sig" = "$current_sig" ]
+}
+
+list_matching_pids_current_root() {
+    local mode="${1:-x}"   # x => exact process name, f => full cmdline regex
+    local pattern="${2:-}"
+    local raw_pids=""
+    local pid=""
+
+    [ -n "$pattern" ] || return 0
+
+    if [ "$mode" = "f" ]; then
+        raw_pids="$(pgrep -f "$pattern" 2>/dev/null || true)"
+    else
+        raw_pids="$(pgrep -x "$pattern" 2>/dev/null || true)"
+    fi
+
+    [ -n "$raw_pids" ] || return 0
+
+    while IFS= read -r pid; do
+        [ -n "$pid" ] || continue
+        if pid_in_current_root "$pid"; then
+            printf '%s\n' "$pid"
+        fi
+    done <<< "$raw_pids"
+}
+
+process_running_current_root() {
+    local process_name="${1:-}"
+    [ -n "$process_name" ] || return 1
+    [ -n "$(list_matching_pids_current_root x "$process_name")" ]
+}
+
+kill_matching_processes_current_root() {
+    local signal="${1:-TERM}"   # TERM, KILL, 9, etc.
+    local mode="${2:-x}"
+    local pattern="${3:-}"
+    local pids=""
+
+    [ -n "$pattern" ] || return 1
+    pids="$(list_matching_pids_current_root "$mode" "$pattern" | tr '\n' ' ')"
+    [ -n "${pids// }" ] || return 1
+
+    kill "-${signal}" $pids 2>/dev/null || return 1
+    return 0
+}
+
 # Function to apply fallback DNS servers (mimics dns-switch fix-dns behavior)
 apply_fallback_dns() {
     print_step "Applying FALLBACK DNS fix (systemd-resolved + /etc/resolv.conf)..."
@@ -227,7 +390,7 @@ configure_kodachi_sudoers() {
 
     # Fallback if getent failed
     if [[ -z "$real_user_home" ]]; then
-        real_user_home="/home/$actual_user"
+        real_user_home=$(resolve_user_home "$actual_user")
     fi
 
     print_info "User: $actual_user"
@@ -237,12 +400,8 @@ configure_kodachi_sudoers() {
     local dashboard_dir=""
     if [[ -d "/opt/kodachi/dashboard/hooks" ]]; then
         dashboard_dir="/opt/kodachi/dashboard/hooks"
-    elif [[ -d "$real_user_home/dashboard/hooks" ]]; then
-        dashboard_dir="$real_user_home/dashboard/hooks"
-    elif [[ -d "$real_user_home/Desktop/dashboard/hooks" ]]; then
-        dashboard_dir="$real_user_home/Desktop/dashboard/hooks"
-    elif [[ -d "$real_user_home/k900/dashboard/hooks" ]]; then
-        dashboard_dir="$real_user_home/k900/dashboard/hooks"
+    elif dashboard_dir=$(find_dashboard_hooks_for_home "$real_user_home"); then
+        :
     fi
 
     if [[ -n "$dashboard_dir" ]]; then
@@ -277,6 +436,7 @@ configure_kodachi_sudoers() {
         "permission-guard"
         "logs-hook"
         "deps-checker"
+        "conky-status"
         "oniux"
         "kodachi-dashboard"
         "global-launcher"
@@ -505,6 +665,43 @@ ensure_ai_model_path_compatibility() {
     fi
 }
 
+cleanup_legacy_autostart_entries_for_user() {
+    local actual_user="${1:-}"
+    local real_user_home="${2:-}"
+    local autostart_dir=""
+    local removed=0
+    local noun="entries"
+    local old_entry=""
+    local legacy_entries=()
+
+    if [[ -z "$actual_user" ]] || [[ -z "$real_user_home" ]]; then
+        return 0
+    fi
+
+    autostart_dir="$real_user_home/.config/autostart"
+    legacy_entries=(
+        "$autostart_dir/kodachi-autoshield.desktop"
+        "$autostart_dir/kodachi-welcome.desktop"
+        "$autostart_dir/kodachi-welcome-startup.desktop"
+    )
+
+    for old_entry in "${legacy_entries[@]}"; do
+        if [[ -f "$old_entry" ]]; then
+            rm -f "$old_entry" 2>/dev/null || true
+            if [[ ! -f "$old_entry" ]]; then
+                removed=$((removed + 1))
+            fi
+        fi
+    done
+
+    if [[ $removed -eq 1 ]]; then
+        noun="entry"
+    fi
+    if [[ $removed -gt 0 ]]; then
+        print_info "Removed $removed legacy Kodachi startup $noun for $actual_user"
+    fi
+}
+
 # Install Conky assets and autostart profile for the real desktop user
 install_kodachi_conky_for_user() {
     print_step "Configuring Kodachi Conky startup..."
@@ -543,16 +740,20 @@ install_kodachi_conky_for_user() {
 
     real_user_home=$(getent passwd "$actual_user" | cut -d: -f6)
     if [[ -z "$real_user_home" ]]; then
-        real_user_home="/home/$actual_user"
+        real_user_home=$(resolve_user_home "$actual_user")
     fi
 
+    local conky_install_dir="$real_user_home/.config/kodachi/conky"
     local conky_source=""
     local candidates=(
+        "$PROJECT_ROOT/livebuild-assets/conky"
+        "$PROJECT_ROOT/dashboard/hooks/conky"
         "$real_user_home/k900/livebuild-assets/conky"
         "$real_user_home/dashboard/hooks/conky"
         "$real_user_home/Desktop/dashboard/hooks/conky"
         "$real_user_home/k900/dashboard/hooks/conky"
         "/opt/kodachi/dashboard/hooks/conky"
+        "/usr/share/kodachi/conky"
     )
 
     for candidate in "${candidates[@]}"; do
@@ -563,17 +764,15 @@ install_kodachi_conky_for_user() {
     done
 
     if [[ -z "$conky_source" ]]; then
-        # No source package found — check if Conky is already installed at destination
-        local conky_dest="$real_user_home/.config/kodachi/conky"
-        if [[ -d "$conky_dest/configs" ]] && [[ -d "$conky_dest/scripts" ]]; then
-            print_success "Conky already installed at $conky_dest (no update source found)"
+        if [[ -d "$conky_install_dir/configs" ]] && [[ -d "$conky_install_dir/scripts" ]]; then
+            print_warning "Conky update source not found; reusing existing assets and refreshing startup entries."
+            conky_source="$conky_install_dir"
+        else
+            print_warning "Conky assets not found in known paths. Skipping Conky setup."
             return 0
         fi
-        print_warning "Conky assets not found in known paths. Skipping Conky setup."
-        return 0
     fi
 
-    local conky_install_dir="$real_user_home/.config/kodachi/conky"
     local autostart_dir="$real_user_home/.config/autostart"
     local autostart_file="$autostart_dir/kodachi-conky.desktop"
     local launcher="$conky_install_dir/scripts/conky-launcher.sh"
@@ -586,8 +785,14 @@ install_kodachi_conky_for_user() {
     local autostart_tryexec=""
 
     mkdir -p "$(dirname "$conky_install_dir")" "$autostart_dir" "$systemd_user_dir" "$wants_dir"
-    rm -rf "$conky_install_dir"
-    cp -a "$conky_source" "$conky_install_dir"
+    if [[ "$conky_source" != "$conky_install_dir" ]]; then
+        rm -rf "$conky_install_dir"
+        cp -a "$conky_source" "$conky_install_dir"
+        print_success "Conky assets updated: $conky_install_dir"
+    else
+        print_info "Conky assets already present. Refreshing permissions and startup entries."
+    fi
+    cleanup_legacy_autostart_entries_for_user "$actual_user" "$real_user_home"
 
     if [[ -d "$conky_install_dir/scripts" ]]; then
         find "$conky_install_dir/scripts" -type f -name "*.sh" -exec chmod 755 {} + 2>/dev/null || true
@@ -670,17 +875,17 @@ EOF
 }
 
 # ── Welcome autostart setup ──────────────────────────────────────
-setup_welcome_autostart() {
+setup_dashboard_autostart() {
     local _build_variant=""
     if [[ -f /opt/kodachi-offline-packages/build-variant ]]; then
         _build_variant=$(tr -cd 'a-z-' < /opt/kodachi-offline-packages/build-variant)
     fi
-    if [[ "$_build_variant" == "terminal" ]]; then
-        print_info "Build variant is 'terminal'. Skipping Welcome autostart setup."
+    if [[ "$_build_variant" == "terminal" ]] || [[ "$_build_variant" == "minimal" ]]; then
+        print_info "Build variant is '${_build_variant}'. Skipping Dashboard autostart setup."
         return 0
     fi
     if ! detect_gui_environment; then
-        print_info "No GUI desktop detected. Skipping Welcome autostart setup."
+        print_info "No GUI desktop detected. Skipping Dashboard autostart setup."
         return 0
     fi
 
@@ -695,82 +900,134 @@ setup_welcome_autostart() {
     fi
 
     if [[ -z "$actual_user" ]] || [[ ! "$actual_user" =~ ^[a-zA-Z0-9_-]+$ ]]; then
-        print_warning "Could not determine target non-root user. Skipping Welcome autostart."
+        print_warning "Could not determine target non-root user. Skipping Dashboard autostart."
         return 0
     fi
 
     real_user_home=$(getent passwd "$actual_user" | cut -d: -f6)
     if [[ -z "$real_user_home" ]]; then
-        real_user_home="/home/$actual_user"
+        real_user_home=$(resolve_user_home "$actual_user")
     fi
 
     local autostart_dir="$real_user_home/.config/autostart"
-    local autostart_file="$autostart_dir/kodachi-autoshield.desktop"
+    local autostart_file="$autostart_dir/kodachi-dashboard.desktop"
 
-    # Detect the kodachi-autoshield binary location.
+    # Detect the kodachi-dashboard binary location.
     # IMPORTANT: We MUST use the full absolute path in the Exec= line because
     # the hooks directory is NOT guaranteed to be in the user's $PATH at login time.
-    # A bare "kodachi-autoshield" would silently fail to launch on boot.
+    # A bare "kodachi-dashboard" would silently fail to launch on boot.
     # Do NOT change this to a bare command name without ensuring PATH is set.
-    local welcome_bin=""
-    for candidate in "/usr/local/bin/kodachi-autoshield" \
-                     "/opt/kodachi/dashboard/hooks/kodachi-autoshield" \
-                     "$real_user_home/dashboard/hooks/kodachi-autoshield" \
-                     "$real_user_home/Desktop/dashboard/hooks/kodachi-autoshield" \
-                     "$real_user_home/k900/dashboard/hooks/kodachi-autoshield"; do
+    local dashboard_bin=""
+    for candidate in "/usr/local/bin/kodachi-dashboard" \
+                     "/opt/kodachi/dashboard/hooks/kodachi-dashboard" \
+                     "$PROJECT_ROOT/dashboard/hooks/kodachi-dashboard" \
+                     "$real_user_home/dashboard/hooks/kodachi-dashboard" \
+                     "$real_user_home/Desktop/dashboard/hooks/kodachi-dashboard" \
+                     "$real_user_home/k900/dashboard/hooks/kodachi-dashboard"; do
         if [[ -x "$candidate" ]]; then
-            welcome_bin="$candidate"
+            dashboard_bin="$candidate"
             break
         fi
     done
     # Fallback: check if it's in PATH (e.g. installed globally via /usr/local/bin)
-    if [[ -z "$welcome_bin" ]]; then
-        welcome_bin=$(command -v kodachi-autoshield 2>/dev/null || true)
+    if [[ -z "$dashboard_bin" ]]; then
+        dashboard_bin=$(command -v kodachi-dashboard 2>/dev/null || true)
     fi
-    if [[ -z "$welcome_bin" ]]; then
-        print_warning "kodachi-autoshield binary not found. Skipping Welcome autostart."
+    if [[ -z "$dashboard_bin" ]]; then
+        print_warning "kodachi-dashboard binary not found. Skipping Dashboard autostart."
         return 0
     fi
-    local welcome_dir
-    welcome_dir=$(dirname "$welcome_bin")
 
-    # Idempotent: skip if already configured with the correct full path.
-    if [[ -f "$autostart_file" ]] && grep -q "Exec=$welcome_bin" "$autostart_file" 2>/dev/null; then
-        print_info "Welcome autostart already configured: $autostart_file"
-        return 0
+    # Create launcher script if it doesn't exist
+    local launcher_script="/usr/local/bin/kodachi-dashboard-launcher"
+    if [[ ! -f "$launcher_script" ]]; then
+        print_info "Creating VM-compatible dashboard launcher script..."
+        cat > "$launcher_script" << 'LAUNCHER_EOF'
+#!/bin/bash
+# Kodachi Dashboard Launcher with VM detection
+# Auto-detects VM environments and passes --no-gpu flag
+
+VM_DETECTED=false
+
+# Check for VM indicators
+if [ -f /sys/class/dmi/id/sys_vendor ]; then
+    vendor=$(cat /sys/class/dmi/id/sys_vendor 2>/dev/null | tr '[:upper:]' '[:lower:]')
+    case "$vendor" in
+        *vmware*|*virtualbox*|*qemu*|*kvm*|*parallels*)
+            VM_DETECTED=true
+            ;;
+    esac
+fi
+
+if [ -f /sys/class/dmi/id/product_name ]; then
+    product=$(cat /sys/class/dmi/id/product_name 2>/dev/null | tr '[:upper:]' '[:lower:]')
+    case "$product" in
+        *virtual*|*vmware*|*virtualbox*|*qemu*|*kvm*)
+            VM_DETECTED=true
+            ;;
+    esac
+fi
+
+# Launch dashboard with appropriate flags
+if [ "$VM_DETECTED" = "true" ]; then
+    exec /usr/local/bin/kodachi-dashboard --no-gpu "$@"
+else
+    exec /usr/local/bin/kodachi-dashboard "$@"
+fi
+LAUNCHER_EOF
+        chmod 755 "$launcher_script"
+        print_success "Created launcher script: $launcher_script"
+    fi
+
+    # Repair permissions even when the launcher was pre-seeded by the image.
+    chmod 755 "$launcher_script" 2>/dev/null || true
+
+    # Repair permissions on other system binaries that may have been pre-seeded
+    for _bin in kodachi-fix-resolvconf dns-diag hysteria; do
+        [ -f "/usr/local/bin/$_bin" ] && chmod 755 "/usr/local/bin/$_bin" 2>/dev/null || true
+    done
+
+    cleanup_legacy_autostart_entries_for_user "$actual_user" "$real_user_home"
+    if [[ -f "$autostart_file" ]]; then
+        if grep -q "^Exec=/usr/local/bin/kodachi-dashboard-launcher$" "$autostart_file" 2>/dev/null; then
+            print_info "Refreshing Dashboard autostart entry for $actual_user: $autostart_file"
+        else
+            print_warning "Dashboard autostart entry is outdated for $actual_user. Replacing: $autostart_file"
+        fi
     fi
 
     mkdir -p "$autostart_dir"
-    # NOTE: Using unquoted EOF so $welcome_bin expands to the full absolute path.
+    # NOTE: Using unquoted EOF so variables expand to full absolute paths.
     # This is intentional — the autostart MUST contain the resolved path, not a variable.
     cat > "$autostart_file" << EOF
 [Desktop Entry]
 Type=Application
-Name=Kodachi AutoShield
-Comment=Boot-time auto-configuration wizard for privacy hardening
-GenericName=Privacy Configurator
-Exec=$welcome_bin
-TryExec=$welcome_bin
-Path=$welcome_dir
+Name=Kodachi Dashboard
+Comment=Kodachi Security Dashboard - launches at boot
+GenericName=Security Dashboard
+Exec=/usr/local/bin/kodachi-dashboard-launcher
+TryExec=$dashboard_bin
+Path=/opt/kodachi/dashboard/hooks
+Icon=/usr/share/icons/kodachi/kodachi32.png
 Terminal=false
 Hidden=false
 NoDisplay=false
 X-GNOME-Autostart-enabled=true
 X-GNOME-Autostart-Delay=3
 Categories=System;Security;
-Keywords=welcome;privacy;mac;hostname;timezone;harden;
+Keywords=kodachi;dashboard;security;privacy;autostart;
 StartupNotify=true
-StartupWMClass=kodachi-autoshield
+StartupWMClass=kodachi-dashboard
 EOF
     chmod 644 "$autostart_file"
     chown "$actual_user:$actual_user" "$autostart_dir" 2>/dev/null || true
     chown "$actual_user:$actual_user" "$autostart_file" 2>/dev/null || true
 
-    print_success "Welcome autostart enabled for $actual_user: $autostart_file"
+    print_success "Dashboard autostart enabled for $actual_user: $autostart_file"
     return 0
 }
 
-# NOTE: setup_welcome_autostart and create_welcome_desktop_shortcut are invoked
+# NOTE: setup_dashboard_autostart and create_welcome_desktop_shortcut are invoked
 # after detect_gui_environment() is defined (see below detect_gui_environment).
 
 # ── Welcome desktop shortcut ──────────────────────────────────────
@@ -785,6 +1042,20 @@ create_welcome_desktop_shortcut() {
     fi
     if ! detect_gui_environment; then
         print_info "No GUI desktop detected. Skipping Welcome desktop shortcut."
+        return 0
+    fi
+    local in_livebuild_chroot=false
+    local root_stat=""
+    local proc_root_stat=""
+    root_stat=$(stat -c %d:%i / 2>/dev/null || true)
+    proc_root_stat=$(stat -c %d:%i /proc/1/root/. 2>/dev/null || true)
+    if [[ -f "/tmp/live-build-chroot" || -f "/.debian-live-build" || -n "${LB_BASE:-}" ]]; then
+        in_livebuild_chroot=true
+    elif [[ -n "$root_stat" && -n "$proc_root_stat" && "$root_stat" != "$proc_root_stat" ]]; then
+        in_livebuild_chroot=true
+    fi
+    if [[ "$in_livebuild_chroot" == "true" ]]; then
+        print_info "Live-build chroot detected. Skipping Welcome desktop shortcut."
         return 0
     fi
 
@@ -802,7 +1073,7 @@ create_welcome_desktop_shortcut() {
     fi
     real_user_home=$(getent passwd "$actual_user" | cut -d: -f6)
     if [[ -z "$real_user_home" ]]; then
-        real_user_home="/home/$actual_user"
+        real_user_home=$(resolve_user_home "$actual_user")
     fi
 
     # Detect desktop directory (multilingual)
@@ -825,7 +1096,7 @@ create_welcome_desktop_shortcut() {
 
     # Detect install path
     local install_path=""
-    for path in "/opt/kodachi/dashboard/hooks" "$real_user_home/dashboard/hooks" "$real_user_home/Desktop/dashboard/hooks" "$real_user_home/k900/dashboard/hooks"; do
+    for path in "/opt/kodachi/dashboard/hooks" "$PROJECT_ROOT/dashboard/hooks" "$real_user_home/dashboard/hooks" "$real_user_home/Desktop/dashboard/hooks" "$real_user_home/k900/dashboard/hooks"; do
         if [[ -x "$path/kodachi-autoshield" ]]; then
             install_path="$path"
             break
@@ -933,13 +1204,31 @@ SYSEOF
 retry_download() {
     local url="$1"
     local output="$2"
-    local max_attempts=3
+    local max_attempts=4
     local attempt=1
+    local curl_exit=1
+    local -a curl_args
+
+    curl_args=(
+        --fail
+        --location
+        --show-error
+        --connect-timeout 30
+        --max-time 180
+        --retry 2
+        --retry-delay 2
+        --retry-connrefused
+    )
+
+    if curl --help all 2>/dev/null | grep -q -- '--retry-all-errors'; then
+        curl_args+=(--retry-all-errors)
+    fi
 
     while [[ $attempt -le $max_attempts ]]; do
         print_verbose "Download attempt $attempt/$max_attempts: $url"
+        rm -f "$output" 2>/dev/null || true
 
-        if curl -LS --connect-timeout 30 --max-time 120 --progress-bar -o "$output" "$url" 2>&1; then
+        if curl "${curl_args[@]}" --progress-bar -o "$output" "$url"; then
             if [[ -f "$output" ]] && [[ -s "$output" ]]; then
                 print_verbose "Download successful on attempt $attempt"
                 return 0
@@ -949,7 +1238,7 @@ retry_download() {
             fi
         fi
 
-        local curl_exit=$?
+        curl_exit=$?
         if [[ $curl_exit -eq 6 ]]; then
             print_verbose "DNS resolution failure detected (curl error 6)"
             if [[ $attempt -lt $max_attempts ]]; then
@@ -1024,7 +1313,7 @@ get_installed_version() {
     local version=""
 
     # Method 1: Direct version command
-    version=$("$binary" $version_flag 2>&1 | grep -oP '([0-9]+\.)+[0-9]+' | head -1)
+    version=$("$binary" "$version_flag" 2>&1 | grep -oP '([0-9]+\.)+[0-9]+' | head -1)
 
     # Method 2: For binaries that don't follow standard patterns
     if [[ -z "$version" ]]; then
@@ -1114,7 +1403,7 @@ ADVANCED_PACKAGES="jq git build-essential rng-tools-debian haveged ccze yamllint
 MONITORING_PACKAGES="btop iftop nethogs ncdu nload iperf3 speedtest-cli"
 
 # GUI-only packages - only installed on systems with desktop environments
-GUI_PACKAGES="bleachbit kitty fontconfig fonts-noto-color-emoji conky-all alsa-utils pulseaudio pulseaudio-utils libnotify-bin xclip xsel mpv xterm network-manager"
+GUI_PACKAGES="bleachbit kitty fontconfig fonts-noto-color-emoji fonts-liberation fonts-liberation2 conky-all alsa-utils pulseaudio pulseaudio-utils libnotify-bin xclip xsel mpv xterm network-manager"
 
 # Packages that require contrib/non-free repositories
 CONTRIB_PACKAGES="shadowsocks-v2ray-plugin v2ray"
@@ -1267,8 +1556,8 @@ detect_gui_environment() {
     return 1  # No GUI detected
 }
 
-# Now that detect_gui_environment() is defined, invoke the welcome setup functions.
-setup_welcome_autostart
+# Now that detect_gui_environment() is defined, invoke the dashboard setup functions.
+setup_dashboard_autostart
 create_welcome_desktop_shortcut
 
 # Build GUI package list for current system.
@@ -1398,7 +1687,7 @@ test_and_fix_dns() {
         real_user_home=$(getent passwd "$SUDO_USER" | cut -d: -f6)
         # Fallback if getent failed
         if [[ -z "$real_user_home" ]]; then
-            real_user_home="/home/$SUDO_USER"
+            real_user_home=$(resolve_user_home "$SUDO_USER")
         fi
     else
         real_user_home="$HOME"
@@ -1410,6 +1699,7 @@ test_and_fix_dns() {
     # If not in PATH, check standard installation directories
     if [[ -z "$dns_switch_binary" ]]; then
         local possible_locations=(
+            "$PROJECT_ROOT/dashboard/hooks/dns-switch"             # Script-relative installation
             "$real_user_home/dashboard/hooks/dns-switch"           # Default installation
             "$real_user_home/Desktop/dashboard/hooks/dns-switch"   # Desktop installation
             "$real_user_home/k900/dashboard/hooks/dns-switch"      # Development installation
@@ -1588,6 +1878,7 @@ EOF
     else
         # Check standard installation directories dynamically using $HOME
         local possible_locations=(
+            "$PROJECT_ROOT/dashboard/hooks/dns-switch"       # Script-relative installation
             "$HOME/dashboard/hooks/dns-switch"           # Default installation
             "$HOME/Desktop/dashboard/hooks/dns-switch"   # Desktop installation
             "$HOME/k900/dashboard/hooks/dns-switch"      # Development installation
@@ -1904,7 +2195,7 @@ install_qrencode_github() {
     cd "$temp_dir" || return 1
 
     # Download source from GitHub (using fixed archive URL)
-    if curl -L --connect-timeout 30 --max-time 120 -O "$url" 2>/dev/null; then
+    if retry_download "$url" "$temp_dir/v${QRENCODE_VERSION}.tar.gz"; then
         echo "Downloaded QRencode source from GitHub"
 
         # Extract and compile using cmake (GitHub archives don't include ./configure)
@@ -1981,7 +2272,7 @@ install_v2ray_plugin_github() {
     echo "Downloading v2ray-plugin v${V2RAY_PLUGIN_VERSION}..."
     mkdir -p "$temp_dir"
 
-    if curl -LS --connect-timeout 30 --max-time 120 --progress-bar -o "$temp_dir/v2ray-plugin.tar.gz" "$url"; then
+    if retry_download "$url" "$temp_dir/v2ray-plugin.tar.gz"; then
         echo "Extracting v2ray-plugin..."
         tar -xzf "$temp_dir/v2ray-plugin.tar.gz" -C "$temp_dir"
 
@@ -2094,7 +2385,7 @@ if [[ -n "$SUDO_USER" ]]; then
     REAL_USER_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
     # Fallback if getent failed
     if [[ -z "$REAL_USER_HOME" ]]; then
-        REAL_USER_HOME="/home/$SUDO_USER"
+        REAL_USER_HOME=$(resolve_user_home "$SUDO_USER")
     fi
 else
     REAL_USER_HOME="$HOME"
@@ -2116,6 +2407,7 @@ BINARIES_LOCATION=""
 # Possible binary locations
 BINARY_LOCATIONS=(
     "/opt/kodachi/dashboard/hooks"
+    "$PROJECT_ROOT/dashboard/hooks"
     "$REAL_USER_HOME/dashboard/hooks"
     "$REAL_USER_HOME/Desktop/dashboard/hooks"
     "$REAL_USER_HOME/k900/dashboard/hooks"
@@ -2173,6 +2465,15 @@ else
     print_info "Found $FOUND_COUNT required binaries"
 fi
 
+KODACHI_RUN_MODE="install"
+if detect_kodachi_update_mode "$REAL_USER_HOME"; then
+    KODACHI_RUN_MODE="update"
+    print_warning "Existing Kodachi installation detected."
+    print_info "Changing mode to UPDATE: refreshing managed files and removing outdated startup entries."
+else
+    print_info "No previous Kodachi dependency footprint detected. Running in install mode."
+fi
+
 echo ""
 
 print_step "Ensuring AI model path compatibility..."
@@ -2198,6 +2499,7 @@ echo -e "${CYAN}╚════════════════════�
 echo ""
 
 print_info "Installation mode: $INSTALL_MODE"
+print_info "Run mode: $KODACHI_RUN_MODE"
 if [[ "$AUTO_YES" == "true" ]]; then
     print_info "Auto mode enabled: All prompts will default to YES"
 fi
@@ -2225,7 +2527,7 @@ if systemctl is-active --quiet dnscrypt-proxy 2>/dev/null; then
     print_info "DNSCrypt Proxy detected running (will be preserved)"
 fi
 
-if systemctl is-active --quiet tor 2>/dev/null || pgrep -x tor >/dev/null 2>&1; then
+if systemctl is-active --quiet tor 2>/dev/null || process_running_current_root "tor"; then
     INITIAL_TOR_RUNNING=true
     print_info "Tor detected running (will be preserved)"
 fi
@@ -2235,20 +2537,20 @@ if systemctl is-active --quiet pihole-FTL 2>/dev/null; then
     print_info "Pi-hole detected running (will be preserved)"
 fi
 
-if systemctl is-active --quiet redsocks 2>/dev/null || pgrep -x redsocks >/dev/null 2>&1; then
+if systemctl is-active --quiet redsocks 2>/dev/null || process_running_current_root "redsocks"; then
     INITIAL_REDSOCKS_RUNNING=true
     print_info "Redsocks detected running (will be preserved)"
 fi
 
-if systemctl is-active --quiet cups 2>/dev/null || pgrep -x cupsd >/dev/null 2>&1; then
+if systemctl is-active --quiet cups 2>/dev/null || process_running_current_root "cupsd"; then
     INITIAL_CUPS_RUNNING=true
 fi
 
-if systemctl is-active --quiet avahi-daemon 2>/dev/null || pgrep -x avahi-daemon >/dev/null 2>&1; then
+if systemctl is-active --quiet avahi-daemon 2>/dev/null || process_running_current_root "avahi-daemon"; then
     INITIAL_AVAHI_RUNNING=true
 fi
 
-if pgrep -x ntpd >/dev/null 2>&1 || systemctl is-active --quiet ntp 2>/dev/null; then
+if process_running_current_root "ntpd" || systemctl is-active --quiet ntp 2>/dev/null; then
     INITIAL_NTP_RUNNING=true
 fi
 
@@ -2368,21 +2670,21 @@ remove_kicksecure_ramwipe_and_restore_initramfs() {
     local has_ramwipe=false
     local has_dracut=false
     local has_dracut_core=false
-    local packages_to_remove=""
+    local packages_to_remove=()
 
     if check_package_installed "ram-wipe"; then
         has_ramwipe=true
-        packages_to_remove="$packages_to_remove ram-wipe"
+        packages_to_remove+=("ram-wipe")
     fi
 
     if check_package_installed "dracut"; then
         has_dracut=true
-        packages_to_remove="$packages_to_remove dracut"
+        packages_to_remove+=("dracut")
     fi
 
     if check_package_installed "dracut-core"; then
         has_dracut_core=true
-        packages_to_remove="$packages_to_remove dracut-core"
+        packages_to_remove+=("dracut-core")
     fi
 
     # If no packages found, nothing to do
@@ -2395,14 +2697,14 @@ remove_kicksecure_ramwipe_and_restore_initramfs() {
     print_step "Removing Kicksecure RAM Wipe Components"
     echo ""
     print_info "Kodachi has built-in RAM wipe via 'health-control memory-wipe'"
-    print_info "Removing redundant Kicksecure packages:$packages_to_remove"
+    print_info "Removing redundant Kicksecure packages: ${packages_to_remove[*]}"
     echo ""
     print_warning "To keep Kicksecure RAM wipe, use: --force-kicksecure-ramwipe"
     echo ""
 
     # Purge the packages
     export DEBIAN_FRONTEND=noninteractive
-    if apt-get purge -y$packages_to_remove 2>&1 | grep -E "(Removing|Purging)"; then
+    if apt-get purge -y "${packages_to_remove[@]}" 2>&1 | grep -E "(Removing|Purging)"; then
         print_success "Removed Kicksecure RAM wipe packages"
     else
         print_warning "Some packages may not have been installed"
@@ -3006,7 +3308,7 @@ install_hysteria2() {
     echo "Downloading hysteria2..."
     if retry_download "$url" "/tmp/hysteria"; then
         mv /tmp/hysteria /usr/local/bin/hysteria
-        chmod +x /usr/local/bin/hysteria
+        chmod 755 /usr/local/bin/hysteria
         print_success "hysteria2 installed successfully"
     else
         print_error "Failed to download hysteria2"
@@ -3690,9 +3992,9 @@ install_pihole() {
     sleep 3
 
     # Clean up any orphaned curl processes from Pi-hole installation
-    if pgrep -f "curl.*pi-hole\|curl.*pihole" &>/dev/null; then
+    if [ -n "$(list_matching_pids_current_root f 'curl.*pi-hole|curl.*pihole')" ]; then
         print_info "Cleaning up Pi-hole installer background processes..."
-        pkill -9 -f "curl.*pi-hole\|curl.*pihole" 2>/dev/null || true
+        kill_matching_processes_current_root "KILL" "f" "curl.*pi-hole|curl.*pihole" 2>/dev/null || true
         sleep 1
     fi
 
@@ -4133,7 +4435,7 @@ elif [[ "$INSTALL_MODE" == "interactive" ]]; then
 
         GUI_PACKAGES_TO_INSTALL="$(get_gui_packages_for_install)"
         if [[ "$GUI_PACKAGES_TO_INSTALL" == *"conky-all"* ]]; then
-            GUI_MANUAL="  sudo apt-get install bleachbit kitty fontconfig fonts-noto-color-emoji conky-all \\
+            GUI_MANUAL="  sudo apt-get install bleachbit kitty fontconfig fonts-noto-color-emoji fonts-liberation fonts-liberation2 conky-all \\
     alsa-utils pulseaudio pulseaudio-utils libnotify-bin xclip xsel mpv xterm network-manager"
         else
             print_info "Terminal/headless mode detected: skipping Conky package (conky-all)."
@@ -4854,24 +5156,24 @@ stop_and_disable_service() {
     if [ "$in_chroot" = true ]; then
         # Kill process first in chroot
         if [[ -n "$process_name" ]]; then
-            if pgrep -x "$process_name" >/dev/null 2>&1; then
+            if process_running_current_root "$process_name"; then
                 echo -e "  ${YELLOW}!${NC} Found running process: $process_name"
 
                 # Force kill immediately in chroot (no grace period needed)
-                if pkill -9 "$process_name" 2>/dev/null; then
+                if kill_matching_processes_current_root "KILL" "x" "$process_name"; then
                     echo -e "  ${GREEN}✓${NC} Force killed $process_name"
                     sleep 1
                 fi
 
                 # Verify stopped
-                if ! pgrep -x "$process_name" >/dev/null 2>&1; then
+                if ! process_running_current_root "$process_name"; then
                     echo -e "  ${GREEN}✓${NC} Process $process_name stopped successfully"
                     killed_process=true
                 else
                     echo -e "  ${RED}✗${NC} Failed to stop $process_name"
                 fi
             else
-                echo -e "  ${BLUE}ℹ${NC} No $process_name processes found"
+                echo -e "  ${BLUE}ℹ${NC} No $process_name processes found in current root"
                 killed_process=true
             fi
         fi
@@ -4911,25 +5213,25 @@ stop_and_disable_service() {
 
         # Kill any remaining processes (fallback for non-systemd services)
         if [[ -n "$process_name" ]]; then
-            if pgrep -x "$process_name" >/dev/null 2>&1; then
+            if process_running_current_root "$process_name"; then
                 echo -e "  ${YELLOW}!${NC} Found running process: $process_name"
 
                 # Try graceful termination first
-                if pkill -TERM "$process_name" 2>/dev/null; then
+                if kill_matching_processes_current_root "TERM" "x" "$process_name"; then
                     echo -e "  ${GREEN}✓${NC} Sent TERM signal to $process_name"
                     sleep 2
                 fi
 
                 # Force kill if still running
-                if pgrep -x "$process_name" >/dev/null 2>&1; then
-                    if pkill -9 "$process_name" 2>/dev/null; then
+                if process_running_current_root "$process_name"; then
+                    if kill_matching_processes_current_root "KILL" "x" "$process_name"; then
                         echo -e "  ${GREEN}✓${NC} Force killed $process_name processes"
                     fi
                 fi
 
                 # Verify stopped
                 sleep 1
-                if ! pgrep -x "$process_name" >/dev/null 2>&1; then
+                if ! process_running_current_root "$process_name"; then
                     echo -e "  ${GREEN}✓${NC} Process $process_name successfully stopped"
                     killed_process=true
                 else
@@ -5008,6 +5310,12 @@ echo ""
 print_step "Processing Microsocks (routing-switch control)..."
 echo -e "  ${CYAN}Note:${NC} Microsocks will be managed by routing-switch"
 stop_and_disable_service "microsocks.service" "Microsocks SOCKS5 Proxy" "microsocks"
+
+# Stop and disable HAProxy - will be managed by tor-switch
+echo ""
+print_step "Processing HAProxy (tor-switch control)..."
+echo -e "  ${CYAN}Note:${NC} HAProxy will be managed by tor-switch"
+stop_and_disable_service "haproxy.service" "HAProxy Load Balancer" "haproxy"
 
 # Stop and disable Avahi daemon - privacy leak (broadcasts hostname/services)
 echo ""
@@ -5136,7 +5444,7 @@ if command -v pihole &>/dev/null || systemctl list-unit-files 2>/dev/null | grep
         print_info "It's currently running on ports 53 (DNS), 80 (HTTP), and 443 (HTTPS)."
         echo ""
 
-        read -p "$(echo -e ${CYAN}"Do you want to keep Pi-hole running? [Y/n]: "${NC})" -n 1 -r
+        read -p "$(echo -e "${CYAN}Do you want to keep Pi-hole running? [Y/n]: ${NC}")" -n 1 -r
         echo ""
 
         if [[ $REPLY =~ ^[Yy]$ ]]; then
@@ -5170,11 +5478,11 @@ echo ""
 print_info "Exim4 is not needed for Kodachi and opens port 25 unnecessarily"
 
 # Check if exim4 processes are running (regardless of package status)
-if pgrep -x "exim4" >/dev/null 2>&1; then
+if process_running_current_root "exim4"; then
     print_step "Killing exim4 processes..."
-    pkill -9 exim4 2>/dev/null || true
+    kill_matching_processes_current_root "KILL" "x" "exim4" 2>/dev/null || true
     sleep 1
-    if ! pgrep -x "exim4" >/dev/null 2>&1; then
+    if ! process_running_current_root "exim4"; then
         echo -e "  ${GREEN}✓${NC} Killed all exim4 processes"
     else
         echo -e "  ${YELLOW}!${NC} Some exim4 processes may still be running"
@@ -5203,22 +5511,22 @@ if dpkg -l 2>/dev/null | grep -q "^ii.*exim4"; then
     fi
 
     # Kill any remaining exim4 processes
-    if pgrep -x "exim4" >/dev/null 2>&1; then
+    if process_running_current_root "exim4"; then
         echo -e "  ${YELLOW}!${NC} Found remaining exim4 processes - killing..."
-        pkill -9 "exim4" 2>/dev/null || true
+        kill_matching_processes_current_root "KILL" "x" "exim4" 2>/dev/null || true
         sleep 1
-        if ! pgrep -x "exim4" >/dev/null 2>&1; then
+        if ! process_running_current_root "exim4"; then
             echo -e "  ${GREEN}✓${NC} Killed all exim4 processes"
         fi
     fi
 
     # Verify exim4 is gone
-    if ! dpkg -l 2>/dev/null | grep -q "^ii.*exim4" && ! pgrep -x "exim4" >/dev/null 2>&1; then
+    if ! dpkg -l 2>/dev/null | grep -q "^ii.*exim4" && ! process_running_current_root "exim4"; then
         echo -e "  ${GREEN}✓${NC} exim4 completely removed"
     fi
 else
     # Check if process is running without package
-    if pgrep -x "exim4" >/dev/null 2>&1; then
+    if process_running_current_root "exim4"; then
         echo -e "  ${YELLOW}!${NC} exim4 process running but package not installed (killed above)"
     else
         echo -e "  ${GREEN}✓${NC} exim4 not installed (good!)"
@@ -5295,7 +5603,7 @@ echo ""
 print_step "Verifying processes are stopped..."
 STILL_RUNNING=()
 for proc in cupsd tor ss-server ss-local ss-redir redsocks microsocks exim4 avahi-daemon dnscrypt-proxy ntpd systemd-timesyncd pihole-FTL; do
-    if pgrep -x "$proc" >/dev/null 2>&1; then
+    if process_running_current_root "$proc"; then
         STILL_RUNNING+=("$proc")
     fi
 done
@@ -5318,8 +5626,8 @@ echo ""
 # Clean up any orphaned background processes before port check
 print_step "Cleaning up orphaned background processes..."
 # Kill any remaining curl processes that might be from installations
-if pgrep -f "curl.*install\|curl.*github\|curl.*pi-hole" &>/dev/null; then
-    pkill -9 -f "curl.*install\|curl.*github\|curl.*pi-hole" 2>/dev/null || true
+if [ -n "$(list_matching_pids_current_root f 'curl.*install|curl.*github|curl.*pi-hole')" ]; then
+    kill_matching_processes_current_root "KILL" "f" "curl.*install|curl.*github|curl.*pi-hole" 2>/dev/null || true
     sleep 1
     echo -e "  ${GREEN}✓${NC} Cleaned up orphaned curl processes"
 else
@@ -5342,25 +5650,33 @@ HOOKS_DIR=""
 GLOBAL_LAUNCHER_PATH=""
 
 # Search for hooks directory in common locations (system-wide first)
-for search_dir in \
-    "/opt/kodachi/dashboard/hooks" \
-    "/home/*/k900/dashboard/hooks" \
-    "/home/*/dashboard/hooks" \
-    "/home/*/Desktop/dashboard/hooks" \
-    "/home/*/Desktop/k900/dashboard/hooks" \
-    "$HOME/k900/dashboard/hooks" \
-    "$HOME/dashboard/hooks" \
-    "$HOME/Desktop/dashboard/hooks" \
-    "$HOME/Desktop/k900/dashboard/hooks"; do
+search_hook_dirs=(
+    "/opt/kodachi/dashboard/hooks"
+)
+if [[ -n "$PROJECT_ROOT" ]]; then
+    search_hook_dirs+=("$PROJECT_ROOT/dashboard/hooks")
+fi
+search_hook_dirs+=(
+    "$HOME/k900/dashboard/hooks"
+    "$HOME/dashboard/hooks"
+    "$HOME/Desktop/dashboard/hooks"
+    "$HOME/Desktop/k900/dashboard/hooks"
+)
+while IFS= read -r user_home; do
+    search_hook_dirs+=(
+        "$user_home/k900/dashboard/hooks"
+        "$user_home/dashboard/hooks"
+        "$user_home/Desktop/dashboard/hooks"
+        "$user_home/Desktop/k900/dashboard/hooks"
+    )
+done < <(list_system_user_homes)
 
-    # Expand glob pattern
-    for dir in $search_dir; do
-        if [[ -d "$dir" ]] && [[ -f "$dir/global-launcher" ]]; then
-            HOOKS_DIR="$dir"
-            GLOBAL_LAUNCHER_PATH="$dir/global-launcher"
-            break 2
-        fi
-    done
+for dir in "${search_hook_dirs[@]}"; do
+    if [[ -d "$dir" ]] && [[ -f "$dir/global-launcher" ]]; then
+        HOOKS_DIR="$dir"
+        GLOBAL_LAUNCHER_PATH="$dir/global-launcher"
+        break
+    fi
 done
 
 # If not found, check current directory
@@ -5498,19 +5814,20 @@ install_welcome_commands() {
     # Search paths in priority order
     local search_paths=(
         "$HOOKS_DIR/binaries-update-scripts"
+        "$PROJECT_ROOT/dashboard/hooks/binaries-update-scripts"
         "$HOME/dashboard/hooks/binaries-update-scripts"
         "$HOME/k900/dashboard/hooks/binaries-update-scripts"
     )
 
-    # Add glob pattern for other users' dashboard/hooks
-    for user_home in /home/*; do
+    # Add other users' dashboard/hooks dynamically (no fixed /home layout)
+    while IFS= read -r user_home; do
         if [[ -d "$user_home/dashboard/hooks/binaries-update-scripts" ]]; then
             search_paths+=("$user_home/dashboard/hooks/binaries-update-scripts")
         fi
         if [[ -d "$user_home/k900/dashboard/hooks/binaries-update-scripts" ]]; then
             search_paths+=("$user_home/k900/dashboard/hooks/binaries-update-scripts")
         fi
-    done
+    done < <(list_system_user_homes)
 
     # Find the scripts
     for base_dir in "${search_paths[@]}"; do
@@ -5612,19 +5929,20 @@ install_oniux_launcher() {
     # Search paths in priority order
     local search_paths=(
         "$HOOKS_DIR/binaries-update-scripts"
+        "$PROJECT_ROOT/dashboard/hooks/binaries-update-scripts"
         "$HOME/dashboard/hooks/binaries-update-scripts"
         "$HOME/k900/dashboard/hooks/binaries-update-scripts"
     )
 
-    # Add glob pattern for other users' dashboard/hooks
-    for user_home in /home/*; do
+    # Add other users' dashboard/hooks dynamically (no fixed /home layout)
+    while IFS= read -r user_home; do
         if [[ -d "$user_home/dashboard/hooks/binaries-update-scripts" ]]; then
             search_paths+=("$user_home/dashboard/hooks/binaries-update-scripts")
         fi
         if [[ -d "$user_home/k900/dashboard/hooks/binaries-update-scripts" ]]; then
             search_paths+=("$user_home/k900/dashboard/hooks/binaries-update-scripts")
         fi
-    done
+    done < <(list_system_user_homes)
 
     # Find the script in package
     for base_dir in "${search_paths[@]}"; do
@@ -5806,7 +6124,7 @@ if systemctl is-active --quiet pihole-FTL 2>/dev/null && command -v pihole &>/de
 
     # Clean up any curl processes spawned by pihole commands
     sleep 1
-    pkill -9 -f "curl.*pi-hole|curl.*pihole|curl.*ftl" 2>/dev/null || true
+    kill_matching_processes_current_root "KILL" "f" "curl.*pi-hole|curl.*pihole|curl.*ftl" 2>/dev/null || true
 fi
 
 # Final check for Pi-hole installation
@@ -5839,6 +6157,7 @@ deploy_kodachi_binaries_globally() {
 
     local candidates=(
         "/opt/kodachi/dashboard/hooks"
+        "$PROJECT_ROOT/dashboard/hooks"
     )
     if [[ -n "$SUDO_USER" ]]; then
         local sudo_home
@@ -6025,7 +6344,9 @@ cleanup_github_temp_files() {
     )
 
     for file_pattern in "${temp_files[@]}"; do
-        if ls ${file_pattern} 2>/dev/null 1>&2; then
+        if compgen -G "$file_pattern" > /dev/null; then
+            # Intentional unquoted expansion: remove every file matching the trusted temp glob pattern.
+            # shellcheck disable=SC2086
             rm -rf ${file_pattern} 2>/dev/null && cleaned_files=$((cleaned_files + 1))
         fi
     done
@@ -6043,11 +6364,11 @@ cleanup_github_temp_files() {
     )
 
     for pattern in "${kodachi_patterns[@]}"; do
-        find /tmp -maxdepth 1 -name "$pattern" 2>/dev/null | while read temp_file; do
+        while IFS= read -r temp_file; do
             if [[ -f "$temp_file" ]] || [[ -d "$temp_file" ]]; then
                 rm -rf "$temp_file" 2>/dev/null && cleaned_files=$((cleaned_files + 1))
             fi
-        done
+        done < <(find /tmp -maxdepth 1 -name "$pattern" 2>/dev/null)
     done
 
     if [[ $cleaned_files -gt 0 ]]; then
@@ -6070,6 +6391,7 @@ BINARY_COUNT=0
 # Build locations list: system-wide, real user's home (via SUDO_USER), $HOME fallback, and /usr/local/bin
 INSTALL_LOCATIONS=(
     "/opt/kodachi/dashboard/hooks"
+    "$PROJECT_ROOT/dashboard/hooks"
 )
 if [[ -n "$SUDO_USER" ]]; then
     _real_home=$(getent passwd "$SUDO_USER" | cut -d: -f6)
@@ -6098,10 +6420,12 @@ for location in "${INSTALL_LOCATIONS[@]}"; do
                 local_count=$((local_count + 1))
             fi
         done
-        if [ $local_count -gt 0 ]; then
+        if [ $local_count -gt $BINARY_COUNT ]; then
             BINARY_COUNT=$local_count
             FOUND_LOCATION="$location"
-            break  # Found install location, stop checking
+        fi
+        if [ $BINARY_COUNT -ge 3 ]; then
+            break  # All core binaries found, no need to continue
         fi
     fi
 done

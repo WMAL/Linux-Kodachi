@@ -88,13 +88,79 @@ print_highlight() { echo -e "${MAGENTA}${BOLD}$1${NC}"; }
 # Configuration
 CDN_BASE="https://www.kodachi.cloud/apps/os/install"
 KODACHI_VERSION="9.0.1"
-CONKY_PACKAGE_LOCAL_SOURCE="$HOME/k900/livebuild-assets/conky"
+SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"
+if [[ -n "$SCRIPT_SOURCE" ]] && [[ -e "$SCRIPT_SOURCE" ]]; then
+    SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_SOURCE")" && pwd)"
+else
+    SCRIPT_DIR="$(pwd)"
+fi
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." 2>/dev/null && pwd || true)"
+CONKY_PACKAGE_LOCAL_SOURCE="$PROJECT_ROOT/livebuild-assets/conky"
 CONKY_CONFIG_BASE="${XDG_CONFIG_HOME:-$HOME/.config}"
 CONKY_INSTALL_DIR="$CONKY_CONFIG_BASE/kodachi/conky"
 CONKY_AUTOSTART_FILE="$CONKY_CONFIG_BASE/autostart/kodachi-conky.desktop"
 CONKY_SETUP_DONE=false
 PERMISSION_GUARD_SKIPPED=false
 SKIPPED_COUNT=0
+INSTALL_IS_UPDATE=false
+MANAGED_BINARIES_FILE=""
+
+get_desktop_dir() {
+    local desktop_dir="$HOME/Desktop"
+    if command -v xdg-user-dir >/dev/null 2>&1; then
+        local xdg_desktop
+        xdg_desktop=$(xdg-user-dir DESKTOP 2>/dev/null || true)
+        if [[ -n "$xdg_desktop" ]]; then
+            desktop_dir="$xdg_desktop"
+        fi
+    fi
+    echo "$desktop_dir"
+}
+
+get_fallback_hooks_dir() {
+    local candidates=()
+
+    if [[ -n "$PROJECT_ROOT" ]]; then
+        candidates+=("$PROJECT_ROOT/dashboard/hooks")
+    fi
+    candidates+=(
+        "$HOME/dashboard/hooks"
+        "$HOME/k900/dashboard/hooks"
+        "$HOME/Desktop/dashboard/hooks"
+    )
+
+    local candidate=""
+    for candidate in "${candidates[@]}"; do
+        if [[ -d "$candidate" ]]; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+
+    # Last resort: keep old default under home but without assuming repo layout.
+    echo "$HOME/dashboard/hooks"
+}
+
+detect_existing_installation_mode() {
+    local marker=""
+    local markers=(
+        "$INSTALL_PATH/kodachi-dashboard"
+        "$INSTALL_PATH/health-control"
+        "$INSTALL_PATH/config"
+        "$INSTALL_PATH/results/signatures"
+        "$INSTALL_PATH/.kodachi-managed-binaries.list"
+    )
+
+    for marker in "${markers[@]}"; do
+        if [[ -e "$marker" ]]; then
+            INSTALL_IS_UPDATE=true
+            return 0
+        fi
+    done
+
+    INSTALL_IS_UPDATE=false
+    return 1
+}
 
 # Detect whether this system has a GUI desktop environment (XFCE/GNOME/etc.)
 detect_gui_environment() {
@@ -142,7 +208,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --desktop)
-            INSTALL_PATH="$HOME/Desktop/dashboard/hooks"
+            INSTALL_PATH="$(get_desktop_dir)/dashboard/hooks"
             shift
             ;;
         --version)
@@ -196,11 +262,7 @@ if [[ -z "$INSTALL_PATH" ]]; then
             print_success "Created /opt/kodachi/ owned by $(whoami)"
         else
             print_warning "Could not create /opt/kodachi/ — falling back to home directory"
-            if [[ -x "$HOME/k900/dashboard/hooks/kodachi-dashboard" ]]; then
-                INSTALL_PATH="$HOME/k900/dashboard/hooks"
-            else
-                INSTALL_PATH="$HOME/dashboard/hooks"
-            fi
+            INSTALL_PATH="$(get_fallback_hooks_dir)"
         fi
     elif [[ ! -w "/opt/kodachi/dashboard/hooks" ]]; then
         # Directory exists but isn't writable — fix ownership
@@ -209,13 +271,17 @@ if [[ -z "$INSTALL_PATH" ]]; then
             print_success "Fixed ownership of /opt/kodachi/"
         else
             print_warning "Cannot write to /opt/kodachi/ — falling back to home directory"
-            if [[ -x "$HOME/k900/dashboard/hooks/kodachi-dashboard" ]]; then
-                INSTALL_PATH="$HOME/k900/dashboard/hooks"
-            else
-                INSTALL_PATH="$HOME/dashboard/hooks"
-            fi
+            INSTALL_PATH="$(get_fallback_hooks_dir)"
         fi
     fi
+fi
+
+MANAGED_BINARIES_FILE="$INSTALL_PATH/.kodachi-managed-binaries.list"
+if detect_existing_installation_mode; then
+    print_warning "Existing Kodachi installation detected at: $INSTALL_PATH"
+    print_info "Changing mode to UPDATE: replacing managed binaries and refreshing startup entries."
+else
+    print_info "No previous Kodachi installation detected. Running in install mode."
 fi
 
 print_info "Installing Kodachi binaries to: $INSTALL_PATH"
@@ -384,8 +450,31 @@ stop_permission_guard_if_running() {
             fi
         fi
 
-        # If we reach here, need sudo to stop
-        print_error "Cannot stop permission-guard daemon - requires sudo privileges"
+        # Non-sudo stop failed — try with interactive sudo (prompts for password)
+        print_step "Requires sudo privileges to stop daemon..."
+        if sudo "$pg_binary" --stop-daemon &>/dev/null; then
+            sleep 2  # Wait for daemon to fully stop
+
+            # Verify it actually stopped (same 3-method check)
+            if sudo -n $pg_binary --daemon-status --json 2>/dev/null | grep -q '"running":false'; then
+                print_success "Successfully stopped permission-guard daemon (via sudo)"
+                print_info "The daemon will automatically start again when you log in"
+                return 0
+            elif $pg_binary --daemon-status --json 2>/dev/null | grep -q '"running":false'; then
+                print_success "Successfully stopped permission-guard daemon (via sudo)"
+                print_info "The daemon will automatically start again when you log in"
+                return 0
+            elif ! pgrep -f "permission-guard.*daemon" >/dev/null 2>&1; then
+                print_success "Successfully stopped permission-guard daemon (via sudo)"
+                print_info "The daemon will automatically start again when you log in"
+                return 0
+            else
+                print_error "Sudo stop command succeeded but daemon is still running"
+            fi
+        fi
+
+        # If we reach here, both non-sudo and sudo stop failed
+        print_error "Cannot stop permission-guard daemon"
         echo ""
 
         # Non-interactive fallback (e.g., curl ... | bash with no TTY)
@@ -615,34 +704,99 @@ drain_install_path_processes() {
     print_success "Hooks path is clear; no process is holding binaries"
 }
 
-# Remove only target binaries (top-level files) before copying replacements
+# Remove managed binaries before copy and prune stale managed files from older releases.
 remove_old_hook_binaries() {
-    print_step "Removing old hook binaries before copy..."
+    print_step "Removing old managed binaries before copy..."
 
     local binary_file=""
     local binary_name=""
+    local target=""
     local removed=0
+    local stale_removed=0
+    local -A new_binary_map=()
+    local -A removal_targets=()
 
+    # Always replace binaries shipped by the current package.
     for binary_file in "$EXTRACT_DIR/binaries/"*; do
-        if [[ -f "$binary_file" ]]; then
-            binary_name="$(basename "$binary_file")"
-            # Skip permission-guard when user chose to keep it running
-            if [[ "$PERMISSION_GUARD_SKIPPED" == "true" ]] && [[ "$binary_name" == "permission-guard" ]]; then
-                continue
-            fi
-            if [[ -f "$INSTALL_PATH/$binary_name" ]]; then
-                rm -f "$INSTALL_PATH/$binary_name" 2>/dev/null || true
-                if [[ -f "$INSTALL_PATH/$binary_name" ]] && sudo -n true 2>/dev/null; then
-                    sudo -n rm -f "$INSTALL_PATH/$binary_name" 2>/dev/null || true
-                fi
-                if [[ ! -f "$INSTALL_PATH/$binary_name" ]]; then
-                    removed=$((removed + 1))
-                fi
-            fi
+        [[ -f "$binary_file" ]] || continue
+        binary_name="$(basename "$binary_file")"
+        new_binary_map["$binary_name"]=1
+        target="$INSTALL_PATH/$binary_name"
+        if [[ -f "$target" ]]; then
+            removal_targets["$target"]=1
         fi
     done
 
-    print_success "Removed $removed old binary file(s) from hooks"
+    # Prune stale managed binaries from previous versions (manifest-driven).
+    if [[ -f "$MANAGED_BINARIES_FILE" ]]; then
+        while IFS= read -r binary_name || [[ -n "$binary_name" ]]; do
+            [[ -n "$binary_name" ]] || continue
+            [[ "$binary_name" == \#* ]] && continue
+            [[ -n "${new_binary_map[$binary_name]:-}" ]] && continue
+            target="$INSTALL_PATH/$binary_name"
+            if [[ -f "$target" ]]; then
+                removal_targets["$target"]=1
+            fi
+        done < "$MANAGED_BINARIES_FILE"
+    fi
+
+    # Backward compatibility: if no manifest existed, infer managed binaries from old signature files.
+    if [[ -d "$INSTALL_PATH/results/signatures" ]]; then
+        for target in "$INSTALL_PATH"/*; do
+            [[ -f "$target" && -x "$target" ]] || continue
+            binary_name="$(basename "$target")"
+            [[ -n "${new_binary_map[$binary_name]:-}" ]] && continue
+            if compgen -G "$INSTALL_PATH/results/signatures/${binary_name}*.sig" >/dev/null; then
+                removal_targets["$target"]=1
+            fi
+        done
+    fi
+
+    for target in "${!removal_targets[@]}"; do
+        binary_name="$(basename "$target")"
+        if [[ "$PERMISSION_GUARD_SKIPPED" == "true" ]] && [[ "$binary_name" == "permission-guard" ]]; then
+            continue
+        fi
+
+        if [[ -z "${new_binary_map[$binary_name]:-}" ]]; then
+            stale_removed=$((stale_removed + 1))
+        fi
+
+        rm -f "$target" 2>/dev/null || true
+        if [[ -f "$target" ]] && sudo -n true 2>/dev/null; then
+            sudo -n rm -f "$target" 2>/dev/null || true
+        fi
+        if [[ ! -f "$target" ]]; then
+            removed=$((removed + 1))
+        fi
+    done
+
+    if [[ $stale_removed -gt 0 ]]; then
+        print_info "Pruned $stale_removed stale managed binary file(s)"
+    fi
+    print_success "Removed $removed managed binary file(s) from hooks"
+}
+
+write_managed_binary_manifest() {
+    local manifest_tmp="${MANAGED_BINARIES_FILE}.tmp.$$"
+    local binary_name=""
+    local -a manifest_names=("$@")
+
+    if [[ -z "$MANAGED_BINARIES_FILE" ]]; then
+        return 0
+    fi
+
+    {
+        echo "# Kodachi managed binaries manifest"
+        echo "# Updated: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+        for binary_name in "${manifest_names[@]}"; do
+            [[ -n "$binary_name" ]] && printf '%s\n' "$binary_name"
+        done | sort -u
+    } > "$manifest_tmp"
+
+    mv -f "$manifest_tmp" "$MANAGED_BINARIES_FILE"
+    chmod 644 "$MANAGED_BINARIES_FILE" 2>/dev/null || true
+    print_info "Managed binary manifest updated: $MANAGED_BINARIES_FILE"
 }
 
 # Ensure hooks folder is safe for binary replacement
@@ -814,10 +968,12 @@ INSTALL_FAILED_COUNT=0
 TOTAL_COUNT=0
 FAILED_BINARIES=""
 INSTALL_FAILED_BINARIES=""
+PACKAGE_BINARY_NAMES=()
 
 for binary_file in "$EXTRACT_DIR/binaries/"*; do
     if [[ -f "$binary_file" ]]; then
         binary_name=$(basename "$binary_file")
+        PACKAGE_BINARY_NAMES+=("$binary_name")
         TOTAL_COUNT=$((TOTAL_COUNT + 1))
 
         # Skip permission-guard when user chose to keep it running
@@ -857,8 +1013,9 @@ if [[ $FAILED_COUNT -gt 0 ]]; then
     print_error "These binaries were NOT installed for security reasons."
     print_error "Installation aborted - the package may be compromised."
 
-    # Clean up any partially installed files
-    rm -rf "$INSTALL_PATH"
+    # Preserve existing installation/user data; only clean installer temp targets.
+    find "$INSTALL_PATH" -maxdepth 1 -type f -name ".*.new.*" -delete 2>/dev/null || true
+    print_warning "Existing installation was preserved (no user-managed files were removed)."
     exit 1
 fi
 
@@ -872,6 +1029,8 @@ if [[ $INSTALL_FAILED_COUNT -gt 0 ]]; then
     print_error "Please check permissions/process locks and re-run the installer."
     exit 1
 fi
+
+write_managed_binary_manifest "${PACKAGE_BINARY_NAMES[@]}"
 
 # Step 7: Copy configuration files
 print_step "Installing configuration files..."
@@ -987,6 +1146,34 @@ else
 fi
 
 # Step 8.5: Install Conky assets and startup entry
+cleanup_legacy_autostart_entries() {
+    local autostart_dir="${XDG_CONFIG_HOME:-$HOME/.config}/autostart"
+    local removed=0
+    local noun="entries"
+    local old_entry=""
+    local legacy_entries=(
+        "$autostart_dir/kodachi-autoshield.desktop"
+        "$autostart_dir/kodachi-welcome.desktop"
+        "$autostart_dir/kodachi-welcome-startup.desktop"
+    )
+
+    for old_entry in "${legacy_entries[@]}"; do
+        if [[ -f "$old_entry" ]]; then
+            rm -f "$old_entry" 2>/dev/null || true
+            if [[ ! -f "$old_entry" ]]; then
+                removed=$((removed + 1))
+            fi
+        fi
+    done
+
+    if [[ $removed -eq 1 ]]; then
+        noun="entry"
+    fi
+    if [[ $removed -gt 0 ]]; then
+        print_info "Removed $removed legacy Kodachi startup $noun"
+    fi
+}
+
 install_conky_assets() {
     print_step "Installing Conky assets..."
 
@@ -998,8 +1185,13 @@ install_conky_assets() {
         candidates+=("$EXTRACT_DIR/conky")
     fi
 
-    # Local development fallbacks
-    candidates+=("$CONKY_PACKAGE_LOCAL_SOURCE" "$HOME/k900/livebuild-assets/conky")
+    # Local development fallbacks (script-relative first, then user-home legacy paths)
+    candidates+=(
+        "$CONKY_PACKAGE_LOCAL_SOURCE"
+        "$HOME/k900/livebuild-assets/conky"
+        "$HOME/livebuild-assets/conky"
+        "/usr/share/kodachi/conky"
+    )
 
     for candidate in "${candidates[@]}"; do
         if [[ -d "$candidate/configs" ]] && [[ -d "$candidate/scripts" ]]; then
@@ -1009,19 +1201,28 @@ install_conky_assets() {
     done
 
     if [[ -z "$conky_source" ]]; then
-        print_warning "Conky source not found in package or local assets. Skipping Conky setup."
-        return 1
+        if [[ -d "$CONKY_INSTALL_DIR/configs" ]] && [[ -d "$CONKY_INSTALL_DIR/scripts" ]]; then
+            print_warning "Conky update source not found; reusing existing assets and refreshing startup entries."
+            conky_source="$CONKY_INSTALL_DIR"
+        else
+            print_warning "Conky source not found in package or local assets. Skipping Conky setup."
+            return 1
+        fi
     fi
 
     mkdir -p "$(dirname "$CONKY_INSTALL_DIR")"
-    rm -rf "$CONKY_INSTALL_DIR"
-    cp -a "$conky_source" "$CONKY_INSTALL_DIR"
+    if [[ "$conky_source" != "$CONKY_INSTALL_DIR" ]]; then
+        rm -rf "$CONKY_INSTALL_DIR"
+        cp -a "$conky_source" "$CONKY_INSTALL_DIR"
+        print_success "Conky assets installed: $CONKY_INSTALL_DIR"
+    else
+        print_info "Conky assets already present. Refreshing startup entries."
+    fi
 
     if [[ -d "$CONKY_INSTALL_DIR/scripts" ]]; then
         find "$CONKY_INSTALL_DIR/scripts" -type f -name "*.sh" -exec chmod 755 {} + 2>/dev/null || true
     fi
 
-    print_success "Conky assets installed: $CONKY_INSTALL_DIR"
     return 0
 }
 
@@ -1044,6 +1245,7 @@ install_conky_autostart() {
         return 1
     fi
 
+    cleanup_legacy_autostart_entries
     mkdir -p "$(dirname "$CONKY_AUTOSTART_FILE")"
     cat > "$CONKY_AUTOSTART_FILE" << EOF
 [Desktop Entry]
@@ -1094,22 +1296,41 @@ LOG_DIR="\${XDG_CACHE_HOME:-\$HOME/.cache}/kodachi"
 LOG_FILE="\$LOG_DIR/conky-watchdog.log"
 CHECK_INTERVAL="\${CONKY_WATCHDOG_INTERVAL:-5}"
 EXPECTED_PANELS="\${CONKY_EXPECTED_PANELS:-4}"
+MIN_PANELS="\${CONKY_MIN_PANELS:-3}"
+MAX_PANELS="\${CONKY_MAX_PANELS:-6}"
+RESTART_AFTER_MISSES="\${CONKY_RESTART_AFTER_MISSES:-2}"
+RESTART_COOLDOWN="\${CONKY_RESTART_COOLDOWN:-20}"
 
 mkdir -p "\$LOG_DIR"
 export DISPLAY="\${DISPLAY:-:0}"
 export XAUTHORITY="\${XAUTHORITY:-\$HOME/.Xauthority}"
 
-count_conky() { pgrep -x conky 2>/dev/null | wc -l || true; }
+count_kodachi_conky() { pgrep -af "conky .*kodachi/conky/configs/conkyrc-.*\\\\.conf" 2>/dev/null | wc -l || true; }
 restart_conky() { "$launcher" --restart >> "\$LOG_FILE" 2>&1 || true; }
 
-if [[ "\$(count_conky)" -lt "\$EXPECTED_PANELS" ]]; then
+current_count="\$(count_kodachi_conky)"
+if (( current_count < MIN_PANELS )) || (( current_count > MAX_PANELS )); then
     restart_conky
 fi
 
+missing_streak=0
+last_restart_ts=0
+
 while true; do
-    if [[ "\$(count_conky)" -lt "\$EXPECTED_PANELS" ]]; then
-        restart_conky
-        sleep 2
+    current_count="\$(count_kodachi_conky)"
+    if (( current_count < MIN_PANELS )) || (( current_count > MAX_PANELS )); then
+        missing_streak=\$((missing_streak + 1))
+        if (( missing_streak >= RESTART_AFTER_MISSES )); then
+            now_ts=\$(date +%s)
+            if (( now_ts - last_restart_ts >= RESTART_COOLDOWN )); then
+                restart_conky
+                last_restart_ts=\$now_ts
+                missing_streak=0
+                sleep 2
+            fi
+        fi
+    else
+        missing_streak=0
     fi
     sleep "\$CHECK_INTERVAL"
 done
@@ -1179,67 +1400,117 @@ setup_conky() {
 setup_conky
 
 # ── Step 8b: Welcome autostart ──────────────────────────────────────
-setup_welcome_autostart() {
+setup_dashboard_autostart() {
     local _build_variant=""
     if [[ -f /opt/kodachi-offline-packages/build-variant ]]; then
         _build_variant=$(tr -cd 'a-z-' < /opt/kodachi-offline-packages/build-variant)
     fi
-    if [[ "$_build_variant" == "terminal" ]]; then
-        print_info "Build variant is 'terminal'. Skipping Welcome autostart setup."
+    if [[ "$_build_variant" == "terminal" ]] || [[ "$_build_variant" == "minimal" ]]; then
+        print_info "Build variant is '${_build_variant}'. Skipping Dashboard autostart setup."
         return 0
     fi
     if ! detect_gui_environment; then
-        print_info "No GUI desktop detected. Skipping Welcome autostart setup."
+        print_info "No GUI desktop detected. Skipping Dashboard autostart setup."
         return 0
     fi
 
     local autostart_dir="${XDG_CONFIG_HOME:-$HOME/.config}/autostart"
-    local autostart_file="$autostart_dir/kodachi-autoshield.desktop"
-    local welcome_bin="$INSTALL_PATH/kodachi-autoshield"
+    local autostart_file="$autostart_dir/kodachi-dashboard.desktop"
+    local dashboard_bin="$INSTALL_PATH/kodachi-dashboard"
 
-    if [[ ! -f "$welcome_bin" ]]; then
-        print_warning "kodachi-autoshield binary not found at $welcome_bin. Skipping autostart."
+    if [[ ! -f "$dashboard_bin" ]]; then
+        print_warning "kodachi-dashboard binary not found at $dashboard_bin. Skipping autostart."
         return 0
     fi
 
-    # Idempotent: skip if already configured with correct full path.
-    # IMPORTANT: We use the full absolute path because $INSTALL_PATH is NOT
-    # guaranteed to be in the user's $PATH at login time. A bare "kodachi-autoshield"
-    # would silently fail to launch on boot. Do NOT change this to a bare name.
-    if [[ -f "$autostart_file" ]] && grep -q "Exec=$welcome_bin" "$autostart_file" 2>/dev/null; then
-        print_info "Welcome autostart already configured: $autostart_file"
-        return 0
+    # Create launcher script if it doesn't exist
+    local launcher_script="/usr/local/bin/kodachi-dashboard-launcher"
+    if [[ ! -f "$launcher_script" ]]; then
+        print_info "Creating VM-compatible dashboard launcher script..."
+        sudo tee "$launcher_script" > /dev/null << 'LAUNCHER_EOF'
+#!/bin/bash
+# Kodachi Dashboard Launcher with VM detection
+# Auto-detects VM environments and passes --no-gpu flag
+
+VM_DETECTED=false
+
+# Check for VM indicators
+if [ -f /sys/class/dmi/id/sys_vendor ]; then
+    vendor=$(cat /sys/class/dmi/id/sys_vendor 2>/dev/null | tr '[:upper:]' '[:lower:]')
+    case "$vendor" in
+        *vmware*|*virtualbox*|*qemu*|*kvm*|*parallels*)
+            VM_DETECTED=true
+            ;;
+    esac
+fi
+
+if [ -f /sys/class/dmi/id/product_name ]; then
+    product=$(cat /sys/class/dmi/id/product_name 2>/dev/null | tr '[:upper:]' '[:lower:]')
+    case "$product" in
+        *virtual*|*vmware*|*virtualbox*|*qemu*|*kvm*)
+            VM_DETECTED=true
+            ;;
+    esac
+fi
+
+# Launch dashboard with appropriate flags
+if [ "$VM_DETECTED" = "true" ]; then
+    exec /usr/local/bin/kodachi-dashboard --no-gpu "$@"
+else
+    exec /usr/local/bin/kodachi-dashboard "$@"
+fi
+LAUNCHER_EOF
+        sudo chmod 755 "$launcher_script"
+        print_success "Created launcher script: $launcher_script"
+    fi
+
+    # Repair permissions even when the launcher was pre-seeded by the image.
+    sudo chmod 755 "$launcher_script" 2>/dev/null || true
+
+    # Repair permissions on other system binaries that may have been pre-seeded
+    for _bin in kodachi-fix-resolvconf dns-diag hysteria; do
+        [ -f "/usr/local/bin/$_bin" ] && sudo chmod 755 "/usr/local/bin/$_bin" 2>/dev/null || true
+    done
+
+    cleanup_legacy_autostart_entries
+    if [[ -f "$autostart_file" ]]; then
+        if grep -q "^Exec=/usr/local/bin/kodachi-dashboard-launcher$" "$autostart_file" 2>/dev/null; then
+            print_info "Refreshing dashboard autostart entry: $autostart_file"
+        else
+            print_warning "Dashboard autostart entry is outdated. Replacing: $autostart_file"
+        fi
     fi
 
     mkdir -p "$autostart_dir"
-    # NOTE: Using unquoted EOF so $welcome_bin expands to the full absolute path.
+    # NOTE: Using unquoted EOF so variables expand to full absolute paths.
     # This is intentional — the autostart MUST contain the resolved path, not a variable.
     cat > "$autostart_file" << EOF
 [Desktop Entry]
 Type=Application
-Name=Kodachi AutoShield
-Comment=Boot-time auto-configuration wizard for privacy hardening
-GenericName=Privacy Configurator
-Exec=$welcome_bin
-TryExec=$welcome_bin
-Path=$INSTALL_PATH
+Name=Kodachi Dashboard
+Comment=Kodachi Security Dashboard - launches at boot
+GenericName=Security Dashboard
+Exec=/usr/local/bin/kodachi-dashboard-launcher
+TryExec=$dashboard_bin
+Path=/opt/kodachi/dashboard/hooks
+Icon=/usr/share/icons/kodachi/kodachi32.png
 Terminal=false
 Hidden=false
 NoDisplay=false
 X-GNOME-Autostart-enabled=true
 X-GNOME-Autostart-Delay=3
 Categories=System;Security;
-Keywords=welcome;privacy;mac;hostname;timezone;harden;
+Keywords=kodachi;dashboard;security;privacy;autostart;
 StartupNotify=true
-StartupWMClass=kodachi-autoshield
+StartupWMClass=kodachi-dashboard
 EOF
     chmod 644 "$autostart_file"
 
-    print_success "Welcome autostart enabled: $autostart_file"
+    print_success "Dashboard autostart enabled: $autostart_file"
     return 0
 }
 
-setup_welcome_autostart
+setup_dashboard_autostart
 
 # Step 9: Create desktop shortcuts
 mark_desktop_file_trusted() {
@@ -1519,6 +1790,9 @@ if [[ $SKIPPED_COUNT -gt 0 ]]; then
 fi
 print_info "Signatures verified: $VERIFIED_COUNT"
 print_info "Desktop shortcuts: kodachi-dashboard, kodachi-binaries, kodachi-autoshield"
+if [[ -x "$INSTALL_PATH/conky-status" ]]; then
+    print_info "Conky Rust gateway: $INSTALL_PATH/conky-status"
+fi
 if [[ "$CONKY_SETUP_DONE" == "true" ]]; then
     print_info "Conky installed to: $CONKY_INSTALL_DIR"
     print_info "Conky startup file: $CONKY_AUTOSTART_FILE"
