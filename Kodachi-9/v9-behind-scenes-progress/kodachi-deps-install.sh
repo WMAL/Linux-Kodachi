@@ -5725,6 +5725,39 @@ fi
 echo ""
 
 # =============================================================================
+# Install Kodachi Rofi Actions Launcher
+# =============================================================================
+print_step "Installing Kodachi rofi actions launcher..."
+
+ROFI_ACTIONS_TARGET="/usr/local/bin/kodachi-rofi-actions"
+ROFI_ACTIONS_SOURCE=""
+ROFI_ACTIONS_SEARCH_PATHS=(
+    "/opt/kodachi-offline-packages/scripts/kodachi-rofi-actions"
+    "$PROJECT_ROOT/livebuilds/kodachi-terminal-build/overlays/common/includes.chroot_after_packages/opt/kodachi-offline-packages/scripts/kodachi-rofi-actions"
+    "$SCRIPT_DIR/../livebuilds/kodachi-terminal-build/overlays/common/includes.chroot_after_packages/opt/kodachi-offline-packages/scripts/kodachi-rofi-actions"
+)
+
+for candidate in "${ROFI_ACTIONS_SEARCH_PATHS[@]}"; do
+    if [[ -f "$candidate" ]]; then
+        ROFI_ACTIONS_SOURCE="$candidate"
+        break
+    fi
+done
+
+if [[ -n "$ROFI_ACTIONS_SOURCE" ]]; then
+    cp "$ROFI_ACTIONS_SOURCE" "$ROFI_ACTIONS_TARGET"
+    chmod 755 "$ROFI_ACTIONS_TARGET"
+    print_success "Kodachi rofi actions installed: $ROFI_ACTIONS_TARGET"
+elif [[ -f "$ROFI_ACTIONS_TARGET" ]]; then
+    chmod 755 "$ROFI_ACTIONS_TARGET" 2>/dev/null || true
+    print_info "Kodachi rofi actions already present at $ROFI_ACTIONS_TARGET"
+else
+    print_warning "Kodachi rofi actions source not found — skipping launcher deployment"
+fi
+
+echo ""
+
+# =============================================================================
 # Install XFCE Whisker Menu Entries
 # =============================================================================
 # Create .desktop files in /usr/share/applications/ so Kodachi apps appear in
@@ -5779,7 +5812,24 @@ StartupWMClass=kodachi-autoshield
 MENUEOF
     chmod 644 "$WHISKER_APPS_DIR/kodachi-autoshield.desktop"
 
-    print_success "Whisker menu entries installed: kodachi-dashboard, kodachi-autoshield"
+    cat > "$WHISKER_APPS_DIR/kodachi-rofi-actions.desktop" << MENUEOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Kodachi Quick Actions
+GenericName=Rofi Security Actions
+Comment=Launch approved Kodachi quick actions in rofi without changing your current rofi theme
+Exec=kodachi-rofi-actions
+TryExec=kodachi-rofi-actions
+Icon=$DASHBOARD_ICON
+Terminal=false
+Categories=System;Security;
+Keywords=kodachi;rofi;actions;security;privacy;tor;vpn;dns;
+StartupNotify=false
+MENUEOF
+    chmod 644 "$WHISKER_APPS_DIR/kodachi-rofi-actions.desktop"
+
+    print_success "Whisker menu entries installed: kodachi-dashboard, kodachi-autoshield, kodachi-rofi-actions"
 else
     print_warning "Directory $WHISKER_APPS_DIR not found — skipping Whisker menu entries"
 fi
