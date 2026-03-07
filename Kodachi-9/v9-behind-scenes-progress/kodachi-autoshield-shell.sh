@@ -38,7 +38,7 @@ set -o pipefail
 # Usage:
 #   Automatically runs on login for interactive shell sessions.
 #   To skip: export KODACHI_SKIP_WELCOME=1 before login
-#   To force DNSCrypt configuration: ./kodachi-autoshield.sh --force-dns-setup
+#   To force DNSCrypt configuration: ./kodachi-autoshield-shell.sh --force-dns-setup
 #
 # Features:
 #   - Binary deployment verification
@@ -63,28 +63,12 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Skip if environment variable is set
-if [ "${KODACHI_SKIP_WELCOME:-0}" = "1" ]; then
-    return 0 2>/dev/null || exit 0
-fi
-
-# Skip if not interactive
-if [[ $- != *i* ]]; then
-    return 0 2>/dev/null || exit 0
-fi
-
-# Default behavior is manual invocation only (`welcome` command).
-# Enable automatic startup explicitly by exporting KODACHI_WELCOME_AUTO=1.
-if [ "${KODACHI_WELCOME_FORCE:-0}" != "1" ] && [ "${KODACHI_WELCOME_AUTO:-0}" != "1" ] && [ "$FORCE_DNS_SETUP" != "true" ]; then
-    return 0 2>/dev/null || exit 0
-fi
-
 # Build signature - AUTO-UPDATED BY pack-kodachi.sh
 # Source: main-info.json (terminal section)
 # DO NOT EDIT MANUALLY - Run pack-kodachi.sh to update these values
 BUILD_VERSION="9.0.1"  # From: terminal.main_version
 BUILD_NUM="27"          # From: terminal.build_number (auto-incremented)
-BUILD_DATE="2026-03-05"  # From: terminal.last_build_date
+BUILD_DATE="2026-03-06"  # From: terminal.last_build_date
 SCRIPT_VERSION="${BUILD_VERSION}.${BUILD_NUM}"
 
 # Color codes for compact display (optimized for black terminal)
