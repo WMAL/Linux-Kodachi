@@ -104,92 +104,20 @@ SKIPPED_COUNT=0
 INSTALL_IS_UPDATE=false
 MANAGED_BINARIES_FILE=""
 
-compute_policy_version_from_main_info() {
+read_binary_pack_main_version_from_main_info() {
     local source_file="$1"
     python3 - "$source_file" <<'PY'
 import json
-import math
 import sys
-
-
-def get_number(value, default=0.0):
-    try:
-        if value is None:
-            return float(default)
-        return float(value)
-    except (TypeError, ValueError):
-        return float(default)
-
-
-def get_int(value, default=0):
-    try:
-        if value is None:
-            return int(default)
-        return int(float(value))
-    except (TypeError, ValueError):
-        return int(default)
-
-
-def parse_version(version):
-    parts = str(version or "0.0.0").strip().split(".")
-    out = [0, 0, 0]
-    for idx in range(min(3, len(parts))):
-        digits = "".join(ch for ch in parts[idx] if ch.isdigit())
-        out[idx] = int(digits or "0")
-    return out
-
-
-def apply_patch_bumps(anchor, patch_bumps, patches_per_minor, minors_per_major):
-    major, minor, patch = parse_version(anchor)
-    for _ in range(max(0, int(patch_bumps))):
-        if patch >= patches_per_minor:
-            patch = 0
-            if minor >= minors_per_major:
-                major += 1
-                minor = 0
-            else:
-                minor += 1
-        else:
-            patch += 1
-    return f"{major}.{minor}.{patch}"
-
 
 with open(sys.argv[1], "r", encoding="utf-8") as fh:
     data = json.load(fh)
 
-policy = data.get("version_policy") or {}
-weights = policy.get("weights") or {}
-anchor = data.get("release_anchor") or {}
-anchor_builds = anchor.get("build_numbers") or {}
+version = str((data.get("binary_pack") or {}).get("main_version") or "").strip()
+if not version:
+    raise SystemExit(1)
 
-anchor_version = (
-    anchor.get("version")
-    or (data.get("desktop") or {}).get("main_version")
-    or (data.get("terminal") or {}).get("main_version")
-    or (data.get("binary_pack") or {}).get("main_version")
-    or "0.0.0"
-)
-
-current_binary = get_int((data.get("binary_pack") or {}).get("build_number"), 0)
-current_terminal = get_int((data.get("terminal") or {}).get("build_number"), 0)
-current_desktop = get_int((data.get("desktop") or {}).get("build_number"), 0)
-
-anchor_binary = get_int(anchor_builds.get("binary_pack"), 0)
-anchor_terminal = get_int(anchor_builds.get("terminal"), 0)
-anchor_desktop = get_int(anchor_builds.get("desktop"), 0)
-
-weighted_points = (
-    max(0, current_binary - anchor_binary) * get_number(weights.get("binary_pack", weights.get("binary", 0.5)), 0.5)
-    + max(0, current_terminal - anchor_terminal) * get_number(weights.get("terminal", 1), 1)
-    + max(0, current_desktop - anchor_desktop) * get_number(weights.get("desktop", 1), 1)
-)
-
-points_per_patch = max(1, get_int(policy.get("points_per_patch"), 5))
-patches_per_minor = max(1, get_int(policy.get("patches_per_minor"), 3))
-minors_per_major = max(1, get_int(policy.get("minors_per_major"), 5))
-completed_patch_bumps = int(math.floor(weighted_points / float(points_per_patch)))
-
-print(apply_patch_bumps(anchor_version, completed_patch_bumps, patches_per_minor, minors_per_major))
+print(version)
 PY
 }
 
@@ -208,7 +136,7 @@ resolve_default_kodachi_version() {
 
     for candidate in "${candidates[@]}"; do
         if [[ -f "$candidate" ]]; then
-            compute_policy_version_from_main_info "$candidate" 2>/dev/null && return 0
+            read_binary_pack_main_version_from_main_info "$candidate" 2>/dev/null && return 0
         fi
     done
 
@@ -218,7 +146,7 @@ resolve_default_kodachi_version() {
             "https://www.kodachi.cloud/apps/os/main-info.json" \
             "https://kodachi.cloud/apps/os/main-info.json"; do
             if curl -fsSL "$json_file" -o "$tmp_file" 2>/dev/null; then
-                compute_policy_version_from_main_info "$tmp_file" 2>/dev/null && {
+                read_binary_pack_main_version_from_main_info "$tmp_file" 2>/dev/null && {
                     rm -f "$tmp_file"
                     return 0
                 }
@@ -1225,6 +1153,15 @@ if [[ -d "$EXTRACT_DIR/binaries-update-scripts" ]]; then
     fi
 fi
 
+if [[ -d "$EXTRACT_DIR/others" ]]; then
+    cp -a "$EXTRACT_DIR/others/." "$INSTALL_PATH/others/" 2>/dev/null || true
+    other_count=$(find "$INSTALL_PATH/others" -type f | wc -l)
+    if [[ $other_count -gt 0 ]]; then
+        print_success "Offline documents and extra artifacts installed ($other_count files)"
+        print_info "Artifacts location: $INSTALL_PATH/others/"
+    fi
+fi
+
 # Copy AI model files (support multiple package layouts)
 MODEL_SOURCE_DIR=""
 for candidate in \
@@ -1299,6 +1236,39 @@ cleanup_legacy_autostart_entries() {
     if [[ $removed -gt 0 ]]; then
         print_info "Removed $removed legacy Kodachi startup $noun"
     fi
+}
+
+find_session_helper_binary() {
+    local candidates=(
+        "$INSTALL_PATH/kodachi-session-helper"
+        "/opt/kodachi/dashboard/hooks/kodachi-session-helper"
+        "/usr/local/bin/kodachi-session-helper"
+    )
+
+    if [[ -n "$PROJECT_ROOT" ]]; then
+        candidates+=("$PROJECT_ROOT/dashboard/hooks/kodachi-session-helper")
+    fi
+
+    candidates+=(
+        "$HOME/dashboard/hooks/kodachi-session-helper"
+        "$HOME/Desktop/dashboard/hooks/kodachi-session-helper"
+        "$HOME/k900/dashboard/hooks/kodachi-session-helper"
+    )
+
+    local candidate=""
+    for candidate in "${candidates[@]}"; do
+        if [[ -x "$candidate" ]]; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+
+    if command -v kodachi-session-helper >/dev/null 2>&1; then
+        command -v kodachi-session-helper
+        return 0
+    fi
+
+    return 1
 }
 
 install_conky_assets() {
@@ -1526,6 +1496,102 @@ setup_conky() {
 
 setup_conky
 
+write_session_helper_service_file() {
+    local service_file="$1"
+    local helper_bin="$2"
+    local helper_dir
+    helper_dir="$(dirname "$helper_bin")"
+
+    cat > "$service_file" << EOF
+[Unit]
+Description=Kodachi Session Helper - Global Emergency Shortcut Daemon
+Documentation=https://kodachi.cloud/wiki/bina/binaries/kodachi-session-helper/
+After=graphical-session.target
+Wants=graphical-session.target
+PartOf=graphical-session.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=$helper_bin daemon
+WorkingDirectory=$helper_dir
+Restart=always
+RestartSec=3
+LimitCORE=0
+NoNewPrivileges=false
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=false
+ReadWritePaths=/run/user
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=%h/.Xauthority
+Environment=RUST_LOG=warn
+
+[Install]
+WantedBy=default.target
+EOF
+}
+
+setup_session_helper_service() {
+    if ! detect_gui_environment; then
+        print_info "No GUI desktop detected. Skipping session-helper user service setup."
+        return 0
+    fi
+
+    local helper_bin=""
+    helper_bin=$(find_session_helper_binary 2>/dev/null || true)
+    if [[ -z "$helper_bin" ]]; then
+        print_warning "kodachi-session-helper binary not found. Skipping user service setup."
+        return 0
+    fi
+
+    local systemd_user_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+    local service_file="$systemd_user_dir/kodachi-session-helper.service"
+    local wants_dir="$systemd_user_dir/default.target.wants"
+    local legacy_wants_link="$systemd_user_dir/graphical-session.target.wants/kodachi-session-helper.service"
+    local dropin_dir="$systemd_user_dir/kodachi-session-helper.service.d"
+    local backup_suffix
+    backup_suffix="$(date -u +%Y%m%dT%H%M%SZ)"
+
+    mkdir -p "$systemd_user_dir" "$wants_dir"
+
+    if [[ -L "$service_file" ]]; then
+        cp -a "$service_file" "${service_file}.bak.${backup_suffix}" 2>/dev/null || true
+        rm -f "$service_file"
+    elif [[ -f "$service_file" ]]; then
+        cp -a "$service_file" "${service_file}.bak.${backup_suffix}" 2>/dev/null || true
+    fi
+
+    if [[ -d "$dropin_dir" ]]; then
+        mv "$dropin_dir" "${dropin_dir}.bak.${backup_suffix}" 2>/dev/null || true
+    fi
+
+    write_session_helper_service_file "$service_file" "$helper_bin"
+    chmod 644 "$service_file"
+    ln -sfn "$service_file" "$wants_dir/kodachi-session-helper.service"
+    rm -f "$legacy_wants_link" 2>/dev/null || true
+
+    local started=false
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl --user daemon-reload >/dev/null 2>&1 || true
+        if systemctl --user enable --now kodachi-session-helper.service >/dev/null 2>&1; then
+            started=true
+        elif systemctl --user restart kodachi-session-helper.service >/dev/null 2>&1; then
+            started=true
+        elif systemctl --user start kodachi-session-helper.service >/dev/null 2>&1; then
+            started=true
+        fi
+    fi
+
+    if [[ "$started" == "true" ]]; then
+        print_success "Session helper user service refreshed and started"
+    else
+        print_success "Session helper user service refreshed"
+        print_info "It will start automatically on the next graphical login."
+    fi
+}
+
 # ── Step 8b: Welcome autostart ──────────────────────────────────────
 setup_dashboard_autostart() {
     local _build_variant=""
@@ -1638,6 +1704,7 @@ EOF
 }
 
 setup_dashboard_autostart
+setup_session_helper_service
 
 # Step 9: Create desktop shortcuts
 mark_desktop_file_trusted() {
