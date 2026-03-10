@@ -66,9 +66,9 @@ done
 # Build signature - AUTO-UPDATED BY pack-kodachi.sh
 # Source: main-info.json (terminal section)
 # DO NOT EDIT MANUALLY - Run pack-kodachi.sh to update these values
-BUILD_VERSION="9.3.3"  # From: terminal.main_version
+BUILD_VERSION="9.0.1"  # From: terminal.main_version
 BUILD_NUM="27"          # From: terminal.build_number (auto-incremented)
-BUILD_DATE="2026-03-09"  # From: terminal.last_build_date
+BUILD_DATE="2026-03-10"  # From: terminal.last_build_date
 SCRIPT_VERSION="${BUILD_VERSION}.${BUILD_NUM}"
 
 # Color codes for compact display (optimized for black terminal)
@@ -340,7 +340,7 @@ is_live_session() {
 ensure_grub_theme() {
     local helper="/usr/local/bin/kodachi-apply-grub-theme"
     local theme_txt="/boot/grub/live-theme/theme.txt"
-    local splash_png="/boot/grub/splash.png"
+    local splash_png="/boot/grub/live-theme/splash.png"
     local cfg_file="/etc/default/grub.d/40-kodachi-theme.cfg"
 
     echo -e "${CYAN}▸ Checking Kodachi GRUB theme...${NC}"

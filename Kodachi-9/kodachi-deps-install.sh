@@ -201,6 +201,43 @@ find_dashboard_hooks_for_home() {
     return 1
 }
 
+find_session_helper_binary_for_home() {
+    local base_home="${1:-}"
+    local candidates=()
+
+    candidates+=(
+        "/opt/kodachi/dashboard/hooks/kodachi-session-helper"
+        "/usr/local/bin/kodachi-session-helper"
+    )
+
+    if [[ -n "$base_home" ]]; then
+        candidates+=(
+            "$base_home/dashboard/hooks/kodachi-session-helper"
+            "$base_home/Desktop/dashboard/hooks/kodachi-session-helper"
+            "$base_home/k900/dashboard/hooks/kodachi-session-helper"
+        )
+    fi
+
+    if [[ -n "$PROJECT_ROOT" ]]; then
+        candidates+=("$PROJECT_ROOT/dashboard/hooks/kodachi-session-helper")
+    fi
+
+    local candidate=""
+    for candidate in "${candidates[@]}"; do
+        if [[ -x "$candidate" ]]; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+
+    if command -v kodachi-session-helper >/dev/null 2>&1; then
+        command -v kodachi-session-helper
+        return 0
+    fi
+
+    return 1
+}
+
 detect_kodachi_update_mode() {
     local user_home="${1:-}"
     local marker=""
@@ -932,6 +969,124 @@ EOF
     fi
 }
 
+write_session_helper_service_file() {
+    local service_file="$1"
+    local helper_bin="$2"
+    local helper_dir
+    helper_dir="$(dirname "$helper_bin")"
+
+    cat > "$service_file" << EOF
+[Unit]
+Description=Kodachi Session Helper - Global Emergency Shortcut Daemon
+Documentation=https://kodachi.cloud/wiki/bina/binaries/kodachi-session-helper/
+After=graphical-session.target
+Wants=graphical-session.target
+PartOf=graphical-session.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=$helper_bin daemon
+WorkingDirectory=$helper_dir
+Restart=always
+RestartSec=3
+LimitCORE=0
+NoNewPrivileges=false
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=false
+ReadWritePaths=/run/user
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=%h/.Xauthority
+Environment=RUST_LOG=warn
+
+[Install]
+WantedBy=default.target
+EOF
+}
+
+setup_session_helper_service() {
+    if ! detect_gui_environment; then
+        print_info "No GUI desktop detected. Skipping session-helper user service setup."
+        return 0
+    fi
+
+    local actual_user=""
+    local real_user_home=""
+
+    if [[ -n "${SUDO_USER:-}" ]] && [[ "$SUDO_USER" != "root" ]]; then
+        actual_user="$SUDO_USER"
+    elif [[ -n "${LOGNAME:-}" ]] && [[ "$LOGNAME" != "root" ]]; then
+        actual_user="$LOGNAME"
+    fi
+
+    if [[ -z "$actual_user" ]] || [[ ! "$actual_user" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+        print_warning "Could not determine target non-root user. Skipping session-helper service setup."
+        return 0
+    fi
+
+    real_user_home=$(getent passwd "$actual_user" | cut -d: -f6)
+    if [[ -z "$real_user_home" ]]; then
+        real_user_home=$(resolve_user_home "$actual_user")
+    fi
+
+    local helper_bin=""
+    helper_bin=$(find_session_helper_binary_for_home "$real_user_home" 2>/dev/null || true)
+    if [[ -z "$helper_bin" ]]; then
+        print_warning "kodachi-session-helper binary not found. Skipping user service setup."
+        return 0
+    fi
+
+    local systemd_user_dir="$real_user_home/.config/systemd/user"
+    local service_file="$systemd_user_dir/kodachi-session-helper.service"
+    local wants_dir="$systemd_user_dir/default.target.wants"
+    local legacy_wants_link="$systemd_user_dir/graphical-session.target.wants/kodachi-session-helper.service"
+    local dropin_dir="$systemd_user_dir/kodachi-session-helper.service.d"
+    local backup_suffix
+    backup_suffix="$(date -u +%Y%m%dT%H%M%SZ)"
+
+    mkdir -p "$systemd_user_dir" "$wants_dir"
+
+    if [[ -L "$service_file" ]]; then
+        cp -a "$service_file" "${service_file}.bak.${backup_suffix}" 2>/dev/null || true
+        rm -f "$service_file"
+    elif [[ -f "$service_file" ]]; then
+        cp -a "$service_file" "${service_file}.bak.${backup_suffix}" 2>/dev/null || true
+    fi
+
+    if [[ -d "$dropin_dir" ]]; then
+        mv "$dropin_dir" "${dropin_dir}.bak.${backup_suffix}" 2>/dev/null || true
+    fi
+
+    write_session_helper_service_file "$service_file" "$helper_bin"
+    chmod 644 "$service_file"
+    ln -sfn "$service_file" "$wants_dir/kodachi-session-helper.service"
+    rm -f "$legacy_wants_link" 2>/dev/null || true
+
+    chown "$actual_user:$actual_user" "$systemd_user_dir" "$service_file" "$wants_dir" 2>/dev/null || true
+    chown -h "$actual_user:$actual_user" "$wants_dir/kodachi-session-helper.service" 2>/dev/null || true
+
+    local started=false
+    if command -v systemctl >/dev/null 2>&1 && command -v runuser >/dev/null 2>&1; then
+        runuser -u "$actual_user" -- systemctl --user daemon-reload >/dev/null 2>&1 || true
+        if runuser -u "$actual_user" -- systemctl --user enable --now kodachi-session-helper.service >/dev/null 2>&1; then
+            started=true
+        elif runuser -u "$actual_user" -- systemctl --user restart kodachi-session-helper.service >/dev/null 2>&1; then
+            started=true
+        elif runuser -u "$actual_user" -- systemctl --user start kodachi-session-helper.service >/dev/null 2>&1; then
+            started=true
+        fi
+    fi
+
+    if [[ "$started" == "true" ]]; then
+        print_success "Session helper user service refreshed and started for $actual_user"
+    else
+        print_success "Session helper user service refreshed for $actual_user"
+        print_info "It will start automatically on the next graphical login."
+    fi
+}
+
 # ── Welcome autostart setup ──────────────────────────────────────
 setup_dashboard_autostart() {
     local _build_variant=""
@@ -1617,6 +1772,7 @@ detect_gui_environment() {
 
 # Now that detect_gui_environment() is defined, invoke the dashboard setup functions.
 setup_dashboard_autostart
+setup_session_helper_service
 create_welcome_desktop_shortcut
 
 # Build GUI package list for current system.
@@ -2455,6 +2611,7 @@ if [[ ! -d "/opt/kodachi/dashboard/hooks" ]]; then
     print_step "Creating /opt/kodachi/dashboard/hooks/ for canonical binary location..."
     mkdir -p /opt/kodachi/dashboard/hooks
 fi
+mkdir -p /opt/kodachi/dashboard/hooks/others
 if [[ -n "$SUDO_USER" ]]; then
     chown -R "$(id -u "$SUDO_USER"):$(id -g "$SUDO_USER")" /opt/kodachi
 fi
