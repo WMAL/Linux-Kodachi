@@ -1496,6 +1496,33 @@ setup_conky() {
 
 setup_conky
 
+prime_session_helper_manager_env() {
+    if ! command -v systemctl >/dev/null 2>&1; then
+        return 0
+    fi
+
+    local helper_display="${DISPLAY:-}"
+    local display_socket=""
+    if [[ -z "$helper_display" ]]; then
+        for display_socket in /tmp/.X11-unix/X*; do
+            [[ -S "$display_socket" ]] || continue
+            helper_display=":${display_socket##*X}"
+            break
+        done
+    fi
+
+    local runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+    local helper_xauthority="${XAUTHORITY:-$HOME/.Xauthority}"
+    local dbus_session_bus="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$runtime_dir/bus}"
+
+    systemctl --user set-environment \
+        DISPLAY="${helper_display:-:0}" \
+        XAUTHORITY="$helper_xauthority" \
+        XDG_RUNTIME_DIR="$runtime_dir" \
+        DBUS_SESSION_BUS_ADDRESS="$dbus_session_bus" \
+        RUST_LOG="${RUST_LOG:-warn}" >/dev/null 2>&1 || true
+}
+
 write_session_helper_service_file() {
     local service_file="$1"
     local helper_bin="$2"
@@ -1514,7 +1541,7 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
-ExecStart=$helper_bin daemon
+ExecStart=/bin/bash -lc 'display_guess=""; for display_socket in /tmp/.X11-unix/X*; do [ -S "\$display_socket" ] || continue; display_guess=":\${display_socket##*X}"; break; done; export DISPLAY="\${DISPLAY:-\${display_guess:-:0}}"; export XAUTHORITY="\${XAUTHORITY:-%h/.Xauthority}"; export XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-%t}"; export DBUS_SESSION_BUS_ADDRESS="\${DBUS_SESSION_BUS_ADDRESS:-unix:path=%t/bus}"; export RUST_LOG="\${RUST_LOG:-warn}"; exec "$helper_bin" daemon'
 WorkingDirectory=$helper_dir
 Restart=always
 RestartSec=3
@@ -1524,9 +1551,6 @@ ProtectSystem=strict
 ProtectHome=read-only
 PrivateTmp=false
 ReadWritePaths=/run/user
-Environment=DISPLAY=:0
-Environment=XAUTHORITY=%h/.Xauthority
-Environment=RUST_LOG=warn
 
 [Install]
 WantedBy=default.target
@@ -1574,6 +1598,7 @@ setup_session_helper_service() {
 
     local started=false
     if command -v systemctl >/dev/null 2>&1; then
+        prime_session_helper_manager_env
         systemctl --user daemon-reload >/dev/null 2>&1 || true
         if systemctl --user enable --now kodachi-session-helper.service >/dev/null 2>&1; then
             started=true
