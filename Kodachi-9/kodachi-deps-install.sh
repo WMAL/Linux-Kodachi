@@ -825,9 +825,13 @@ safe_stop_conky_for_update() {
 
     print_info "Stopping Conky for user $target_user before file update..."
 
-    # 1. Disable + stop the watchdog so Restart=always cannot respawn it
+    # 1. Disable + stop the watchdog/timer so user-systemd cannot respawn
+    # refresh activity while Conky assets are being replaced.
     if command -v systemctl >/dev/null 2>&1 && command -v runuser >/dev/null 2>&1; then
-        runuser -u "$target_user" -- systemctl --user disable --now conky-watchdog.service >/dev/null 2>&1 || true
+        runuser -u "$target_user" -- systemctl --user disable --now \
+            conky-watchdog.service conky-snapshot-refresh.timer >/dev/null 2>&1 || true
+        runuser -u "$target_user" -- systemctl --user stop \
+            conky-snapshot-refresh.service >/dev/null 2>&1 || true
     fi
 
     # 2. Kill watchdog and launcher processes (launcher spawns new conky instances)
@@ -929,12 +933,17 @@ install_kodachi_conky_for_user() {
     local autostart_file="$autostart_dir/kodachi-conky.desktop"
     local launcher="$conky_install_dir/scripts/conky-launcher.sh"
     local watchdog_script="$conky_install_dir/scripts/conky-watchdog.sh"
-    local service_source="$conky_install_dir/systemd/conky-watchdog.service"
+    local watchdog_service_source="$conky_install_dir/systemd/conky-watchdog.service"
+    local snapshot_service_source="$conky_install_dir/systemd/conky-snapshot-refresh.service"
+    local snapshot_timer_source="$conky_install_dir/systemd/conky-snapshot-refresh.timer"
     local systemd_user_dir="$real_user_home/.config/systemd/user"
-    local service_file="$systemd_user_dir/conky-watchdog.service"
+    local watchdog_service_file="$systemd_user_dir/conky-watchdog.service"
+    local snapshot_service_file="$systemd_user_dir/conky-snapshot-refresh.service"
+    local snapshot_timer_file="$systemd_user_dir/conky-snapshot-refresh.timer"
     local wants_dir="$systemd_user_dir/default.target.wants"
     local autostart_exec=""
     local autostart_tryexec=""
+    local snapshot_timer_available=0
 
     mkdir -p "$(dirname "$conky_install_dir")" "$autostart_dir" "$systemd_user_dir" "$wants_dir"
     if [[ "$conky_source" != "$conky_install_dir" ]]; then
@@ -968,11 +977,65 @@ install_kodachi_conky_for_user() {
         find "$conky_install_dir/scripts" -type f -name "*.sh" -exec chmod 755 {} + 2>/dev/null || true
     fi
 
-    if command -v systemctl >/dev/null 2>&1 && [[ -x "$watchdog_script" ]]; then
-        if [[ -f "$service_source" ]]; then
-            cp -f "$service_source" "$service_file"
+    if command -v systemctl >/dev/null 2>&1; then
+        if [[ -f "$snapshot_service_source" ]]; then
+            cp -f "$snapshot_service_source" "$snapshot_service_file"
         else
-            cat > "$service_file" << EOF
+            cat > "$snapshot_service_file" << EOF
+[Unit]
+Description=Kodachi Conky Snapshot Refresh
+After=graphical-session.target
+Wants=graphical-session.target
+ConditionPathExists=%h/.config/kodachi/conky/scripts/conky-gateway-common.sh
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c '\
+  for bin in \
+    /opt/kodachi/dashboard/hooks/conky-status \
+    "%h/k900/dashboard/hooks/conky-status" \
+    "%h/dashboard/hooks/conky-status" \
+    /usr/local/bin/conky-status; do \
+    [ -x "$bin" ] && exec "$bin" snapshot --refresh --quiet 2>/dev/null; \
+  done; \
+  exit 0'
+TimeoutSec=45
+StandardOutput=null
+StandardError=journal
+Nice=15
+IOSchedulingClass=idle
+EOF
+        fi
+
+        if [[ -f "$snapshot_timer_source" ]]; then
+            cp -f "$snapshot_timer_source" "$snapshot_timer_file"
+        else
+            cat > "$snapshot_timer_file" << EOF
+[Unit]
+Description=Kodachi Conky Snapshot Refresh Timer
+After=graphical-session.target
+
+[Timer]
+OnActiveSec=15
+OnUnitActiveSec=90
+RandomizedDelaySec=10
+Persistent=false
+
+[Install]
+WantedBy=default.target
+EOF
+        fi
+
+        chmod 644 "$snapshot_service_file" "$snapshot_timer_file"
+        ln -sfn "$snapshot_timer_file" "$wants_dir/conky-snapshot-refresh.timer"
+        snapshot_timer_available=1
+    fi
+
+    if command -v systemctl >/dev/null 2>&1 && [[ -x "$watchdog_script" ]]; then
+        if [[ -f "$watchdog_service_source" ]]; then
+            cp -f "$watchdog_service_source" "$watchdog_service_file"
+        else
+            cat > "$watchdog_service_file" << EOF
 [Unit]
 Description=Kodachi Conky Watchdog
 After=graphical-session.target
@@ -990,14 +1053,21 @@ Environment=XAUTHORITY=%h/.Xauthority
 WantedBy=default.target
 EOF
         fi
-        chmod 644 "$service_file"
-        ln -sfn "$service_file" "$wants_dir/conky-watchdog.service"
+        chmod 644 "$watchdog_service_file"
+        ln -sfn "$watchdog_service_file" "$wants_dir/conky-watchdog.service"
         autostart_exec="/usr/bin/systemctl --user start conky-watchdog.service"
+        if (( snapshot_timer_available )); then
+            autostart_exec+=" conky-snapshot-refresh.timer"
+        fi
         autostart_tryexec="/usr/bin/systemctl"
     elif [[ -x "$launcher" ]]; then
         autostart_exec="$launcher --restart"
         autostart_tryexec="$launcher"
-        print_warning "Conky watchdog script missing at $watchdog_script. Falling back to launcher autostart."
+        if (( snapshot_timer_available )); then
+            print_warning "Conky watchdog script missing at $watchdog_script. Falling back to launcher autostart while keeping the snapshot timer enabled."
+        else
+            print_warning "Conky watchdog script missing at $watchdog_script. Falling back to launcher autostart."
+        fi
     else
         print_warning "Conky launcher not found at $launcher. Skipping Conky setup."
         return 0
@@ -1028,13 +1098,27 @@ EOF
     chown -R "$actual_user:$actual_user" "$systemd_user_dir" 2>/dev/null || true
 
     if command -v conky >/dev/null 2>&1; then
-        if command -v systemctl >/dev/null 2>&1 && [[ -x "$watchdog_script" ]] && [[ -f "$service_file" ]]; then
+        if command -v systemctl >/dev/null 2>&1 && command -v runuser >/dev/null 2>&1; then
             if command -v runuser >/dev/null 2>&1; then
                 runuser -u "$actual_user" -- systemctl --user daemon-reload >/dev/null 2>&1 || true
-                runuser -u "$actual_user" -- systemctl --user enable --now conky-watchdog.service >/dev/null 2>&1 || \
-                    runuser -u "$actual_user" -- systemctl --user start conky-watchdog.service >/dev/null 2>&1 || true
+                if [[ -x "$watchdog_script" ]] && [[ -f "$watchdog_service_file" ]]; then
+                    runuser -u "$actual_user" -- systemctl --user enable --now conky-watchdog.service >/dev/null 2>&1 || \
+                        runuser -u "$actual_user" -- systemctl --user start conky-watchdog.service >/dev/null 2>&1 || true
+                fi
+                if (( snapshot_timer_available )) && [[ -f "$snapshot_timer_file" ]]; then
+                    runuser -u "$actual_user" -- systemctl --user enable --now conky-snapshot-refresh.timer >/dev/null 2>&1 || \
+                        runuser -u "$actual_user" -- systemctl --user start conky-snapshot-refresh.timer >/dev/null 2>&1 || true
+                fi
             fi
-            print_success "Conky configured for user $actual_user (watchdog enabled)"
+            if [[ -x "$watchdog_script" ]] && [[ -f "$watchdog_service_file" ]] && (( snapshot_timer_available )); then
+                print_success "Conky configured for user $actual_user (watchdog + snapshot timer enabled)"
+            elif [[ -x "$watchdog_script" ]] && [[ -f "$watchdog_service_file" ]]; then
+                print_success "Conky configured for user $actual_user (watchdog enabled)"
+            elif (( snapshot_timer_available )); then
+                print_success "Conky configured for user $actual_user (snapshot timer enabled)"
+            else
+                print_success "Conky configured for user $actual_user (autostart enabled)"
+            fi
         else
             print_warning "Conky watchdog script missing at $watchdog_script"
             print_success "Conky configured for user $actual_user (autostart enabled)"
@@ -1739,7 +1823,7 @@ MONITORING_PACKAGES="btop iftop nethogs ncdu nload iperf3 speedtest-cli"
 
 # GUI-only packages - only installed on systems with desktop environments.
 # Includes the runtime packages required by Kodachi rofi menus on installed systems.
-GUI_PACKAGES="bleachbit kitty fontconfig fonts-noto-color-emoji fonts-liberation fonts-liberation2 conky-all alsa-utils pulseaudio pulseaudio-utils libnotify-bin xclip xsel mpv xterm network-manager rofi xfce4-screenshooter xdotool xfce4-clipman xfce4-clipman-plugin copyq qalculate-gtk maim translate-shell python3 bc iproute2 iputils-ping traceroute speedtest-cli"
+GUI_PACKAGES="bleachbit kitty fontconfig fonts-dejavu fonts-noto-core fonts-noto-color-emoji fonts-liberation fonts-liberation2 conky-all alsa-utils pulseaudio pulseaudio-utils libnotify-bin xclip xsel mpv xterm network-manager rofi xfce4-screenshooter xdotool xfce4-clipman xfce4-clipman-plugin copyq qalculate-gtk maim translate-shell python3 bc iproute2 iputils-ping traceroute speedtest-cli"
 
 # Packages that require contrib/non-free repositories
 CONTRIB_PACKAGES="shadowsocks-v2ray-plugin v2ray"
