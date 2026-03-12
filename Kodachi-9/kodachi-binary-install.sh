@@ -85,6 +85,47 @@ print_warning() { echo -e "${YELLOW}[!]${NC} $1"; }
 print_step() { echo -e "${CYAN}[→]${NC} $1"; }
 print_highlight() { echo -e "${MAGENTA}${BOLD}$1${NC}"; }
 
+# Stop Conky safely before updating its files to prevent CPU spike / freeze.
+# The watchdog service is disabled+stopped so Restart=always cannot respawn it.
+# The launcher is also killed to prevent in-flight conky spawns.
+# Conky will be restarted automatically by install_conky_watchdog() later.
+safe_stop_conky() {
+    if ! pgrep -x conky >/dev/null 2>&1; then
+        return 0
+    fi
+
+    print_info "Stopping Conky before file update..."
+
+    # 1. Disable + stop the watchdog so Restart=always cannot respawn it
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl --user disable --now conky-watchdog.service >/dev/null 2>&1 || true
+    fi
+
+    # 2. Kill watchdog and launcher processes (launcher spawns new conky instances)
+    pkill -f conky-watchdog >/dev/null 2>&1 || true
+    pkill -f conky-launcher >/dev/null 2>&1 || true
+    sleep 1
+
+    # 3. Graceful stop all conky
+    pkill -x conky >/dev/null 2>&1 || true
+    sleep 2
+
+    # 4. Force kill if still alive
+    if pgrep -x conky >/dev/null 2>&1; then
+        pkill -9 -x conky >/dev/null 2>&1 || true
+        sleep 1
+    fi
+
+    # 5. Verify clean kill
+    if pgrep -x conky >/dev/null 2>&1; then
+        print_warning "Some Conky processes survived; forcing final cleanup"
+        pkill -9 -x conky >/dev/null 2>&1 || true
+        pkill -9 -f conky-launcher >/dev/null 2>&1 || true
+    fi
+
+    print_info "Conky stopped for update (will restart automatically)"
+}
+
 # Configuration
 CDN_BASE="https://www.kodachi.cloud/apps/os/install"
 SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"
@@ -1309,8 +1350,26 @@ install_conky_assets() {
 
     mkdir -p "$(dirname "$CONKY_INSTALL_DIR")"
     if [[ "$conky_source" != "$CONKY_INSTALL_DIR" ]]; then
+        safe_stop_conky
+
+        # Preserve runtime data/cache directory across update to prevent
+        # the Signal Deck from cold-starting all queries (600% CPU spike).
+        local _conky_data_backup=""
+        if [[ -d "$CONKY_INSTALL_DIR/data" ]]; then
+            _conky_data_backup="$(mktemp -d "${TMPDIR:-/tmp}/kodachi-conky-data.XXXXXX")"
+            cp -a "$CONKY_INSTALL_DIR/data/." "$_conky_data_backup/" 2>/dev/null || true
+        fi
+
         rm -rf "$CONKY_INSTALL_DIR"
         cp -a "$conky_source" "$CONKY_INSTALL_DIR"
+
+        # Restore cached data so focus-alert/signal-deck doesn't rebuild from scratch
+        if [[ -n "${_conky_data_backup:-}" ]] && [[ -d "$_conky_data_backup" ]]; then
+            mkdir -p "$CONKY_INSTALL_DIR/data"
+            cp -a "$_conky_data_backup/." "$CONKY_INSTALL_DIR/data/" 2>/dev/null || true
+            rm -rf "$_conky_data_backup"
+        fi
+
         print_success "Conky assets installed: $CONKY_INSTALL_DIR"
     else
         print_info "Conky assets already present. Refreshing startup entries."
@@ -1798,6 +1857,27 @@ mark_desktop_file_trusted() {
     fi
 }
 
+update_thunar_root_actions() {
+    local thunar_dir="${XDG_CONFIG_HOME:-$HOME/.config}/Thunar"
+    local user_uca="$thunar_dir/uca.xml"
+
+    if [[ ! -f "$user_uca" ]]; then
+        return 0
+    fi
+
+    if ! grep -qE '<command>sudo[[:space:]]+thunar[[:space:]]+%[Ff]</command>|<command>sudo[[:space:]]+mousepad[[:space:]]+%[Ff]</command>' "$user_uca" 2>/dev/null; then
+        return 0
+    fi
+
+    cp -f "$user_uca" "$user_uca.bak.$(date -u +%Y%m%dT%H%M%SZ)" 2>/dev/null || true
+    sed -E -i \
+        -e 's#<command>sudo[[:space:]]+thunar[[:space:]]+%([Ff])</command>#<command>sudo -n thunar %\1</command>#' \
+        -e 's#<command>sudo[[:space:]]+mousepad[[:space:]]+%([Ff])</command>#<command>sudo -n mousepad %\1</command>#' \
+        "$user_uca"
+
+    print_success "Updated Thunar root actions in $user_uca"
+}
+
 create_desktop_shortcuts() {
     print_step "Creating desktop shortcuts..."
 
@@ -1875,6 +1955,7 @@ X-XFCE-TrustedApplication=true
 EOF
     chmod +x "$DESKTOP_DIR/kodachi-binaries.desktop"
     mark_desktop_file_trusted "$DESKTOP_DIR/kodachi-binaries.desktop"
+    update_thunar_root_actions
 
     # 3. Kodachi AutoShield shortcut (white Kodachi icon)
     local WELCOME_ICON_PATH="$INSTALL_PATH/icons/kodachi-autoshield.png"
