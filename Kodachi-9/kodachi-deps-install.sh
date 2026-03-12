@@ -615,12 +615,23 @@ HEADER
 %sudo ALL=(ALL) NOPASSWD: /usr/bin/timedatectl
 
 # ============================================================
+# GUI Root Actions (Thunar and Mousepad)
+# ============================================================
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/thunar
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/mousepad
+
+# ============================================================
 # Oniux Launcher - Kernel Namespace Configuration
 # ============================================================
 %sudo ALL=(ALL) NOPASSWD: /usr/sbin/sysctl -w kernel.unprivileged_userns_clone=*
 %sudo ALL=(ALL) NOPASSWD: /usr/sbin/sysctl -w kernel.apparmor_restrict_unprivileged_userns=*
 %sudo ALL=(ALL) NOPASSWD: /sbin/sysctl -w kernel.unprivileged_userns_clone=*
 %sudo ALL=(ALL) NOPASSWD: /sbin/sysctl -w kernel.apparmor_restrict_unprivileged_userns=*
+
+# ============================================================
+# Dashboard Sudo Availability Probe
+# ============================================================
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/true
 
 # End of Kodachi NOPASSWD rules
 EOF
@@ -798,6 +809,52 @@ cleanup_legacy_autostart_entries_for_user() {
 }
 
 # Install Conky assets and autostart profile for the real desktop user
+# Stop Conky safely before updating its files to prevent CPU spike / freeze.
+# Must run as root — targets the specified non-root user's processes.
+# The watchdog service is stopped first so it doesn't restart Conky mid-update.
+# Conky will be restarted automatically by the enable --now call later.
+safe_stop_conky_for_update() {
+    local target_user="${1:-}"
+    if [[ -z "$target_user" ]]; then
+        return 0
+    fi
+
+    if ! pgrep -u "$target_user" -x conky >/dev/null 2>&1; then
+        return 0
+    fi
+
+    print_info "Stopping Conky for user $target_user before file update..."
+
+    # 1. Disable + stop the watchdog so Restart=always cannot respawn it
+    if command -v systemctl >/dev/null 2>&1 && command -v runuser >/dev/null 2>&1; then
+        runuser -u "$target_user" -- systemctl --user disable --now conky-watchdog.service >/dev/null 2>&1 || true
+    fi
+
+    # 2. Kill watchdog and launcher processes (launcher spawns new conky instances)
+    pkill -u "$target_user" -f conky-watchdog >/dev/null 2>&1 || true
+    pkill -u "$target_user" -f conky-launcher >/dev/null 2>&1 || true
+    sleep 1
+
+    # 3. Graceful stop all conky
+    pkill -u "$target_user" -x conky >/dev/null 2>&1 || true
+    sleep 2
+
+    # 4. Force kill if still alive
+    if pgrep -u "$target_user" -x conky >/dev/null 2>&1; then
+        pkill -9 -u "$target_user" -x conky >/dev/null 2>&1 || true
+        sleep 1
+    fi
+
+    # 5. Verify clean kill
+    if pgrep -u "$target_user" -x conky >/dev/null 2>&1; then
+        print_warning "Some Conky processes survived; forcing final cleanup"
+        pkill -9 -u "$target_user" -x conky >/dev/null 2>&1 || true
+        pkill -9 -u "$target_user" -f conky-launcher >/dev/null 2>&1 || true
+    fi
+
+    print_info "Conky stopped for update (will restart automatically)"
+}
+
 install_kodachi_conky_for_user() {
     print_step "Configuring Kodachi Conky startup..."
 
@@ -881,8 +938,26 @@ install_kodachi_conky_for_user() {
 
     mkdir -p "$(dirname "$conky_install_dir")" "$autostart_dir" "$systemd_user_dir" "$wants_dir"
     if [[ "$conky_source" != "$conky_install_dir" ]]; then
+        safe_stop_conky_for_update "$actual_user"
+
+        # Preserve runtime data/cache directory across update to prevent
+        # the Signal Deck from cold-starting all queries (600% CPU spike).
+        local _conky_data_backup=""
+        if [[ -d "$conky_install_dir/data" ]]; then
+            _conky_data_backup="$(mktemp -d "${TMPDIR:-/tmp}/kodachi-conky-data.XXXXXX")"
+            cp -a "$conky_install_dir/data/." "$_conky_data_backup/" 2>/dev/null || true
+        fi
+
         rm -rf "$conky_install_dir"
         cp -a "$conky_source" "$conky_install_dir"
+
+        # Restore cached data so focus-alert/signal-deck doesn't rebuild from scratch
+        if [[ -n "${_conky_data_backup:-}" ]] && [[ -d "$_conky_data_backup" ]]; then
+            mkdir -p "$conky_install_dir/data"
+            cp -a "$_conky_data_backup/." "$conky_install_dir/data/" 2>/dev/null || true
+            rm -rf "$_conky_data_backup"
+        fi
+
         print_success "Conky assets updated: $conky_install_dir"
     else
         print_info "Conky assets already present. Refreshing permissions and startup entries."

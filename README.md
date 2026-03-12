@@ -11,6 +11,7 @@
 | ![Terminal](https://img.shields.io/badge/-Terminal%20Server-orange?style=for-the-badge&logo=terminal&logoColor=white) | **Kodachi Terminal Server Version** — Lightweight ISO with all binaries pre-configured and optimized terminal interface. Perfect for servers and headless deployments. | [![Guide](https://img.shields.io/badge/Guide-blue?style=flat-square&logo=book&logoColor=white)](https://www.kodachi.cloud/wiki/bina/terminal-version.html) |
 | ![Binaries](https://img.shields.io/badge/-Standalone%20Binaries-blue?style=for-the-badge&logo=package&logoColor=white) | **Kodachi Standalone Binaries** — Individual privacy and security tools that work on any Debian-based Linux distribution. Ships with the full Dashboard GUI. | [![Install](https://img.shields.io/badge/Installation-green?style=flat-square&logo=rocket&logoColor=white)](https://www.kodachi.cloud/wiki/bina/installation.html) |
 | ![Dashboard](https://img.shields.io/badge/-Dashboard%20GUI-teal?style=for-the-badge&logo=desktop&logoColor=white) | **Kodachi Dashboard GUI** — Modern Tauri + Svelte desktop application providing centralized control over all security services. Ships with all editions. | [![Install](https://img.shields.io/badge/Installation-green?style=flat-square&logo=rocket&logoColor=white)](https://www.kodachi.cloud/wiki/bina/installation.html) [![Desktop](https://img.shields.io/badge/Desktop-blue?style=flat-square&logo=debian&logoColor=white)](https://www.kodachi.cloud/wiki/bina/desktop-debian.html) |
+| ![Changelog](https://img.shields.io/badge/-Changelog-gray?style=for-the-badge&logo=clock&logoColor=white) | **Kodachi Changelog** — Full history of changes, improvements, and fixes across all Kodachi releases and components. | [![Changelog](https://img.shields.io/badge/Changelog-blue?style=flat-square&logo=clock&logoColor=white)](https://www.kodachi.cloud/wiki/bina/changelog.html) [![Raw](https://img.shields.io/badge/Raw-gray?style=flat-square&logo=markdown&logoColor=white)](https://www.kodachi.cloud/apps/os/CHANGELOG.md) |
 
 ---
 
@@ -75,7 +76,7 @@ This roadmap provides an overview of the current status of key components in the
 
 **Kodachi 9** is based on **<span style="color:blue;">Debian</span>** and is now **<span style="color:green;">fully released</span>** (February 26, 2026). Every script has been rewritten from scratch to enhance performance and functionality. Available as standalone binaries, terminal server version, and the complete desktop edition (Debian XFCE).
 
-Check out the [R&D progress](https://github.com/WMAL/Linux-Kodachi/tree/main/Kodachi-9/v9-behind-scenes-progress) for Kodachi 9 development history.
+Check out the [R&D progress](https://github.com/WMAL/Linux-Kodachi/tree/main/Kodachi-9/v9-behind-scenes-progress) for Kodachi 9 development history and the [Changelog](https://www.kodachi.cloud/wiki/bina/changelog.html) for a detailed list of all changes ([raw](https://www.kodachi.cloud/apps/os/CHANGELOG.md)).
 
 ---
 

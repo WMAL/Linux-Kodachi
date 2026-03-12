@@ -73,6 +73,7 @@ This roadmap provides an overview of the current status of key components in the
 **Development Started:** August 2024
 **Released:** February 26, 2026
 **Current Status:** Released
+**Changelog:** [View Changelog](https://www.kodachi.cloud/wiki/bina/changelog.html) | [Raw](https://www.kodachi.cloud/apps/os/CHANGELOG.md)
 
 ### Project Timeline
 
@@ -93,6 +94,8 @@ This roadmap provides an overview of the current status of key components in the
 | 13  | Desktop Final Release            |  ![Done](https://img.shields.io/badge/-Done-brightgreen?style=flat-square)  |  Feb 26, 2026   | Kodachi Desktop (Debian XFCE) final release      |
 
 **Release Date:** February 26, 2026
+
+See the full [Changelog](https://www.kodachi.cloud/wiki/bina/changelog.html) for detailed release notes ([raw](https://www.kodachi.cloud/apps/os/CHANGELOG.md)).
 
 ---
 
