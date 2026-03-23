@@ -146,8 +146,38 @@ PERMISSION_GUARD_SKIPPED=false
 SKIPPED_COUNT=0
 INSTALL_IS_UPDATE=false
 MANAGED_BINARIES_FILE=""
+INSTALL_METADATA_FILE=""
+USER_SPECIFIED_VERSION=false
+LATEST_KODACHI_VERSION=""
+LATEST_KODACHI_BUILD_NUMBER=""
+LATEST_KODACHI_LAST_BUILD_DATE=""
+LATEST_KODACHI_CHECKSUM=""
+LATEST_KODACHI_METADATA_SOURCE=""
+PACKAGE_SHA256=""
 
-read_binary_pack_main_version_from_main_info() {
+compare_kodachi_versions() {
+    local v1="${1#v}"
+    local v2="${2#v}"
+    local first_sorted=""
+
+    if [[ "$v1" == "$v2" ]]; then
+        return 0
+    fi
+
+    first_sorted="$(printf '%s\n%s\n' "$v1" "$v2" | sort -V | head -1)"
+    if [[ "$first_sorted" == "$v1" ]]; then
+        return 2
+    fi
+
+    return 1
+}
+
+version_is_older_kodachi() {
+    compare_kodachi_versions "$1" "$2"
+    [[ $? -eq 2 ]]
+}
+
+read_binary_pack_metadata_from_main_info() {
     local source_file="$1"
     python3 - "$source_file" <<'PY'
 import json
@@ -156,18 +186,24 @@ import sys
 with open(sys.argv[1], "r", encoding="utf-8") as fh:
     data = json.load(fh)
 
-version = str((data.get("binary_pack") or {}).get("main_version") or "").strip()
+binary_pack = data.get("binary_pack") or {}
+version = str(binary_pack.get("main_version") or "").strip()
 if not version:
     raise SystemExit(1)
 
-print(version)
+build_number = str(binary_pack.get("build_number") or "").strip()
+last_build_date = str(binary_pack.get("last_build_date") or "").strip()
+checksum_sha256 = str(binary_pack.get("checksum_sha256") or "").strip()
+
+print("|".join([version, build_number, last_build_date, checksum_sha256]))
 PY
 }
 
-resolve_default_kodachi_version() {
+resolve_default_binary_pack_metadata() {
     local candidate=""
     local json_file=""
     local tmp_file=""
+    local metadata=""
     local candidates=(
         "$SCRIPT_DIR/../main-info.json"
         "$SCRIPT_DIR/main-info.json"
@@ -179,7 +215,11 @@ resolve_default_kodachi_version() {
 
     for candidate in "${candidates[@]}"; do
         if [[ -f "$candidate" ]]; then
-            read_binary_pack_main_version_from_main_info "$candidate" 2>/dev/null && return 0
+            metadata="$(read_binary_pack_metadata_from_main_info "$candidate" 2>/dev/null || true)"
+            if [[ -n "$metadata" ]]; then
+                printf '%s|%s\n' "$metadata" "$candidate"
+                return 0
+            fi
         fi
     done
 
@@ -189,19 +229,116 @@ resolve_default_kodachi_version() {
             "https://www.kodachi.cloud/apps/os/main-info.json" \
             "https://kodachi.cloud/apps/os/main-info.json"; do
             if curl -fsSL "$json_file" -o "$tmp_file" 2>/dev/null; then
-                read_binary_pack_main_version_from_main_info "$tmp_file" 2>/dev/null && {
+                metadata="$(read_binary_pack_metadata_from_main_info "$tmp_file" 2>/dev/null || true)"
+                if [[ -n "$metadata" ]]; then
                     rm -f "$tmp_file"
+                    printf '%s|%s\n' "$metadata" "$json_file"
                     return 0
-                }
+                fi
             fi
         done
         rm -f "$tmp_file"
     fi
 
-    echo "9.0.1"
+    printf '9.0.1||||built-in-fallback\n'
 }
 
-KODACHI_VERSION="$(resolve_default_kodachi_version)"
+read_installed_binary_pack_metadata() {
+    local metadata_file="$1"
+    local key=""
+    local value=""
+    local version=""
+    local build_number=""
+    local last_build_date=""
+    local checksum_sha256=""
+    local installed_at=""
+
+    [[ -f "$metadata_file" ]] || return 1
+
+    while IFS='=' read -r key value; do
+        case "$key" in
+            version) version="$value" ;;
+            build_number) build_number="$value" ;;
+            last_build_date) last_build_date="$value" ;;
+            checksum_sha256) checksum_sha256="$value" ;;
+            installed_at) installed_at="$value" ;;
+        esac
+    done < "$metadata_file"
+
+    printf '%s|%s|%s|%s|%s\n' "$version" "$build_number" "$last_build_date" "$checksum_sha256" "$installed_at"
+}
+
+write_installed_binary_pack_metadata() {
+    local metadata_file="$1"
+    local version="$2"
+    local build_number="$3"
+    local last_build_date="$4"
+    local checksum_sha256="$5"
+
+    cat > "$metadata_file" <<EOF
+version=$version
+build_number=$build_number
+last_build_date=$last_build_date
+checksum_sha256=$checksum_sha256
+installed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+EOF
+}
+
+report_binary_pack_freshness() {
+    local installed_metadata=""
+    local installed_version=""
+    local installed_build_number=""
+    local installed_last_build_date=""
+    local installed_checksum=""
+    local installed_at=""
+
+    if [[ -n "$LATEST_KODACHI_VERSION" ]]; then
+        if [[ -n "$LATEST_KODACHI_BUILD_NUMBER" || -n "$LATEST_KODACHI_LAST_BUILD_DATE" ]]; then
+            print_info "Latest published binary pack: v${LATEST_KODACHI_VERSION} (build ${LATEST_KODACHI_BUILD_NUMBER:-unknown}, published ${LATEST_KODACHI_LAST_BUILD_DATE:-unknown})"
+        else
+            print_info "Latest published binary pack: v${LATEST_KODACHI_VERSION}"
+        fi
+    fi
+
+    if [[ "$USER_SPECIFIED_VERSION" == "true" ]] && [[ -n "$LATEST_KODACHI_VERSION" ]] && [[ "$KODACHI_VERSION" != "$LATEST_KODACHI_VERSION" ]]; then
+        if version_is_older_kodachi "$KODACHI_VERSION" "$LATEST_KODACHI_VERSION"; then
+            print_warning "Requested version v${KODACHI_VERSION} is older than the latest published pack v${LATEST_KODACHI_VERSION} (${LATEST_KODACHI_LAST_BUILD_DATE:-date unknown})"
+        else
+            print_info "Requested version override: v${KODACHI_VERSION}"
+        fi
+    fi
+
+    if [[ -z "$INSTALL_METADATA_FILE" || ! -f "$INSTALL_METADATA_FILE" ]]; then
+        return 0
+    fi
+
+    installed_metadata="$(read_installed_binary_pack_metadata "$INSTALL_METADATA_FILE" 2>/dev/null || true)"
+    if [[ -z "$installed_metadata" ]]; then
+        return 0
+    fi
+
+    IFS='|' read -r installed_version installed_build_number installed_last_build_date installed_checksum installed_at <<< "$installed_metadata"
+    if [[ -z "$installed_version" ]]; then
+        return 0
+    fi
+
+    if [[ -n "$LATEST_KODACHI_CHECKSUM" && -n "$installed_checksum" ]]; then
+        if [[ "$installed_checksum" == "$LATEST_KODACHI_CHECKSUM" ]]; then
+            print_success "Existing installation already matches the latest published binary pack"
+        else
+            print_warning "Existing installation is older than the latest published binary pack (installed v${installed_version} from ${installed_last_build_date:-unknown}, latest v${LATEST_KODACHI_VERSION} from ${LATEST_KODACHI_LAST_BUILD_DATE:-unknown})"
+        fi
+        return 0
+    fi
+
+    if [[ -n "$LATEST_KODACHI_VERSION" ]] && version_is_older_kodachi "$installed_version" "$LATEST_KODACHI_VERSION"; then
+        print_warning "Existing installation version v${installed_version} is older than latest v${LATEST_KODACHI_VERSION}"
+    fi
+}
+
+DEFAULT_BINARY_PACK_METADATA="$(resolve_default_binary_pack_metadata)"
+IFS='|' read -r KODACHI_VERSION LATEST_KODACHI_BUILD_NUMBER LATEST_KODACHI_LAST_BUILD_DATE LATEST_KODACHI_CHECKSUM LATEST_KODACHI_METADATA_SOURCE <<< "$DEFAULT_BINARY_PACK_METADATA"
+LATEST_KODACHI_VERSION="$KODACHI_VERSION"
 
 get_desktop_dir() {
     local desktop_dir="$HOME/Desktop"
@@ -311,6 +448,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         --version)
             KODACHI_VERSION="$2"
+            USER_SPECIFIED_VERSION=true
             shift 2
             ;;
         --skip-path)
@@ -375,12 +513,15 @@ if [[ -z "$INSTALL_PATH" ]]; then
 fi
 
 MANAGED_BINARIES_FILE="$INSTALL_PATH/.kodachi-managed-binaries.list"
+INSTALL_METADATA_FILE="$INSTALL_PATH/.kodachi-binary-pack.metadata"
 if detect_existing_installation_mode; then
     print_warning "Existing Kodachi installation detected at: $INSTALL_PATH"
     print_info "Changing mode to UPDATE: replacing managed binaries and refreshing startup entries."
 else
     print_info "No previous Kodachi installation detected. Running in install mode."
 fi
+
+report_binary_pack_freshness
 
 print_info "Installing Kodachi binaries to: $INSTALL_PATH"
 echo ""
@@ -976,6 +1117,14 @@ if download_with_retry "$CHECKSUM_URL" "$CHECKSUM_FILE"; then
     cd "$TEMP_DIR"
     if sha256sum -c "$CHECKSUM_FILE" &>/dev/null; then
         print_success "Package checksum verified"
+        PACKAGE_SHA256="$(sha256sum "$PACKAGE_FILE" | awk '{print $1}')"
+        if [[ -n "$LATEST_KODACHI_CHECKSUM" ]] && [[ "$KODACHI_VERSION" == "$LATEST_KODACHI_VERSION" ]]; then
+            if [[ "$PACKAGE_SHA256" == "$LATEST_KODACHI_CHECKSUM" ]]; then
+                print_success "Package matches the latest published binary pack checksum"
+            else
+                print_warning "Published main-info checksum and downloaded package checksum do not match"
+            fi
+        fi
     else
         print_error "Package checksum verification FAILED!"
         print_error "The downloaded package is corrupted or has been tampered with."
@@ -1528,7 +1677,7 @@ ExecStart=/bin/bash -c '\
     [ -x "$bin" ] && exec "$bin" snapshot --refresh --quiet 2>/dev/null; \
   done; \
   exit 0'
-TimeoutSec=45
+TimeoutSec=90
 StandardOutput=null
 StandardError=journal
 Nice=15
@@ -2143,6 +2292,25 @@ if [[ "$SKIP_PATH_UPDATE" != "true" ]]; then
         print_success "Updated Kodachi path block in .bashrc"
     fi
 fi
+
+if [[ -z "$PACKAGE_SHA256" ]]; then
+    PACKAGE_SHA256="$(sha256sum "$PACKAGE_FILE" 2>/dev/null | awk '{print $1}' || true)"
+fi
+
+METADATA_BUILD_NUMBER=""
+METADATA_LAST_BUILD_DATE=""
+if [[ "$KODACHI_VERSION" == "$LATEST_KODACHI_VERSION" ]]; then
+    METADATA_BUILD_NUMBER="$LATEST_KODACHI_BUILD_NUMBER"
+    METADATA_LAST_BUILD_DATE="$LATEST_KODACHI_LAST_BUILD_DATE"
+fi
+
+write_installed_binary_pack_metadata \
+    "$INSTALL_METADATA_FILE" \
+    "$KODACHI_VERSION" \
+    "$METADATA_BUILD_NUMBER" \
+    "$METADATA_LAST_BUILD_DATE" \
+    "$PACKAGE_SHA256"
+print_info "Binary pack metadata recorded: $INSTALL_METADATA_FILE"
 
 # Final summary
 echo ""
