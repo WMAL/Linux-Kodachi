@@ -329,6 +329,120 @@ kill_matching_processes_current_root() {
     return 0
 }
 
+KODACHI_PRIMARY_DNS="1.1.1.1 9.9.9.9 149.112.112.112 94.140.14.14"
+KODACHI_FALLBACK_DNS="1.0.0.1 149.112.112.10"
+KODACHI_RESOLVED_RUNTIME_FILE="/run/systemd/resolve/resolv.conf"
+KODACHI_RESOLVED_STUB_FILE="/run/systemd/resolve/stub-resolv.conf"
+
+dns_build_chroot_environment() {
+    if [ -f "/.debian-live-build" ] || [ -f "/tmp/live-build-chroot" ] || [ -n "${LB_BASE:-}" ]; then
+        return 0
+    fi
+
+    if command -v ischroot >/dev/null 2>&1; then
+        ischroot
+        return $?
+    fi
+
+    return 1
+}
+
+write_nameserver_file() {
+    local target_file="${1:-}"
+    local description="${2:-DNS configuration}"
+    local dns_servers="${3:-}"
+    local server=""
+
+    [[ -n "$target_file" ]] || return 1
+    mkdir -p "$(dirname "$target_file")"
+
+    {
+        printf '# Kodachi %s\n' "$description"
+        printf '# Generated automatically by kodachi-deps-install.sh\n'
+        for server in $dns_servers; do
+            printf 'nameserver %s\n' "$server"
+        done
+    } > "$target_file"
+}
+
+seed_systemd_resolved_bootstrap_files() {
+    write_nameserver_file "$KODACHI_RESOLVED_RUNTIME_FILE" "systemd-resolved runtime DNS bootstrap" "$KODACHI_PRIMARY_DNS"
+
+    mkdir -p "$(dirname "$KODACHI_RESOLVED_STUB_FILE")"
+    {
+        printf '# Kodachi systemd-resolved stub bootstrap\n'
+        printf '# Generated automatically by kodachi-deps-install.sh\n'
+        printf 'nameserver 127.0.0.53\n'
+        printf 'options edns0 trust-ad\n'
+    } > "$KODACHI_RESOLVED_STUB_FILE"
+}
+
+point_resolv_conf_to_target() {
+    local target_file="${1:-}"
+
+    [[ -n "$target_file" ]] || return 1
+
+    chattr -i /etc/resolv.conf 2>/dev/null || true
+    ln -sf "$target_file" /etc/resolv.conf 2>/dev/null || true
+}
+
+resolved_resolv_conf_target() {
+    local profile="${1:-primary}"
+
+    if [[ "$profile" == "primary" ]] && ! dns_build_chroot_environment; then
+        echo "$KODACHI_RESOLVED_STUB_FILE"
+        return 0
+    fi
+
+    echo "$KODACHI_RESOLVED_RUNTIME_FILE"
+}
+
+write_kodachi_resolved_profile() {
+    local profile="${1:-primary}"
+    local dns_owner="${2:-systemd-resolved}"
+
+    mkdir -p /etc/systemd/resolved.conf.d
+
+    case "$profile" in
+        external)
+            cat > /etc/systemd/resolved.conf.d/kodachi.conf << EOF
+# Kodachi configuration - ${dns_owner} handles DNS
+[Resolve]
+DNSStubListener=no
+FallbackDNS=${KODACHI_PRIMARY_DNS}
+EOF
+            ;;
+        primary)
+            cat > /etc/systemd/resolved.conf.d/kodachi.conf << EOF
+# Kodachi configuration - systemd-resolved as primary DNS
+[Resolve]
+DNS=${KODACHI_PRIMARY_DNS}
+FallbackDNS=${KODACHI_FALLBACK_DNS}
+DNSSEC=allow-downgrade
+Cache=yes
+EOF
+            ;;
+        *)
+            print_error "Unknown systemd-resolved profile: $profile"
+            return 1
+            ;;
+    esac
+}
+
+run_dns_switch_command() {
+    local dns_switch_binary="${1:-}"
+    shift || true
+
+    [[ -n "$dns_switch_binary" ]] || return 1
+
+    if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+        "$dns_switch_binary" "$@"
+        return $?
+    fi
+
+    sudo "$dns_switch_binary" "$@"
+}
+
 # Function to apply fallback DNS servers (mimics dns-switch fix-dns behavior)
 apply_fallback_dns() {
     print_step "Applying FALLBACK DNS fix (systemd-resolved + /etc/resolv.conf)..."
@@ -344,81 +458,213 @@ apply_fallback_dns() {
         sleep 2
     fi
 
-    # Step 2: Fix /etc/resolv.conf symlink if needed
-    if [[ -L "/etc/resolv.conf" ]]; then
-        local target=$(readlink -f /etc/resolv.conf)
-        if [[ "$target" != *"systemd"* ]]; then
-            print_verbose "Fixing /etc/resolv.conf symlink to point to systemd-resolved..."
-            ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf 2>/dev/null || true
-        fi
-    else
-        print_verbose "/etc/resolv.conf is a regular file, converting to systemd symlink..."
-        ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf 2>/dev/null || true
-    fi
+    # Step 2: Seed runtime resolver files so chroot builds keep working even when
+    # systemd service starts/restarts are intentionally blocked.
+    print_verbose "Seeding systemd-resolved runtime resolver files..."
+    seed_systemd_resolved_bootstrap_files
 
-    # Step 3: Remove immutable attribute from /etc/resolv.conf (in case it's set)
-    chattr -i /etc/resolv.conf 2>/dev/null || true
+    # Step 3: Point /etc/resolv.conf at the runtime resolver file used for fallback.
+    print_verbose "Pointing /etc/resolv.conf to systemd-resolved runtime resolver..."
+    point_resolv_conf_to_target "$KODACHI_RESOLVED_RUNTIME_FILE"
 
-    # Step 4: Write fallback DNS servers directly to /etc/resolv.conf as backup
-    # This ensures DNS works even if systemd-resolved fails
-    print_verbose "Writing fallback DNS servers to /etc/resolv.conf..."
-    cat > /etc/resolv.conf << 'EOF'
-# Kodachi fallback DNS configuration
-# Generated automatically after systemd-resolved installation
-nameserver 1.1.1.1
-nameserver 9.9.9.9
-nameserver 149.112.112.112
-nameserver 94.140.14.14
-EOF
-
-    # Step 5: Try to configure systemd-resolved via resolvectl if available
+    # Step 4: Try to configure systemd-resolved via resolvectl if available
     if command -v resolvectl &>/dev/null; then
-        print_verbose "Configuring systemd-resolved via resolvectl..."
-        resolvectl dns 2>/dev/null || true
         resolvectl flush-caches 2>/dev/null || true
     fi
 
-    print_success "Fallback DNS applied: 1.1.1.1, 9.9.9.9, 149.112.112.112, 94.140.14.14"
+    print_success "Fallback DNS applied: $KODACHI_PRIMARY_DNS"
+}
+
+dns_resolution_working() {
+    timeout 5 getent hosts cloudflare.com >/dev/null 2>&1 || \
+    timeout 5 getent hosts deb.debian.org >/dev/null 2>&1 || \
+    timeout 5 getent hosts github.com >/dev/null 2>&1
+}
+
+find_dns_switch_binary() {
+    local dns_switch_binary=""
+    local real_user_home=""
+    local possible_locations=()
+
+    if command -v dns-switch >/dev/null 2>&1; then
+        command -v dns-switch
+        return 0
+    fi
+
+    if [[ -n "$SUDO_USER" ]]; then
+        real_user_home=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+        if [[ -z "$real_user_home" ]]; then
+            real_user_home=$(resolve_user_home "$SUDO_USER")
+        fi
+    else
+        real_user_home="$HOME"
+    fi
+
+    possible_locations=(
+        "$PROJECT_ROOT/dashboard/hooks/dns-switch"
+        "$real_user_home/dashboard/hooks/dns-switch"
+        "$real_user_home/Desktop/dashboard/hooks/dns-switch"
+        "$real_user_home/k900/dashboard/hooks/dns-switch"
+        "$HOME/dashboard/hooks/dns-switch"
+        "$HOME/Desktop/dashboard/hooks/dns-switch"
+        "$HOME/k900/dashboard/hooks/dns-switch"
+        "/opt/kodachi/dashboard/hooks/dns-switch"
+        "/usr/local/bin/dns-switch"
+        "/usr/bin/dns-switch"
+    )
+
+    for dns_switch_binary in "${possible_locations[@]}"; do
+        if [[ -x "$dns_switch_binary" ]]; then
+            echo "$dns_switch_binary"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+apply_preferred_fallback_dns() {
+    local dns_switch_binary="${1:-}"
+
+    if [[ -z "$dns_switch_binary" ]]; then
+        dns_switch_binary="$(find_dns_switch_binary 2>/dev/null || true)"
+    fi
+
+    if [[ -n "$dns_switch_binary" ]]; then
+        print_step "Applying fallback DNS via dns-switch..."
+        print_verbose "Using dns-switch from: $dns_switch_binary"
+        if (set -o pipefail; run_dns_switch_command "$dns_switch_binary" fallback 2>&1 | tail -5); then
+            print_success "dns-switch fallback completed"
+            return 0
+        fi
+
+        print_warning "dns-switch fallback returned error, using built-in fallback DNS"
+    else
+        print_info "dns-switch binary not found - using built-in fallback DNS"
+    fi
+
+    apply_fallback_dns
+}
+
+try_verified_random_dns() {
+    local dns_switch_binary="${1:-}"
+
+    if [[ -z "$dns_switch_binary" ]]; then
+        dns_switch_binary="$(find_dns_switch_binary 2>/dev/null || true)"
+    fi
+
+    if [[ -z "$dns_switch_binary" ]]; then
+        print_warning "dns-switch binary not found - cannot try verified random DNS recovery"
+        return 1
+    fi
+
+    print_step "Trying verified random DNS as last resort..."
+    print_verbose "Using dns-switch from: $dns_switch_binary"
+
+    if (set -o pipefail; run_dns_switch_command "$dns_switch_binary" random --type reputable --count 3 --verify 2>&1 | tail -5); then
+        print_success "dns-switch random --verify completed"
+        return 0
+    fi
+
+    print_warning "Verified random DNS attempt returned error"
+    return 1
+}
+
+recover_dns_with_fallback_then_random() {
+    local dns_switch_binary=""
+    local attempt=0
+
+    dns_switch_binary="$(find_dns_switch_binary 2>/dev/null || true)"
+    if [[ -z "$dns_switch_binary" ]]; then
+        print_info "dns-switch binary not found in PATH or standard locations"
+    fi
+
+    for attempt in 1 2; do
+        print_warning "DNS unavailable - applying fallback DNS attempt $attempt/2..."
+        apply_preferred_fallback_dns "$dns_switch_binary"
+        sleep 2
+
+        if dns_resolution_working; then
+            print_success "DNS restored after fallback DNS attempt $attempt"
+            return 0
+        fi
+    done
+
+    print_warning "Fallback DNS attempts did not restore connectivity"
+
+    if try_verified_random_dns "$dns_switch_binary"; then
+        sleep 2
+        if dns_resolution_working; then
+            print_success "DNS restored after verified random DNS recovery"
+            return 0
+        fi
+    fi
+
+    print_warning "Verified random DNS did not restore connectivity, reapplying fallback DNS for a safe final state..."
+    apply_preferred_fallback_dns "$dns_switch_binary"
+    sleep 2
+
+    if dns_resolution_working; then
+        print_success "DNS restored after final fallback reapply"
+        return 0
+    fi
+
+    print_error "DNS resolution still unavailable after fallback retries and verified random recovery"
+    return 1
+}
+
+ensure_dns_stable_after_change() {
+    local operation="${1:-DNS change}"
+
+    if dns_resolution_working; then
+        print_success "DNS stable after ${operation}"
+        return 0
+    fi
+
+    print_warning "DNS unstable after ${operation} - starting fallback-first recovery"
+    if recover_dns_with_fallback_then_random; then
+        print_success "DNS stable after recovery for ${operation}"
+        return 0
+    fi
+
+    print_error "DNS remains unstable after ${operation}"
+    return 1
+}
+
+reconcile_dns_after_service_transition() {
+    local operation="${1:-DNS service change}"
+
+    print_step "Reconfiguring resolver after ${operation}..."
+
+    if configure_systemd_resolved; then
+        print_success "Resolver reconciled after ${operation}"
+        return 0
+    fi
+
+    print_warning "systemd-resolved reconfiguration failed after ${operation} - falling back to DNS recovery"
+    ensure_dns_stable_after_change "$operation"
 }
 
 # Function to wait for DNS resolution to become available
-# Retries DNS resolution with fallback DNS servers if needed
+# Briefly waits for passive recovery, then runs fallback-first DNS recovery.
 wait_for_dns() {
-    local max_wait=30
+    local max_wait=6
     local waited=0
 
     print_step "Waiting for DNS resolution to become available..."
 
     while [[ $waited -lt $max_wait ]]; do
-        # Test DNS with a lightweight lookup
-        if timeout 3 getent hosts cloudflare.com >/dev/null 2>&1 || \
-           timeout 3 getent hosts deb.debian.org >/dev/null 2>&1; then
+        if dns_resolution_working; then
             print_success "DNS resolution is working"
             return 0
-        fi
-
-        # Every 10 seconds, try applying fallback DNS
-        if [[ $((waited % 10)) -eq 0 ]] && [[ $waited -gt 0 ]]; then
-            print_verbose "DNS still not working after ${waited}s, reapplying fallback DNS..."
-            apply_fallback_dns
         fi
 
         sleep 2
         waited=$((waited + 2))
     done
 
-    # Final attempt: force fallback DNS
-    print_warning "DNS not available after ${max_wait}s, forcing fallback DNS..."
-    apply_fallback_dns
-    sleep 2
-
-    if timeout 5 getent hosts cloudflare.com >/dev/null 2>&1; then
-        print_success "DNS resolution restored after fallback"
-        return 0
-    fi
-
-    print_error "DNS resolution still unavailable after ${max_wait}s"
-    return 1
+    print_warning "DNS did not recover on its own after ${max_wait}s - starting fallback-first recovery"
+    recover_dns_with_fallback_then_random
 }
 
 # Function to configure sudoers for Kodachi binaries (NOPASSWD access)
@@ -632,6 +878,24 @@ HEADER
 # Dashboard Sudo Availability Probe
 # ============================================================
 %sudo ALL=(ALL) NOPASSWD: /usr/bin/true
+
+# ============================================================
+# Firewall & Network Status (read-only monitoring)
+# ============================================================
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/ufw status
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/ufw status *
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/nft list ruleset
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/nft list table *
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables -L *
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables -S
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables -S *
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t * -S
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t * -S *
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t * -L *
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables -S
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables -S *
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables -t * -S
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables -t * -L *
 
 # End of Kodachi NOPASSWD rules
 EOF
@@ -999,7 +1263,7 @@ ExecStart=/bin/bash -c '\
     [ -x "$bin" ] && exec "$bin" snapshot --refresh --quiet 2>/dev/null; \
   done; \
   exit 0'
-TimeoutSec=45
+TimeoutSec=90
 StandardOutput=null
 StandardError=journal
 Nice=15
@@ -1714,6 +1978,223 @@ DNSCRYPT_VERSION="2.1.15"
 QRENCODE_VERSION="4.1.1"
 KLOAK_VERSION="0.2"
 
+extract_version_token_from_text() {
+    local text="${1:-}"
+    # Strip common archive extensions before extracting version to avoid matching .tar etc.
+    text="${text%.tar.gz}"
+    text="${text%.tar.xz}"
+    text="${text%.tar.bz2}"
+    text="${text%.tar.zst}"
+    text="${text%.zip}"
+    text="${text%.deb}"
+    text="${text%.rpm}"
+    text="${text%.tgz}"
+    printf '%s\n' "$text" | grep -oE '([0-9]+\.)+[0-9]+([-.][0-9A-Za-z]+)?' | head -1
+}
+
+normalize_external_version() {
+    local version="${1:-}"
+    version="${version#v}"
+    version="${version#app/}"
+    version="${version#release-}"
+    printf '%s\n' "$version"
+}
+
+github_fetch_release_json() {
+    local repo="${1:-}"
+    local output="${2:-}"
+
+    [[ -n "$repo" && -n "$output" ]] || return 1
+
+    curl -fsSL --proto =https --tlsv1.2 \
+        --retry 2 --retry-delay 2 --retry-connrefused \
+        --connect-timeout 10 --max-time 30 \
+        -H "Accept: application/vnd.github+json" \
+        -o "$output" "https://api.github.com/repos/${repo}/releases/latest" 2>/dev/null
+}
+
+github_fetch_tags_json() {
+    local repo="${1:-}"
+    local output="${2:-}"
+
+    [[ -n "$repo" && -n "$output" ]] || return 1
+
+    curl -fsSL --proto =https --tlsv1.2 \
+        --retry 2 --retry-delay 2 --retry-connrefused \
+        --connect-timeout 10 --max-time 30 \
+        -H "Accept: application/vnd.github+json" \
+        -o "$output" "https://api.github.com/repos/${repo}/tags?per_page=5" 2>/dev/null
+}
+
+github_release_tag_from_file() {
+    local json_file="${1:-}"
+    [[ -n "$json_file" && -f "$json_file" ]] || return 1
+    sed -n 's/^[[:space:]]*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' "$json_file" | head -1
+}
+
+github_release_asset_url_from_file() {
+    local json_file="${1:-}"
+    local asset_regex="${2:-}"
+
+    [[ -n "$json_file" && -f "$json_file" && -n "$asset_regex" ]] || return 1
+
+    sed -n 's/^[[:space:]]*"browser_download_url":[[:space:]]*"\([^"]*\)".*/\1/p' "$json_file" \
+        | grep -E "$asset_regex" | head -1 || true
+}
+
+github_first_tag_from_file() {
+    local json_file="${1:-}"
+    [[ -n "$json_file" && -f "$json_file" ]] || return 1
+    sed -n 's/^[[:space:]]*"name":[[:space:]]*"\([^"]*\)".*/\1/p' "$json_file" | head -1
+}
+
+transform_external_version_value() {
+    local value="${1:-}"
+    local sed_expr="${2:-}"
+
+    if [[ -n "$sed_expr" ]]; then
+        printf '%s\n' "$value" | sed -e "$sed_expr"
+        return 0
+    fi
+
+    printf '%s\n' "$value"
+}
+
+resolve_latest_github_release_version() {
+    local repo="${1:-}"
+    local fallback_version="${2:-}"
+    local transform_expr="${3:-}"
+    local tmp_file=""
+    local tag=""
+    local resolved_version="$fallback_version"
+
+    tmp_file="$(mktemp /tmp/kodachi-release-XXXXXX.json 2>/dev/null || true)"
+    if [[ -n "$tmp_file" ]] && github_fetch_release_json "$repo" "$tmp_file"; then
+        tag="$(github_release_tag_from_file "$tmp_file" || true)"
+        if [[ -n "$tag" ]]; then
+            tag="$(transform_external_version_value "$tag" "$transform_expr")"
+            tag="$(normalize_external_version "$tag")"
+            if [[ -n "$tag" ]]; then
+                resolved_version="$tag"
+            fi
+        fi
+    fi
+
+    [[ -n "$tmp_file" ]] && rm -f "$tmp_file"
+    printf '%s\n' "$resolved_version"
+}
+
+resolve_latest_github_tag_version() {
+    local repo="${1:-}"
+    local fallback_version="${2:-}"
+    local transform_expr="${3:-}"
+    local tmp_file=""
+    local tag=""
+    local resolved_version="$fallback_version"
+
+    tmp_file="$(mktemp /tmp/kodachi-tags-XXXXXX.json 2>/dev/null || true)"
+    if [[ -n "$tmp_file" ]] && github_fetch_tags_json "$repo" "$tmp_file"; then
+        tag="$(github_first_tag_from_file "$tmp_file" || true)"
+        if [[ -n "$tag" ]]; then
+            tag="$(transform_external_version_value "$tag" "$transform_expr")"
+            tag="$(normalize_external_version "$tag")"
+            if [[ -n "$tag" ]]; then
+                resolved_version="$tag"
+            fi
+        fi
+    fi
+
+    [[ -n "$tmp_file" ]] && rm -f "$tmp_file"
+    printf '%s\n' "$resolved_version"
+}
+
+resolve_dnscrypt_release_metadata() {
+    local dnscrypt_arch="${1:-}"
+    local fallback_version="${DNSCRYPT_VERSION:-2.1.15}"
+    local fallback_url="https://github.com/DNSCrypt/dnscrypt-proxy/releases/download/${fallback_version}/dnscrypt-proxy-linux_${dnscrypt_arch}-${fallback_version}.tar.gz"
+    local release_json=""
+    local asset_url=""
+    local resolved_version="$fallback_version"
+
+    release_json="$(mktemp /tmp/kodachi-dnscrypt-XXXXXX.json 2>/dev/null || true)"
+    if [[ -n "$release_json" ]] && github_fetch_release_json "DNSCrypt/dnscrypt-proxy" "$release_json"; then
+        asset_url="$(github_release_asset_url_from_file "$release_json" "^https://github\\.com/.*/dnscrypt-proxy-linux_${dnscrypt_arch}-[0-9][0-9A-Za-z.+:-]*\\.tar\\.gz$")"
+        if [[ -n "$asset_url" ]]; then
+            resolved_version="$(extract_version_token_from_text "$(basename "$asset_url")")"
+        fi
+    fi
+
+    [[ -n "$release_json" ]] && rm -f "$release_json"
+
+    if [[ -z "$asset_url" ]]; then
+        asset_url="$fallback_url"
+    fi
+
+    if [[ -z "$resolved_version" ]]; then
+        resolved_version="$fallback_version"
+    fi
+
+    printf '%s|%s\n' "$resolved_version" "$asset_url"
+}
+
+resolve_v2ray_plugin_release_metadata() {
+    local plugin_arch="${1:-}"
+    local fallback_version="${V2RAY_PLUGIN_VERSION:-1.3.2}"
+    local fallback_url="https://github.com/shadowsocks/v2ray-plugin/releases/download/v${fallback_version}/v2ray-plugin-linux-${plugin_arch}-v${fallback_version}.tar.gz"
+    local release_json=""
+    local asset_url=""
+    local resolved_version="$fallback_version"
+
+    release_json="$(mktemp /tmp/kodachi-v2ray-plugin-XXXXXX.json 2>/dev/null || true)"
+    if [[ -n "$release_json" ]] && github_fetch_release_json "shadowsocks/v2ray-plugin" "$release_json"; then
+        asset_url="$(github_release_asset_url_from_file "$release_json" "^https://github\\.com/.*/v2ray-plugin-linux-${plugin_arch}-v[0-9][0-9A-Za-z.+:-]*\\.tar\\.gz$")"
+        if [[ -n "$asset_url" ]]; then
+            resolved_version="$(extract_version_token_from_text "$(basename "$asset_url")")"
+        fi
+    fi
+
+    [[ -n "$release_json" ]] && rm -f "$release_json"
+
+    if [[ -z "$asset_url" ]]; then
+        asset_url="$fallback_url"
+    fi
+
+    if [[ -z "$resolved_version" ]]; then
+        resolved_version="$fallback_version"
+    fi
+
+    printf '%s|%s\n' "$resolved_version" "$asset_url"
+}
+
+resolve_mieru_release_metadata() {
+    local mieru_arch="${1:-}"
+    local fallback_version="${MIERU_VERSION:-3.27.0}"
+    local fallback_url="https://github.com/enfein/mieru/releases/download/v${fallback_version}/mieru_${fallback_version}_${mieru_arch}.deb"
+    local release_json=""
+    local asset_url=""
+    local resolved_version="$fallback_version"
+
+    release_json="$(mktemp /tmp/kodachi-mieru-XXXXXX.json 2>/dev/null || true)"
+    if [[ -n "$release_json" ]] && github_fetch_release_json "enfein/mieru" "$release_json"; then
+        asset_url="$(github_release_asset_url_from_file "$release_json" "^https://github\\.com/.*/mieru_[0-9][0-9A-Za-z.+:-]*_${mieru_arch}\\.deb$")"
+        if [[ -n "$asset_url" ]]; then
+            resolved_version="$(extract_version_token_from_text "$(basename "$asset_url")")"
+        fi
+    fi
+
+    [[ -n "$release_json" ]] && rm -f "$release_json"
+
+    if [[ -z "$asset_url" ]]; then
+        asset_url="$fallback_url"
+    fi
+
+    if [[ -z "$resolved_version" ]]; then
+        resolved_version="$fallback_version"
+    fi
+
+    printf '%s|%s\n' "$resolved_version" "$asset_url"
+}
+
 # ============================================================================
 # Version Comparison Functions
 # ============================================================================
@@ -2042,7 +2523,7 @@ install_resolvconf_safe() {
         else
             # LEGACY MODE: Safe to install openresolv
             print_step "Installing openresolv as resolvconf alternative..."
-            if apt-get install -y openresolv 2>&1 | tail -5; then
+            if (set -o pipefail; apt-get install -y openresolv 2>&1 | tail -5); then
                 if command -v resolvconf &>/dev/null; then
                     print_success "openresolv installed successfully - provides resolvconf command"
                     return 0
@@ -2091,92 +2572,20 @@ test_and_fix_dns() {
 
     print_step "Testing DNS after installing $package_name..."
 
-    # Test if DNS is working by pinging a domain
-    if timeout 5 ping -c 1 cloudflare.com >/dev/null 2>&1; then
+    if dns_resolution_working; then
         print_success "DNS is working correctly after $package_name install"
         return 0
     fi
 
-    print_warning "DNS broken after installing $package_name - applying fixes..."
-
-    # PRIMARY FIX: Try dns-switch fix-dns
-    local dns_switch_binary=""
-
-    # Detect real user's home directory (not root's home when using sudo) - secure method
-    local real_user_home=""
-    if [[ -n "$SUDO_USER" ]]; then
-        real_user_home=$(getent passwd "$SUDO_USER" | cut -d: -f6)
-        # Fallback if getent failed
-        if [[ -z "$real_user_home" ]]; then
-            real_user_home=$(resolve_user_home "$SUDO_USER")
-        fi
-    else
-        real_user_home="$HOME"
-    fi
-
-    # Try to find dns-switch using 'which' command first (searches PATH)
-    dns_switch_binary=$(which dns-switch 2>/dev/null || true)
-
-    # If not in PATH, check standard installation directories
-    if [[ -z "$dns_switch_binary" ]]; then
-        local possible_locations=(
-            "$PROJECT_ROOT/dashboard/hooks/dns-switch"             # Script-relative installation
-            "$real_user_home/dashboard/hooks/dns-switch"           # Default installation
-            "$real_user_home/Desktop/dashboard/hooks/dns-switch"   # Desktop installation
-            "$real_user_home/k900/dashboard/hooks/dns-switch"      # Development installation
-            "/opt/kodachi/dashboard/hooks/dns-switch"              # System-wide installation
-            "/usr/local/bin/dns-switch"                            # System binary path
-            "/usr/bin/dns-switch"                                  # System binary path
-        )
-
-        for location in "${possible_locations[@]}"; do
-            if [[ -x "$location" ]]; then
-                dns_switch_binary="$location"
-                break
-            fi
-        done
-    fi
-
-    # Run dns-switch fix-dns if found (PRIMARY FIX)
-    if [[ -n "$dns_switch_binary" ]]; then
-        print_step "Applying PRIMARY DNS fix (dns-switch fix-dns)..."
-        print_verbose "Using dns-switch from: $dns_switch_binary"
-
-        if sudo "$dns_switch_binary" fix-dns 2>&1 | tail -5; then
-            print_success "dns-switch fix-dns completed"
-        else
-            print_warning "dns-switch returned error, continuing anyway"
-        fi
-
-        # Give DNS a moment to stabilize
-        sleep 2
-
-        # Test DNS after primary fix
-        if timeout 5 ping -c 1 cloudflare.com >/dev/null 2>&1; then
-            print_success "DNS RESTORED after PRIMARY fix (dns-switch)!"
-            return 0
-        fi
-
-        # Primary fix didn't work, try fallback
-        print_warning "DNS still broken after primary fix, trying fallback..."
-    else
-        print_warning "dns-switch binary NOT FOUND in any location!"
-        print_info "Searched: which dns-switch, $real_user_home/dashboard/hooks, $real_user_home/k900/dashboard/hooks, /opt/kodachi/dashboard/hooks, /usr/local/bin, /usr/bin"
-        print_info "Skipping primary fix, will use fallback method..."
-    fi
-
-    # FALLBACK FIX: Apply fallback DNS servers (only runs if primary failed or not found)
-    apply_fallback_dns
-
-    # Final test after fallback
-    if timeout 5 ping -c 1 cloudflare.com >/dev/null 2>&1; then
-        print_success "DNS RESTORED after FALLBACK fix!"
+    print_warning "DNS broken after installing $package_name - starting fallback-first recovery..."
+    if ensure_dns_stable_after_change "$package_name install"; then
         return 0
-    else
-        print_error "DNS STILL BROKEN after all fixes - downloads will fail!"
-        print_error "Please manually run: dns-switch fix-dns"
-        return 1
     fi
+
+    print_error "DNS STILL BROKEN after all fixes - downloads will fail!"
+    print_info "Manual recovery: sudo dns-switch fallback"
+    print_info "Last resort: sudo dns-switch random --type reputable --count 3 --verify"
+    return 1
 }
 
 # Function to install privacy packages one by one with DNS testing
@@ -2194,7 +2603,7 @@ install_privacy_packages_safe() {
             print_success "$pkg is already installed"
         else
             print_step "Installing $pkg..."
-            if timeout 600 apt-get install -y -o DPkg::Use-Pty=0 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" < /dev/null "$pkg" 2>&1 | tail -10; then
+            if (set -o pipefail; timeout 600 apt-get install -y -o DPkg::Use-Pty=0 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" < /dev/null "$pkg" 2>&1 | tail -10); then
                 print_success "$pkg installed successfully"
             else
                 print_error "Failed to install $pkg"
@@ -2214,63 +2623,24 @@ install_privacy_packages_safe() {
 # Function to configure systemd-resolved safely
 configure_systemd_resolved() {
     print_step "Configuring systemd-resolved..."
+    local resolved_profile="primary"
+    local resolved_owner="systemd-resolved"
+    local resolv_conf_target=""
 
     # CRITICAL: Always configure DNS immediately, don't wait for package checks
-    # Create config directory
-    mkdir -p /etc/systemd/resolved.conf.d
-
-    # Check if dnscrypt-proxy or Pi-hole is active (they should handle DNS)
     if systemctl is-active --quiet dnscrypt-proxy 2>/dev/null; then
         print_info "dnscrypt-proxy is active - configuring systemd-resolved as fallback"
-        # Disable systemd-resolved's DNS stub listener to avoid port 53 conflict
-        # But keep fallback DNS servers for when DNSCrypt isn't available
-        cat > /etc/systemd/resolved.conf.d/kodachi.conf << 'EOF'
-# Kodachi configuration - dnscrypt-proxy handles DNS
-[Resolve]
-DNSStubListener=no
-# Fallback DNS servers (privacy-focused, NO Google)
-FallbackDNS=1.1.1.1 9.9.9.9 149.112.112.112 94.140.14.14
-EOF
-        # SECURITY FIX: Repoint /etc/resolv.conf when disabling stub listener
-        ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
-        systemctl restart systemd-resolved 2>/dev/null || true
-        print_success "systemd-resolved configured (stub listener disabled, privacy-focused fallback DNS)"
-        return 0
-    fi
-
-    # Check if Pi-hole is active
-    if systemctl is-active --quiet pihole-FTL 2>/dev/null; then
+        resolved_profile="external"
+        resolved_owner="dnscrypt-proxy"
+    elif systemctl is-active --quiet pihole-FTL 2>/dev/null; then
         print_info "Pi-hole is active - configuring systemd-resolved as fallback"
-        # Disable systemd-resolved's DNS stub listener to avoid port 53 conflict
-        # But keep fallback DNS servers for when Pi-hole isn't available
-        cat > /etc/systemd/resolved.conf.d/kodachi.conf << 'EOF'
-# Kodachi configuration - Pi-hole handles DNS
-[Resolve]
-DNSStubListener=no
-# Fallback DNS servers (privacy-focused, NO Google)
-FallbackDNS=1.1.1.1 9.9.9.9 149.112.112.112 94.140.14.14
-EOF
-        # SECURITY FIX: Repoint /etc/resolv.conf when disabling stub listener
-        ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
-        systemctl restart systemd-resolved 2>/dev/null || true
-        print_success "systemd-resolved configured (stub listener disabled, privacy-focused fallback DNS)"
-        return 0
+        resolved_profile="external"
+        resolved_owner="Pi-hole"
+    else
+        print_info "Configuring systemd-resolved as primary DNS resolver (privacy-focused, NO Google)"
     fi
 
-    # Neither DNSCrypt nor Pi-hole is active - use systemd-resolved as primary DNS
-    print_info "Configuring systemd-resolved as primary DNS resolver (privacy-focused, NO Google)"
-    cat > /etc/systemd/resolved.conf.d/kodachi.conf << 'EOF'
-# Kodachi configuration - systemd-resolved as primary DNS
-[Resolve]
-# Primary DNS servers (privacy-focused: Cloudflare, Quad9, AdGuard - NO Google)
-DNS=1.1.1.1 9.9.9.9 149.112.112.112 94.140.14.14
-# Fallback DNS servers (Cloudflare IPv4 alt, Quad9 uncensored)
-FallbackDNS=1.0.0.1 149.112.112.10
-# Enable DNSSEC validation
-DNSSEC=allow-downgrade
-# Cache settings
-Cache=yes
-EOF
+    write_kodachi_resolved_profile "$resolved_profile" "$resolved_owner" || return 1
 
     # Enable and start systemd-resolved if not active
     if ! systemctl is-active --quiet systemd-resolved 2>/dev/null; then
@@ -2282,77 +2652,39 @@ EOF
         systemctl restart systemd-resolved 2>/dev/null || true
     fi
 
-    print_success "systemd-resolved configured with privacy-focused DNS (NO Google)"
+    seed_systemd_resolved_bootstrap_files
+    resolv_conf_target="$(resolved_resolv_conf_target "$resolved_profile")"
+
+    if [[ "$resolved_profile" == "primary" ]] && dns_build_chroot_environment; then
+        print_info "Chroot detected - keeping /etc/resolv.conf on runtime DNS file during build"
+    fi
+
+    point_resolv_conf_to_target "$resolv_conf_target"
+
+    if [[ "$resolved_profile" == "primary" ]]; then
+        print_success "systemd-resolved configured with privacy-focused DNS (NO Google)"
+    else
+        print_success "systemd-resolved configured as fallback while ${resolved_owner} owns DNS"
+    fi
 
     # Wait for DNS service to stabilize
     print_verbose "Waiting 3 seconds for DNS service to stabilize..."
     sleep 3
 
-    # CRITICAL FIX: Run dns-switch fix-dns to restore internet connectivity (PRIMARY METHOD)
-    # After systemd-resolved installation, DNS often breaks and internet is lost
-    # Dynamically locate dns-switch binary (NO HARDCODED PATHS)
-    local dns_switch_binary=""
-
-    # Try to find dns-switch in PATH first
-    if command -v dns-switch &>/dev/null; then
-        dns_switch_binary="dns-switch"
-    else
-        # Check standard installation directories dynamically using $HOME
-        local possible_locations=(
-            "$PROJECT_ROOT/dashboard/hooks/dns-switch"       # Script-relative installation
-            "$HOME/dashboard/hooks/dns-switch"           # Default installation
-            "$HOME/Desktop/dashboard/hooks/dns-switch"   # Desktop installation
-            "$HOME/k900/dashboard/hooks/dns-switch"      # Development installation
-            "/opt/kodachi/dashboard/hooks/dns-switch"    # System-wide installation
-            "/usr/local/bin/dns-switch"                  # System binary path
-            "/usr/bin/dns-switch"                        # System binary path
-        )
-
-        for location in "${possible_locations[@]}"; do
-            if [[ -x "$location" ]]; then
-                dns_switch_binary="$location"
-                break
-            fi
-        done
-    fi
-
-    # Run dns-switch fix-dns if found
-    if [[ -n "$dns_switch_binary" ]]; then
-        print_step "Running dns-switch fix-dns to restore internet connectivity..."
-        print_verbose "Using dns-switch from: $dns_switch_binary"
-
-        # Run with sudo since this script is already running as root
-        if sudo "$dns_switch_binary" fix-dns 2>&1 | tail -5; then
-            print_success "dns-switch fix-dns completed"
-        else
-            print_warning "dns-switch fix-dns returned error, continuing anyway"
-        fi
-
-        # Give DNS a moment to stabilize after fix
-        sleep 2
-    else
-        print_warning "dns-switch binary not found in common locations"
-        print_info "Searched locations: $HOME/dashboard/hooks/dns-switch, $HOME/k900/dashboard/hooks/dns-switch, /opt/kodachi/dashboard/hooks/dns-switch"
-        print_info "Skipping primary DNS fix, will use fallback method"
-    fi
-
-    # Test if DNS is working by pinging a domain
-    print_step "Testing DNS resolution with ping..."
-    if timeout 5 ping -c 1 cloudflare.com >/dev/null 2>&1; then
+    if dns_resolution_working; then
         print_success "DNS is working correctly - internet restored!"
-    else
-        print_warning "DNS test failed, applying fallback DNS fix..."
-        # FALLBACK: Use wait_for_dns if primary method didn't work
-        wait_for_dns
-
-        # Test again after fallback
-        if timeout 5 ping -c 1 cloudflare.com >/dev/null 2>&1; then
-            print_success "DNS working after fallback fix"
-        else
-            print_error "DNS still not working after all fixes - downloads may fail"
-            print_info "You may need to manually run: dns-switch fix-dns"
-        fi
+        return 0
     fi
+
+    print_warning "DNS test failed after systemd-resolved changes"
+    if ensure_dns_stable_after_change "systemd-resolved configuration"; then
+        return 0
+    fi
+
+    print_error "DNS still not working after all fixes - downloads may fail"
+    print_info "Manual recovery: sudo dns-switch fallback"
+    print_info "Last resort: sudo dns-switch random --type reputable --count 3 --verify"
+    return 1
 }
 
 # Function to initialize iptables alternatives properly
@@ -2455,6 +2787,27 @@ enable_contrib_nonfree() {
 install_dnscrypt_github() {
     print_step "Checking DNSCrypt Proxy installation..."
 
+    local arch=""
+    local resolved_dnscrypt_version=""
+    local resolved_dnscrypt_url=""
+    local temp_dir="/tmp/dnscrypt-proxy-install"
+    local install_dir="/etc/dnscrypt-proxy"
+
+    case $(uname -m) in
+        x86_64) arch="x86_64" ;;
+        aarch64) arch="arm64" ;;
+        armv7l) arch="arm" ;;
+        *)
+            print_error "Unsupported architecture for DNSCrypt Proxy: $(uname -m)"
+            return 1
+            ;;
+    esac
+
+    IFS='|' read -r resolved_dnscrypt_version resolved_dnscrypt_url <<< "$(resolve_dnscrypt_release_metadata "$arch")"
+    if [[ -n "$resolved_dnscrypt_version" ]]; then
+        DNSCRYPT_VERSION="$resolved_dnscrypt_version"
+    fi
+
     # Check if upgrade is needed
     local check_result=$(needs_upgrade "dnscrypt-proxy" "$DNSCRYPT_VERSION" "-version")
     local status=$(echo "$check_result" | cut -d'|' -f1)
@@ -2485,6 +2838,7 @@ install_dnscrypt_github() {
             setup_dnscrypt_service "existing"
         fi
 
+        ensure_dns_stable_after_change "DNSCrypt installation" || true
         return 0
     elif [[ "$status" == "newer" ]]; then
         print_success "DNSCrypt Proxy is already installed (v$installed, newer than target v$target)"
@@ -2492,6 +2846,7 @@ install_dnscrypt_github() {
         # ALWAYS ensure config file exists
         setup_dnscrypt_config
 
+        ensure_dns_stable_after_change "DNSCrypt installation" || true
         return 0
     elif [[ "$status" == "upgrade" ]]; then
         print_warning "DNSCrypt Proxy found (v$installed) - upgrading to v$target..."
@@ -2499,25 +2854,10 @@ install_dnscrypt_github() {
         print_step "Installing DNSCrypt Proxy v$DNSCRYPT_VERSION..."
     fi
 
-    local arch=""
-    case $(uname -m) in
-        x86_64) arch="x86_64" ;;
-        aarch64) arch="arm64" ;;
-        armv7l) arch="arm" ;;
-        *)
-            print_error "Unsupported architecture for DNSCrypt Proxy: $(uname -m)"
-            return 1
-            ;;
-    esac
-
-    local url="https://github.com/DNSCrypt/dnscrypt-proxy/releases/download/${DNSCRYPT_VERSION}/dnscrypt-proxy-linux_${arch}-${DNSCRYPT_VERSION}.tar.gz"
-    local temp_dir="/tmp/dnscrypt-proxy-install"
-    local install_dir="/etc/dnscrypt-proxy"
-
     echo "Downloading DNSCrypt Proxy v${DNSCRYPT_VERSION}..."
     mkdir -p "$temp_dir"
 
-    if retry_download "$url" "$temp_dir/dnscrypt-proxy.tar.gz"; then
+    if retry_download "$resolved_dnscrypt_url" "$temp_dir/dnscrypt-proxy.tar.gz"; then
         echo "Extracting DNSCrypt Proxy..."
         tar -xzf "$temp_dir/dnscrypt-proxy.tar.gz" -C "$temp_dir"
 
@@ -2549,6 +2889,7 @@ install_dnscrypt_github() {
             # Setup systemd service
             setup_dnscrypt_service "github"
 
+            ensure_dns_stable_after_change "DNSCrypt installation" || true
             return 0
         else
             print_error "Could not find DNSCrypt Proxy binary in archive"
@@ -2565,6 +2906,16 @@ install_dnscrypt_github() {
 # Function to install QRencode with apt-first strategy
 install_qrencode_github() {
     print_step "Checking QRencode installation..."
+
+    local resolved_qrencode_version=""
+    local installed_after_apt=""
+    local url=""
+    local temp_dir="/tmp/qrencode-install-$$"
+
+    resolved_qrencode_version="$(resolve_latest_github_tag_version "fukuchi/libqrencode" "$QRENCODE_VERSION" 's/^v//')"
+    if [[ -n "$resolved_qrencode_version" ]]; then
+        QRENCODE_VERSION="$resolved_qrencode_version"
+    fi
 
     # Check if upgrade is needed
     local check_result=$(needs_upgrade "qrencode" "$QRENCODE_VERSION" "--version")
@@ -2595,16 +2946,21 @@ install_qrencode_github() {
     # Try APT installation first (preferred method)
     print_info "Attempting APT installation first (faster, pre-compiled)..."
     if timeout 60 apt-get install -y -o DPkg::Use-Pty=0 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" < /dev/null qrencode 2>/dev/null; then
-        if command -v qrencode &>/dev/null; then
-            print_success "QRencode installed successfully via APT"
-            return 0
+        installed_after_apt="$(get_installed_version "qrencode" "--version")"
+        if [[ -n "$installed_after_apt" ]] && command -v qrencode &>/dev/null; then
+            local version_cmp=0
+            compare_versions "$installed_after_apt" "$QRENCODE_VERSION" || version_cmp=$?
+            if [[ $version_cmp -ne 2 ]]; then
+                print_success "QRencode installed successfully via APT"
+                return 0
+            fi
         fi
+        print_warning "APT installed QRencode ${installed_after_apt:-unknown}, but ${QRENCODE_VERSION} is newer. Falling back to GitHub compilation..."
     fi
 
-    # Fallback to GitHub compilation if APT fails (uses cmake — GitHub archives lack ./configure)
-    print_warning "APT installation failed, falling back to GitHub compilation..."
-    local url="https://github.com/fukuchi/libqrencode/archive/v${QRENCODE_VERSION}.tar.gz"
-    local temp_dir="/tmp/qrencode-install-$$"
+    # Fallback to GitHub compilation if APT is unavailable or behind upstream.
+    print_warning "Using GitHub compilation fallback for QRencode..."
+    url="https://github.com/fukuchi/libqrencode/archive/v${QRENCODE_VERSION}.tar.gz"
 
     echo "Installing build dependencies for compilation..."
     # Install build dependencies (cmake for build, libpng-dev for PNG QR output)
@@ -2655,7 +3011,26 @@ install_qrencode_github() {
 install_v2ray_plugin_github() {
     print_step "Checking v2ray-plugin installation..."
 
+    local resolved_v2ray_plugin_version=""
+    local resolved_v2ray_plugin_url=""
+
     # Check if upgrade is needed
+    local arch=""
+    case $(uname -m) in
+        x86_64) arch="amd64" ;;
+        aarch64) arch="arm64" ;;
+        armv7l) arch="arm" ;;
+        *)
+            print_error "Unsupported architecture for v2ray-plugin: $(uname -m)"
+            return 1
+            ;;
+    esac
+
+    IFS='|' read -r resolved_v2ray_plugin_version resolved_v2ray_plugin_url <<< "$(resolve_v2ray_plugin_release_metadata "$arch")"
+    if [[ -n "$resolved_v2ray_plugin_version" ]]; then
+        V2RAY_PLUGIN_VERSION="$resolved_v2ray_plugin_version"
+    fi
+
     local check_result=$(needs_upgrade "v2ray-plugin" "$V2RAY_PLUGIN_VERSION" "--version")
     local status=$(echo "$check_result" | cut -d'|' -f1)
     local installed=$(echo "$check_result" | cut -d'|' -f2)
@@ -2675,25 +3050,12 @@ install_v2ray_plugin_github() {
     else
         print_step "Installing v2ray-plugin v$V2RAY_PLUGIN_VERSION..."
     fi
-
-    local arch=""
-    case $(uname -m) in
-        x86_64) arch="amd64" ;;
-        aarch64) arch="arm64" ;;
-        armv7l) arch="arm" ;;
-        *)
-            print_error "Unsupported architecture for v2ray-plugin: $(uname -m)"
-            return 1
-            ;;
-    esac
-
-    local url="https://github.com/shadowsocks/v2ray-plugin/releases/download/v${V2RAY_PLUGIN_VERSION}/v2ray-plugin-linux-${arch}-v${V2RAY_PLUGIN_VERSION}.tar.gz"
     local temp_dir="/tmp/v2ray-plugin-install"
 
     echo "Downloading v2ray-plugin v${V2RAY_PLUGIN_VERSION}..."
     mkdir -p "$temp_dir"
 
-    if retry_download "$url" "$temp_dir/v2ray-plugin.tar.gz"; then
+    if retry_download "$resolved_v2ray_plugin_url" "$temp_dir/v2ray-plugin.tar.gz"; then
         echo "Extracting v2ray-plugin..."
         tar -xzf "$temp_dir/v2ray-plugin.tar.gz" -C "$temp_dir"
 
@@ -3336,6 +3698,32 @@ install_packages() {
     # Install missing packages if any
     if [[ -n "$to_install" ]]; then
         echo ""
+
+        # Pre-filter: skip packages that have no installation candidate in apt
+        # Uses apt-cache policy to check for a real candidate (not just metadata references)
+        local available_packages=""
+        local unavailable_packages=""
+        for pkg in $to_install; do
+            local candidate
+            candidate=$(apt-cache policy "$pkg" 2>/dev/null | grep 'Candidate:' | awk '{print $2}')
+            if [[ -n "$candidate" ]] && [[ "$candidate" != "(none)" ]]; then
+                available_packages="$available_packages $pkg"
+            else
+                unavailable_packages="$unavailable_packages $pkg"
+                echo -e "  ${YELLOW}⚠${NC} $pkg - no installation candidate in current repositories (skipped)"
+            fi
+        done
+        if [[ -n "$unavailable_packages" ]]; then
+            print_warning "Unavailable packages skipped:$unavailable_packages"
+        fi
+        to_install="$available_packages"
+
+        # If nothing left to install after filtering, skip
+        if [[ -z "$to_install" ]]; then
+            print_success "All available $category packages are already installed"
+            return 0
+        fi
+
         echo "Installing missing packages..."
         print_verbose "Missing packages to install: $to_install"
 
@@ -3639,7 +4027,24 @@ install_xray() {
 install_mieru() {
     print_step "Checking mieru installation..."
 
+    local arch=""
+    local resolved_mieru_version=""
+    local resolved_mieru_url=""
+
     # Check if upgrade is needed
+    arch="$(dpkg --print-architecture 2>/dev/null || echo "amd64")"
+    case "$arch" in
+        amd64|arm64|armhf) ;;
+        *)
+            arch="amd64"
+            ;;
+    esac
+
+    IFS='|' read -r resolved_mieru_version resolved_mieru_url <<< "$(resolve_mieru_release_metadata "$arch")"
+    if [[ -n "$resolved_mieru_version" ]]; then
+        MIERU_VERSION="$resolved_mieru_version"
+    fi
+
     local check_result=$(needs_upgrade "mieru" "$MIERU_VERSION" "--version")
     local status=$(echo "$check_result" | cut -d'|' -f1)
     local installed=$(echo "$check_result" | cut -d'|' -f2)
@@ -3658,13 +4063,10 @@ install_mieru() {
         print_step "Installing mieru v$MIERU_VERSION..."
     fi
 
-    # SECURITY FIX: Detect architecture dynamically instead of hardcoding amd64
-    local arch=$(dpkg --print-architecture 2>/dev/null || echo "amd64")
     local temp_file="/tmp/mieru_${MIERU_VERSION}_${arch}.deb"
-    local url="https://github.com/enfein/mieru/releases/download/v${MIERU_VERSION}/mieru_${MIERU_VERSION}_${arch}.deb"
 
     echo "Downloading mieru client..."
-    if retry_download "$url" "$temp_file"; then
+    if retry_download "$resolved_mieru_url" "$temp_file"; then
         echo "Installing mieru client package..."
 
         # Make sure no apt is running
@@ -3697,6 +4099,13 @@ install_mieru() {
 install_hysteria2() {
     print_step "Checking hysteria2 installation..."
 
+    local resolved_hysteria2_version=""
+
+    resolved_hysteria2_version="$(resolve_latest_github_release_version "apernet/hysteria" "$HYSTERIA2_VERSION" 's#^app/##')"
+    if [[ -n "$resolved_hysteria2_version" ]]; then
+        HYSTERIA2_VERSION="$resolved_hysteria2_version"
+    fi
+
     # Check if upgrade is needed
     local check_result=$(needs_upgrade "hysteria" "$HYSTERIA2_VERSION" "version")
     local status=$(echo "$check_result" | cut -d'|' -f1)
@@ -3726,10 +4135,8 @@ install_hysteria2() {
             ;;
     esac
 
-    # Fetch API response to variable first to prevent broken pipe errors
-    local api_response=$(curl -s --connect-timeout 10 --max-time 30 https://api.github.com/repos/apernet/hysteria/releases/latest 2>/dev/null)
-    local version=$(echo "$api_response" | grep -Po '"tag_name": "app/\K[^"]*' 2>/dev/null || echo "$HYSTERIA2_VERSION")
-    local url="https://github.com/apernet/hysteria/releases/download/app%2F${version}/hysteria-linux-${arch}"
+    local version="$HYSTERIA2_VERSION"
+    local url="https://github.com/apernet/hysteria/releases/download/app/v${version}/hysteria-linux-${arch}"
 
     echo "Downloading hysteria2..."
     if retry_download "$url" "/tmp/hysteria"; then
@@ -3745,6 +4152,12 @@ install_hysteria2() {
 # Function to install kloak (keystroke anonymization)
 install_kloak() {
     print_step "Checking kloak installation..."
+
+    local resolved_kloak_version=""
+    resolved_kloak_version="$(resolve_latest_github_tag_version "vmonaco/kloak" "$KLOAK_VERSION" 's/^v//')"
+    if [[ -n "$resolved_kloak_version" ]]; then
+        KLOAK_VERSION="$resolved_kloak_version"
+    fi
 
     # Special handling for kloak - it doesn't support version reporting
     # kloak v0.2 has no --version flag, so we just check if binary exists
@@ -4339,6 +4752,7 @@ install_pihole() {
         # Ensure Pi-hole is configured for port 5353
         configure_pihole_port
 
+        ensure_dns_stable_after_change "Pi-hole availability" || return 1
         return 0
     fi
 
@@ -4456,7 +4870,10 @@ install_pihole() {
         print_error "Failed to install Pi-hole"
         print_info "You can try manual installation later with:"
         echo "  curl -sSL https://install.pi-hole.net | bash"
+        return 1
     fi
+
+    ensure_dns_stable_after_change "Pi-hole installation"
 }
 
 # Function to install Kicksecure RAM wipe (dracut + ram-wipe)
@@ -4766,7 +5183,7 @@ elif [[ "$INSTALL_MODE" == "interactive" ]]; then
   curl -L https://github.com/DNSCrypt/dnscrypt-proxy/releases/download/${DNSCRYPT_VERSION}/dnscrypt-proxy-linux_x86_64-${DNSCRYPT_VERSION}.tar.gz
   
   # Install QRencode from GitHub (compile from source)
-  curl -L https://github.com/fukuchi/libqrencode/releases/download/v${QRENCODE_VERSION}/qrencode-${QRENCODE_VERSION}.tar.gz
+  curl -L https://github.com/fukuchi/libqrencode/archive/v${QRENCODE_VERSION}.tar.gz
   
   # For Pi-hole:
   curl -sSL https://install.pi-hole.net | bash"
@@ -4782,9 +5199,10 @@ elif [[ "$INSTALL_MODE" == "interactive" ]]; then
         print_step "Installing DNSCrypt Proxy from GitHub..."
         if ! install_dnscrypt_github; then
             print_warning "GitHub installation failed, trying apt package..."
-            if timeout 60 apt-get install -y -o DPkg::Use-Pty=0 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" < /dev/null dnscrypt-proxy 2>&1 | tail -5; then
+            if (set -o pipefail; timeout 60 apt-get install -y -o DPkg::Use-Pty=0 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" < /dev/null dnscrypt-proxy 2>&1 | tail -5); then
                 print_success "DNSCrypt Proxy installed via apt"
                 setup_dnscrypt_service "apt"
+                ensure_dns_stable_after_change "DNSCrypt installation" || true
             else
                 print_error "Failed to install DNSCrypt Proxy from both GitHub and apt"
             fi
@@ -4978,8 +5396,10 @@ elif [[ "$INSTALL_MODE" == "minimal" ]]; then
     print_step "Installing DNSCrypt Proxy from GitHub..."
     if ! install_dnscrypt_github; then
         print_warning "GitHub installation failed, trying apt package..."
-        if timeout 60 apt-get install -y dnscrypt-proxy 2>&1 | tail -5; then
+        if (set -o pipefail; timeout 60 apt-get install -y dnscrypt-proxy 2>&1 | tail -5); then
             print_success "DNSCrypt Proxy installed via apt"
+            setup_dnscrypt_service "apt"
+            ensure_dns_stable_after_change "DNSCrypt installation" || true
         else
             print_error "Failed to install DNSCrypt Proxy from both GitHub and apt"
         fi
@@ -5040,8 +5460,10 @@ elif [[ "$INSTALL_MODE" == "full" ]]; then
     print_step "Installing DNSCrypt Proxy from GitHub..."
     if ! install_dnscrypt_github; then
         print_warning "GitHub installation failed, trying apt package..."
-        if timeout 60 apt-get install -y dnscrypt-proxy 2>&1 | tail -5; then
+        if (set -o pipefail; timeout 60 apt-get install -y dnscrypt-proxy 2>&1 | tail -5); then
             print_success "DNSCrypt Proxy installed via apt"
+            setup_dnscrypt_service "apt"
+            ensure_dns_stable_after_change "DNSCrypt installation" || true
         else
             print_error "Failed to install DNSCrypt Proxy from both GitHub and apt"
         fi
@@ -5142,8 +5564,10 @@ else
     print_step "Installing DNSCrypt Proxy from GitHub..."
     if ! install_dnscrypt_github; then
         print_warning "GitHub installation failed, trying apt package..."
-        if timeout 60 apt-get install -y dnscrypt-proxy 2>&1 | tail -5; then
+        if (set -o pipefail; timeout 60 apt-get install -y dnscrypt-proxy 2>&1 | tail -5); then
             print_success "DNSCrypt Proxy installed via apt"
+            setup_dnscrypt_service "apt"
+            ensure_dns_stable_after_change "DNSCrypt installation" || true
         else
             print_error "Failed to install DNSCrypt Proxy from both GitHub and apt"
         fi
@@ -5536,22 +5960,32 @@ echo ""
 
 # Detect if running in chroot environment (live-build)
 is_chroot_environment() {
-    # Check for live-build indicator files
+    # Check for live-build indicator files (definitive)
     if [ -f "/.debian-live-build" ] || [ -f "/tmp/live-build-chroot" ]; then
         return 0
     fi
-    # Check if we're in a chroot by comparing root inode
-    if [ "$(stat -c %d:%i / 2>/dev/null)" != "$(stat -c %d:%i /proc/1/root 2>/dev/null)" ]; then
-        return 0
-    fi
-    # Check if /proc/1/cmdline contains typical init processes
+    # Check if PID 1 is a normal init system — if so, we are NOT in chroot
+    # This check MUST come before the inode check because the inode comparison
+    # gives false positives on VMware VMs and some kernel versions
     if [ -f /proc/1/cmdline ]; then
         local init_cmd
         init_cmd=$(tr '\0' ' ' < /proc/1/cmdline 2>/dev/null)
-        # In chroot, PID 1 might be something unusual
-        if [[ ! "$init_cmd" =~ (systemd|init|/sbin/init) ]]; then
-            return 0
+        if [[ "$init_cmd" =~ (systemd|init|/sbin/init) ]]; then
+            # PID 1 is a real init system — definitely not a chroot
+            return 1
         fi
+    fi
+    # Use ischroot if available (Debian standard tool)
+    if command -v ischroot >/dev/null 2>&1; then
+        if ischroot; then
+            return 0
+        else
+            return 1
+        fi
+    fi
+    # Fallback: compare root inode (can false-positive on VMs, so check last)
+    if [ "$(stat -c %d:%i / 2>/dev/null)" != "$(stat -c %d:%i /proc/1/root 2>/dev/null)" ]; then
+        return 0
     fi
     return 1
 }
@@ -5668,6 +6102,128 @@ stop_and_disable_service() {
     fi
 }
 
+# Remove any Pi-hole DNS redirect rules left behind by dns-switch style setup.
+remove_pihole_firewall_redirects_for_cmd() {
+    local firewall_cmd="$1"
+    local chain=""
+    local proto=""
+
+    [[ -n "$firewall_cmd" ]] || return 0
+
+    for chain in PREROUTING OUTPUT; do
+        for proto in udp tcp; do
+            while "$firewall_cmd" -t nat -C "$chain" -p "$proto" --dport 53 -j REDIRECT --to-port 5353 >/dev/null 2>&1; do
+                "$firewall_cmd" -t nat -D "$chain" -p "$proto" --dport 53 -j REDIRECT --to-port 5353 >/dev/null 2>&1 || break
+            done
+        done
+    done
+}
+
+remove_pihole_firewall_redirects() {
+    local removed_any=false
+
+    if command -v iptables >/dev/null 2>&1; then
+        remove_pihole_firewall_redirects_for_cmd "$(command -v iptables)"
+        removed_any=true
+    fi
+
+    if command -v ip6tables >/dev/null 2>&1; then
+        remove_pihole_firewall_redirects_for_cmd "$(command -v ip6tables)"
+        removed_any=true
+    fi
+
+    if [[ "$removed_any" == "true" ]]; then
+        print_success "Removed any Pi-hole DNS redirect rules (53 -> 5353)"
+    else
+        print_info "iptables/ip6tables not available - skipping Pi-hole redirect cleanup"
+    fi
+}
+
+pihole_firewall_redirects_present() {
+    local rules=""
+
+    if command -v iptables-save >/dev/null 2>&1; then
+        rules="$(iptables-save 2>/dev/null || true)"
+        if printf '%s\n' "$rules" | grep -Eq -- '--dport[[:space:]]+53.*REDIRECT.*5353'; then
+            return 0
+        fi
+    fi
+
+    if command -v nft >/dev/null 2>&1; then
+        rules="$(nft list ruleset 2>/dev/null || true)"
+        if printf '%s\n' "$rules" | grep -Eq 'dport[[:space:]]+53.*(redirect to[[:space:]]+5353|dnat.*5353)'; then
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+# Pi-hole's upstream installer can leave pihole-FTL enabled after install.
+# When Kodachi did not opt to keep Pi-hole, enforce inactive+disabled as the
+# final state instead of assuming a generic stop helper was sufficient.
+ensure_pihole_disabled() {
+    local service_name="pihole-FTL.service"
+    local service_alias="pihole-FTL"
+    local attempt=0
+
+    if is_chroot_environment; then
+        print_info "Chroot detected - verifying Pi-hole FTL process is stopped"
+        if process_running_current_root "pihole-FTL"; then
+            kill_matching_processes_current_root "KILL" "x" "pihole-FTL" 2>/dev/null || true
+            sleep 1
+        fi
+
+        if process_running_current_root "pihole-FTL"; then
+            print_error "Pi-hole FTL is still running in chroot after cleanup"
+            return 1
+        fi
+
+        print_success "Verified: Pi-hole FTL is stopped in chroot"
+        reconcile_dns_after_service_transition "Pi-hole disable"
+        return $?
+    fi
+
+    print_step "Enforcing Pi-hole disabled state..."
+    for attempt in 1 2 3; do
+        remove_pihole_firewall_redirects
+        systemctl disable --now "$service_name" 2>/dev/null || true
+        systemctl disable --now "$service_alias" 2>/dev/null || true
+        systemctl stop "$service_name" 2>/dev/null || true
+        systemctl stop "$service_alias" 2>/dev/null || true
+        systemctl reset-failed "$service_name" 2>/dev/null || true
+        systemctl reset-failed "$service_alias" 2>/dev/null || true
+
+        if process_running_current_root "pihole-FTL"; then
+            kill_matching_processes_current_root "TERM" "x" "pihole-FTL" 2>/dev/null || true
+            sleep 1
+        fi
+        if process_running_current_root "pihole-FTL"; then
+            kill_matching_processes_current_root "KILL" "x" "pihole-FTL" 2>/dev/null || true
+        fi
+
+        sleep 1
+
+        if ! systemctl is-active --quiet "$service_name" 2>/dev/null \
+            && ! systemctl is-active --quiet "$service_alias" 2>/dev/null \
+            && ! systemctl is-enabled --quiet "$service_name" 2>/dev/null \
+            && ! systemctl is-enabled --quiet "$service_alias" 2>/dev/null \
+            && ! pihole_firewall_redirects_present \
+            && ! process_running_current_root "pihole-FTL"; then
+            print_success "Verified: Pi-hole FTL is inactive, disabled, and no DNS redirects remain"
+            reconcile_dns_after_service_transition "Pi-hole disable"
+            return $?
+        fi
+
+        print_warning "Pi-hole still active, enabled, or still has DNS redirects after attempt $attempt/3"
+    done
+
+    print_error "Pi-hole cleanup failed - service remained active, enabled, or redirected DNS traffic"
+    print_info "Manual fix: sudo systemctl disable --now pihole-FTL.service"
+    print_info "Manual firewall check: sudo iptables-save | grep 5353"
+    return 1
+}
+
 # Stop and disable CUPS (printing service) - not needed on Kodachi
 # Must stop socket/path units first to prevent auto-restart
 stop_and_disable_service "cups.socket" "CUPS Socket" ""
@@ -5694,6 +6250,23 @@ else
     echo -e "  ${CYAN}Note:${NC} Tor will be controlled by Kodachi's tor-switch service"
     stop_and_disable_service "tor.service" "Tor Service" "tor"
     stop_and_disable_service "tor@default.service" "Tor Default Instance" ""
+fi
+
+# Fix Tor directory permissions - tor package creates /var/lib/tor owned by
+# debian-tor, but chroot builds or overlay copies can reset ownership to root.
+# Without correct ownership, tor@default.service fails with exit-code on boot.
+if id debian-tor >/dev/null 2>&1; then
+    for _tor_dir in /var/lib/tor /var/log/tor /run/tor /etc/tor/kodachi_tor_data; do
+        if [ -d "$_tor_dir" ]; then
+            chown -R debian-tor:debian-tor "$_tor_dir" 2>/dev/null || true
+        else
+            mkdir -p "$_tor_dir" 2>/dev/null || true
+            chown debian-tor:debian-tor "$_tor_dir" 2>/dev/null || true
+        fi
+    done
+    chmod 700 /var/lib/tor 2>/dev/null || true
+    chmod 750 /var/log/tor 2>/dev/null || true
+    echo -e "  ${GREEN}✓${NC} Tor directory permissions fixed (debian-tor:debian-tor)"
 fi
 
 # Stop and disable Shadowsocks server - will be managed by routing-switch
@@ -5750,12 +6323,14 @@ stop_and_disable_service "avahi-daemon.socket" "Avahi Daemon Socket" ""
 # Stop and disable DNSCrypt Proxy - will be managed by dns-switch
 echo ""
 print_step "Processing DNSCrypt Proxy (dns-switch control)..."
+DNSCRYPT_STOPPED_FOR_KODACHI=false
 
 # In chroot, FORCE stop regardless of initial state (for ISO builds)
 if is_chroot_environment; then
     echo -e "  ${CYAN}Note:${NC} Chroot build detected - forcing DNSCrypt stop for clean ISO"
     stop_and_disable_service "dnscrypt-proxy.service" "DNSCrypt Proxy" "dnscrypt-proxy"
     stop_and_disable_service "dnscrypt-proxy.socket" "DNSCrypt Proxy Socket" ""
+    DNSCRYPT_STOPPED_FOR_KODACHI=true
 elif [[ "$INITIAL_DNSCRYPT_RUNNING" == "true" ]]; then
     echo -e "  ${YELLOW}⚠${NC}  DNSCrypt Proxy was running before script - ${BOLD}PRESERVED${NC}"
     echo -e "  ${CYAN}Note:${NC} Stopping it could break your internet connection during update"
@@ -5766,6 +6341,11 @@ else
     echo -e "  ${CYAN}Note:${NC} DNSCrypt Proxy will be managed by dns-switch"
     stop_and_disable_service "dnscrypt-proxy.service" "DNSCrypt Proxy" "dnscrypt-proxy"
     stop_and_disable_service "dnscrypt-proxy.socket" "DNSCrypt Proxy Socket" ""
+    DNSCRYPT_STOPPED_FOR_KODACHI=true
+fi
+
+if [[ "$DNSCRYPT_STOPPED_FOR_KODACHI" == "true" ]]; then
+    reconcile_dns_after_service_transition "DNSCrypt disable" || true
 fi
 
 # NTP time sync services - ENABLED for proper time synchronization
@@ -5855,6 +6435,7 @@ fi
 echo ""
 print_step "Processing Pi-hole..."
 PIHOLE_KEEP=false  # Default: stop Pi-hole for security
+PIHOLE_DISABLE_VERIFIED=true
 
 # Check if Pi-hole is installed
 if command -v pihole &>/dev/null || systemctl list-unit-files 2>/dev/null | grep -q "^pihole-FTL"; then
@@ -5881,7 +6462,11 @@ if command -v pihole &>/dev/null || systemctl list-unit-files 2>/dev/null | grep
 
     if [[ "$PIHOLE_KEEP" == "false" ]]; then
         print_step "Stopping Pi-hole as requested..."
+        PIHOLE_DISABLE_VERIFIED=false
         stop_and_disable_service "pihole-FTL.service" "Pi-hole FTL Service" "pihole-FTL"
+        if ensure_pihole_disabled; then
+            PIHOLE_DISABLE_VERIFIED=true
+        fi
         echo -e "  ${YELLOW}ℹ${NC} To remove Pi-hole completely, run: pihole uninstall"
     else
         echo -e "  ${GREEN}✓${NC} Pi-hole will remain active"
@@ -6038,7 +6623,11 @@ else
 fi
 
 echo ""
-print_success "Service cleanup completed!"
+if [[ "$PIHOLE_KEEP" == "false" ]] && [[ "$PIHOLE_DISABLE_VERIFIED" != "true" ]]; then
+    print_error "Service cleanup completed with Pi-hole verification failure"
+else
+    print_success "Service cleanup completed!"
+fi
 echo ""
 
 print_info "To re-enable a service if needed (Kodachi binaries can also do this):"
@@ -6567,8 +7156,8 @@ if command -v ss &>/dev/null; then
     echo ""
 fi
 
-# Display Pi-hole configuration if installed and running
-if systemctl is-active --quiet pihole-FTL 2>/dev/null && command -v pihole &>/dev/null; then
+# Display Pi-hole configuration if it was intentionally kept running
+if [[ "$PIHOLE_KEEP" == "true" ]] && systemctl is-active --quiet pihole-FTL 2>/dev/null && command -v pihole &>/dev/null; then
     print_step "Checking Pi-hole..."
     echo -e "  ${GREEN}✓${NC} Pi-hole - installed"
     echo -e "  ${GREEN}✓${NC} Pi-hole FTL service - running"
@@ -6611,6 +7200,11 @@ if systemctl is-active --quiet pihole-FTL 2>/dev/null && command -v pihole &>/de
     # Clean up any curl processes spawned by pihole commands
     sleep 1
     kill_matching_processes_current_root "KILL" "f" "curl.*pi-hole|curl.*pihole|curl.*ftl" 2>/dev/null || true
+elif [[ "$PIHOLE_KEEP" == "false" ]] && [[ "$PIHOLE_DISABLE_VERIFIED" != "true" ]]; then
+    echo ""
+    print_error "Pi-hole was supposed to be stopped but is still active or enabled"
+    print_info "Manual fix: sudo systemctl disable --now pihole-FTL.service"
+    echo ""
 fi
 
 # Final check for Pi-hole installation
