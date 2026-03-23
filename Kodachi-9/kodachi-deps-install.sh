@@ -4416,6 +4416,12 @@ setup_dnscrypt_service() {
 
 # Function to create DNSCrypt Proxy systemd service file
 create_dnscrypt_service_file() {
+    # Ensure _dnscrypt-proxy system user exists
+    if ! id _dnscrypt-proxy &>/dev/null; then
+        useradd --system --no-create-home --shell /usr/sbin/nologin _dnscrypt-proxy
+        print_success "Created _dnscrypt-proxy system user"
+    fi
+
     cat > /etc/systemd/system/dnscrypt-proxy.service << 'EOF'
 [Unit]
 Description=DNSCrypt Proxy
@@ -4430,15 +4436,19 @@ ExecStart=/usr/local/bin/dnscrypt-proxy -config /etc/dnscrypt-proxy/dnscrypt-pro
 WorkingDirectory=/etc/dnscrypt-proxy
 Restart=on-failure
 RestartSec=10
-User=root
-Group=root
 
-# CRITICAL: Allow binding to port 53 (privileged port)
+# CRITICAL: Allow binding to port 53 (privileged port) as unprivileged user
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 
+User=_dnscrypt-proxy
+CacheDirectory=dnscrypt-proxy
+LogsDirectory=dnscrypt-proxy
+RuntimeDirectory=dnscrypt-proxy
+
 # Security settings
 NoNewPrivileges=true
+PrivateDevices=yes
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/etc/dnscrypt-proxy
@@ -4446,6 +4456,7 @@ PrivateTmp=true
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 SystemCallArchitectures=native
 LockPersonality=true
 RestrictRealtime=true
