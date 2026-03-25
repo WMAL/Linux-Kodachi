@@ -1663,7 +1663,6 @@ EOF
 [Unit]
 Description=Kodachi Conky Snapshot Refresh
 After=graphical-session.target
-Wants=graphical-session.target
 ConditionPathExists=%h/.config/kodachi/conky/scripts/conky-gateway-common.sh
 
 [Service]
@@ -1682,6 +1681,9 @@ StandardOutput=null
 StandardError=journal
 Nice=15
 IOSchedulingClass=idle
+# Memory guard: prevent snapshot refresh from starving the desktop session.
+MemoryHigh=384M
+MemoryMax=512M
 EOF
     fi
 
@@ -1719,10 +1721,16 @@ Wants=graphical-session.target
 
 [Service]
 Type=simple
+ExecStartPre=/bin/sleep 5
 ExecStart=%h/.config/kodachi/conky/scripts/conky-watchdog.sh
-Restart=always
+ExecStop=-/usr/bin/pkill -x conky
+ExecStopPost=-/usr/bin/pkill -9 -x conky
+Restart=on-failure
 RestartSec=3
-Environment=DISPLAY=:0
+KillMode=mixed
+TimeoutStopSec=5
+MemoryHigh=256M
+MemoryMax=384M
 Environment=XAUTHORITY=%h/.Xauthority
 
 [Install]
@@ -1813,23 +1821,26 @@ write_session_helper_service_file() {
 Description=Kodachi Session Helper - Global Emergency Shortcut Daemon
 Documentation=https://kodachi.cloud/wiki/bina/binaries/kodachi-session-helper/
 After=graphical-session.target
-Wants=graphical-session.target
 PartOf=graphical-session.target
 StartLimitIntervalSec=60
 StartLimitBurst=5
 
 [Service]
 Type=simple
-ExecStart=/bin/bash -lc 'display_guess=""; for display_socket in /tmp/.X11-unix/X*; do [ -S "\$display_socket" ] || continue; display_guess=":\${display_socket##*X}"; break; done; export DISPLAY="\${DISPLAY:-\${display_guess:-:0}}"; export XAUTHORITY="\${XAUTHORITY:-%h/.Xauthority}"; export XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-%t}"; export DBUS_SESSION_BUS_ADDRESS="\${DBUS_SESSION_BUS_ADDRESS:-unix:path=%t/bus}"; export RUST_LOG="\${RUST_LOG:-warn}"; exec "$helper_bin" daemon'
+ExecStart=$helper_bin daemon
 WorkingDirectory=$helper_dir
-Restart=always
-RestartSec=3
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=5
 LimitCORE=0
 NoNewPrivileges=false
 ProtectSystem=strict
 ProtectHome=read-only
 PrivateTmp=false
 ReadWritePaths=/run/user
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=%h/.Xauthority
+Environment=RUST_LOG=warn
 
 [Install]
 WantedBy=default.target
@@ -2323,6 +2334,9 @@ print_info "Binaries total: $TOTAL_COUNT"
 print_info "Binaries installed: $VERIFIED_COUNT"
 if [[ -x "$INSTALL_PATH/kodachi-claw" || -x "$INSTALL_PATH/zeroclaw" ]]; then
     print_info "Agent binaries available: kodachi-claw and zeroclaw (shipped as separate binaries)"
+fi
+if [[ -x "$INSTALL_PATH/zeroclaw-desktop" ]]; then
+    print_info "ZeroClaw Desktop GUI available: zeroclaw-desktop (Tauri companion app)"
 fi
 if [[ $SKIPPED_COUNT -gt 0 ]]; then
     print_warning "Binaries skipped: $SKIPPED_COUNT"
