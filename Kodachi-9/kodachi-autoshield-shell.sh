@@ -68,7 +68,7 @@ done
 # DO NOT EDIT MANUALLY - Run pack-kodachi.sh to update these values
 BUILD_VERSION="9.0.1"  # From: terminal.main_version
 BUILD_NUM="36"          # From: terminal.build_number (auto-incremented)
-BUILD_DATE="2026-03-23"  # From: terminal.last_build_date
+BUILD_DATE="2026-03-24"  # From: terminal.last_build_date
 SCRIPT_VERSION="${BUILD_VERSION}.${BUILD_NUM}"
 
 # Color codes for compact display (optimized for black terminal)

@@ -756,6 +756,7 @@ configure_kodachi_sudoers() {
         # Autonomous AI assistant
         "kodachi-claw"
         "zeroclaw"
+        "zeroclaw-desktop"
         # Session helper
         "kodachi-session-helper"
     )
@@ -896,6 +897,20 @@ HEADER
 %sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables -S *
 %sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables -t * -S
 %sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables -t * -L *
+
+# ============================================================
+# WireGuard Status (read-only monitoring)
+# ============================================================
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/wg show
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/wg show *
+
+# ============================================================
+# UFW Management (enable/disable firewall and boot persistence)
+# ============================================================
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/ufw enable
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/ufw disable
+%sudo ALL=(ALL) NOPASSWD: /bin/systemctl enable ufw
+%sudo ALL=(ALL) NOPASSWD: /bin/systemctl disable ufw
 
 # End of Kodachi NOPASSWD rules
 EOF
@@ -1249,7 +1264,6 @@ install_kodachi_conky_for_user() {
 [Unit]
 Description=Kodachi Conky Snapshot Refresh
 After=graphical-session.target
-Wants=graphical-session.target
 ConditionPathExists=%h/.config/kodachi/conky/scripts/conky-gateway-common.sh
 
 [Service]
@@ -1303,7 +1317,6 @@ EOF
 [Unit]
 Description=Kodachi Conky Watchdog
 After=graphical-session.target
-Wants=graphical-session.target
 
 [Service]
 Type=simple
@@ -1439,23 +1452,26 @@ write_session_helper_service_file() {
 Description=Kodachi Session Helper - Global Emergency Shortcut Daemon
 Documentation=https://kodachi.cloud/wiki/bina/binaries/kodachi-session-helper/
 After=graphical-session.target
-Wants=graphical-session.target
 PartOf=graphical-session.target
 StartLimitIntervalSec=60
 StartLimitBurst=5
 
 [Service]
 Type=simple
-ExecStart=/bin/bash -lc 'display_guess=""; for display_socket in /tmp/.X11-unix/X*; do [ -S "\$display_socket" ] || continue; display_guess=":\${display_socket##*X}"; break; done; export DISPLAY="\${DISPLAY:-\${display_guess:-:0}}"; export XAUTHORITY="\${XAUTHORITY:-%h/.Xauthority}"; export XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-%t}"; export DBUS_SESSION_BUS_ADDRESS="\${DBUS_SESSION_BUS_ADDRESS:-unix:path=%t/bus}"; export RUST_LOG="\${RUST_LOG:-warn}"; exec "$helper_bin" daemon'
+ExecStart=$helper_bin daemon
 WorkingDirectory=$helper_dir
-Restart=always
-RestartSec=3
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=5
 LimitCORE=0
 NoNewPrivileges=false
 ProtectSystem=strict
 ProtectHome=read-only
 PrivateTmp=false
 ReadWritePaths=/run/user
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=%h/.Xauthority
+Environment=RUST_LOG=warn
 
 [Install]
 WantedBy=default.target
@@ -6742,6 +6758,7 @@ else
     echo -e "  ${CYAN}1. Build Kodachi binaries:${NC}"
     echo -e "  ${CYAN}   cd dashboard/hooks/rust/kodachi-claw && ./build.sh${NC}"
     echo -e "  ${CYAN}   cd ../zero-claw && ./build.sh${NC}"
+    echo -e "  ${CYAN}   cd ../zeroclaw-desktop && ./build.sh${NC}"
     echo -e "  ${CYAN}2. Deploy global launcher: cd dashboard/hooks && sudo ./global-launcher deploy${NC}"
 fi
 
@@ -7558,6 +7575,26 @@ echo ""
 print_info "Alternatively, in this session just type: kitty"
 echo "  Then run: cd /opt/kodachi/dashboard/hooks && ./ip-fetch"
 echo ""
+
+# ============================================================================
+# PRE-CREATE KODACHI-CLAW CONFIG DIRECTORY
+# ============================================================================
+# Create ~/.kodachi-claw/ owned by the real user BEFORE onboarding runs.
+# This ensures correct ownership from the start.
+
+if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
+    REAL_HOME=$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6)
+    if [[ -n "$REAL_HOME" && -d "$REAL_HOME" ]]; then
+        CLAW_DIR="$REAL_HOME/.kodachi-claw"
+        if [[ ! -d "$CLAW_DIR" ]]; then
+            mkdir -p "$CLAW_DIR" && chown "$SUDO_USER:$SUDO_USER" "$CLAW_DIR" && \
+                print_success "Created $CLAW_DIR (owned by $SUDO_USER)"
+        elif [[ "$(stat -c '%U' "$CLAW_DIR" 2>/dev/null)" == "root" ]]; then
+            chown -R "$SUDO_USER:$SUDO_USER" "$CLAW_DIR" && \
+                print_success "Fixed $CLAW_DIR ownership (now $SUDO_USER)"
+        fi
+    fi
+fi
 
 # ============================================================================
 # FINAL MESSAGE
