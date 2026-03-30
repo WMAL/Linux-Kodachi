@@ -401,11 +401,32 @@ write_kodachi_resolved_profile() {
     local profile="${1:-primary}"
     local dns_owner="${2:-systemd-resolved}"
 
-    mkdir -p /etc/systemd/resolved.conf.d
+    mkdir -p /etc/systemd
+
+    # Remove legacy drop-in from older installer versions to prevent
+    # DNSStubListener=no from overriding the new main config
+    if [ -f /etc/systemd/resolved.conf.d/kodachi.conf ]; then
+        rm -f /etc/systemd/resolved.conf.d/kodachi.conf
+        print_verbose "Removed legacy /etc/systemd/resolved.conf.d/kodachi.conf drop-in"
+    fi
 
     case "$profile" in
+        dnscrypt)
+            cat > /etc/systemd/resolved.conf << EOF
+# Kodachi DNS - ${dns_owner} as primary resolver
+[Resolve]
+DNS=127.0.0.1 ${KODACHI_PRIMARY_DNS}
+FallbackDNS=${KODACHI_FALLBACK_DNS}
+Domains=~.
+DNSSEC=allow-downgrade
+Cache=yes
+LLMNR=no
+MulticastDNS=no
+ReadEtcHosts=yes
+EOF
+            ;;
         external)
-            cat > /etc/systemd/resolved.conf.d/kodachi.conf << EOF
+            cat > /etc/systemd/resolved.conf << EOF
 # Kodachi configuration - ${dns_owner} handles DNS
 [Resolve]
 DNSStubListener=no
@@ -413,13 +434,17 @@ FallbackDNS=${KODACHI_PRIMARY_DNS}
 EOF
             ;;
         primary)
-            cat > /etc/systemd/resolved.conf.d/kodachi.conf << EOF
+            cat > /etc/systemd/resolved.conf << EOF
 # Kodachi configuration - systemd-resolved as primary DNS
 [Resolve]
 DNS=${KODACHI_PRIMARY_DNS}
 FallbackDNS=${KODACHI_FALLBACK_DNS}
+Domains=~.
 DNSSEC=allow-downgrade
 Cache=yes
+LLMNR=no
+MulticastDNS=no
+ReadEtcHosts=yes
 EOF
             ;;
         *)
@@ -1453,11 +1478,12 @@ Description=Kodachi Session Helper - Global Emergency Shortcut Daemon
 Documentation=https://kodachi.cloud/wiki/bina/binaries/kodachi-session-helper/
 After=graphical-session.target
 PartOf=graphical-session.target
-StartLimitIntervalSec=60
+StartLimitIntervalSec=120
 StartLimitBurst=5
 
 [Service]
 Type=simple
+ExecStartPre=/bin/bash -c 'n=0; while [ \$n -lt 15 ]; do xdpyinfo >/dev/null 2>&1 && exit 0; n=\$((n+1)); sleep 1; done; exit 1'
 ExecStart=$helper_bin daemon
 WorkingDirectory=$helper_dir
 Restart=on-failure
@@ -1468,9 +1494,10 @@ NoNewPrivileges=false
 ProtectSystem=strict
 ProtectHome=read-only
 PrivateTmp=false
-ReadWritePaths=/run/user
+ReadWritePaths=/run/user/%U
 Environment=DISPLAY=:0
 Environment=XAUTHORITY=%h/.Xauthority
+Environment=XDG_RUNTIME_DIR=/run/user/%U
 Environment=RUST_LOG=warn
 
 [Install]
@@ -1899,24 +1926,26 @@ SYSEOF
 
 # NOTE: create_welcome_desktop_shortcut is invoked after detect_gui_environment() is defined.
 
-# Function to download with retry logic for DNS failures
+# Function to download with retry logic, resume support, and wget fallback
 retry_download() {
     local url="$1"
     local output="$2"
     local max_attempts=4
     local attempt=1
     local curl_exit=1
-    local -a curl_args
 
+    # ── Phase 1: curl with resume ────────────────────────────────────────
+    local -a curl_args
     curl_args=(
         --fail
         --location
         --show-error
         --connect-timeout 30
-        --max-time 180
-        --retry 2
-        --retry-delay 2
+        --max-time 600
+        --retry 3
+        --retry-delay 3
         --retry-connrefused
+        -C -
     )
 
     if curl --help all 2>/dev/null | grep -q -- '--retry-all-errors'; then
@@ -1924,20 +1953,16 @@ retry_download() {
     fi
 
     while [[ $attempt -le $max_attempts ]]; do
-        print_verbose "Download attempt $attempt/$max_attempts: $url"
-        rm -f "$output" 2>/dev/null || true
+        print_verbose "Download attempt $attempt/$max_attempts (curl): $url"
 
-        if curl "${curl_args[@]}" --progress-bar -o "$output" "$url"; then
-            if [[ -f "$output" ]] && [[ -s "$output" ]]; then
-                print_verbose "Download successful on attempt $attempt"
-                return 0
-            else
-                print_verbose "Downloaded file is empty or missing"
-                rm -f "$output" 2>/dev/null || true
-            fi
+        curl "${curl_args[@]}" --progress-bar -o "$output" "$url"
+        curl_exit=$?
+
+        if [[ $curl_exit -eq 0 ]] && [[ -f "$output" ]] && [[ -s "$output" ]]; then
+            print_verbose "Download successful on attempt $attempt (curl)"
+            return 0
         fi
 
-        curl_exit=$?
         if [[ $curl_exit -eq 6 ]]; then
             print_verbose "DNS resolution failure detected (curl error 6)"
             if [[ $attempt -lt $max_attempts ]]; then
@@ -1945,6 +1970,11 @@ retry_download() {
                 sleep 5
                 wait_for_dns
             fi
+        elif [[ $curl_exit -eq 33 ]]; then
+            # Resume not supported by server, remove partial and retry fresh
+            print_verbose "Server does not support resume, retrying without -C -"
+            rm -f "$output" 2>/dev/null || true
+            curl_args=("${curl_args[@]/-C -/}")
         elif [[ $attempt -lt $max_attempts ]]; then
             print_verbose "Download failed with curl error $curl_exit, retrying in 3 seconds..."
             sleep 3
@@ -1953,7 +1983,30 @@ retry_download() {
         attempt=$((attempt + 1))
     done
 
-    print_error "Failed to download after $max_attempts attempts: $url"
+    # ── Phase 2: wget fallback ───────────────────────────────────────────
+    if command -v wget &>/dev/null; then
+        print_info "curl failed after $max_attempts attempts, trying wget fallback..."
+        rm -f "$output" 2>/dev/null || true
+
+        for attempt in 1 2; do
+            print_verbose "Download attempt $attempt/2 (wget): $url"
+
+            if wget --continue --timeout=30 --tries=3 --waitretry=3 \
+                    --progress=bar:force -O "$output" "$url" 2>&1; then
+                if [[ -f "$output" ]] && [[ -s "$output" ]]; then
+                    print_verbose "Download successful on attempt $attempt (wget)"
+                    return 0
+                fi
+            fi
+
+            if [[ $attempt -lt 2 ]]; then
+                print_verbose "wget attempt $attempt failed, retrying in 5 seconds..."
+                sleep 5
+            fi
+        done
+    fi
+
+    print_error "Failed to download after all attempts: $url"
     return 1
 }
 
@@ -2644,9 +2697,11 @@ configure_systemd_resolved() {
     local resolv_conf_target=""
 
     # CRITICAL: Always configure DNS immediately, don't wait for package checks
-    if systemctl is-active --quiet dnscrypt-proxy 2>/dev/null; then
-        print_info "dnscrypt-proxy is active - configuring systemd-resolved as fallback"
-        resolved_profile="external"
+    # DNSCrypt: must be active AND responding to queries (not just enabled)
+    if systemctl is-active --quiet dnscrypt-proxy 2>/dev/null && \
+       timeout 5 dig @127.0.0.1 +short +timeout=3 debian.org >/dev/null 2>&1; then
+        print_info "dnscrypt-proxy is active and responding - configuring as primary DNS"
+        resolved_profile="dnscrypt"
         resolved_owner="dnscrypt-proxy"
     elif systemctl is-active --quiet pihole-FTL 2>/dev/null; then
         print_info "Pi-hole is active - configuring systemd-resolved as fallback"
@@ -2836,23 +2891,7 @@ install_dnscrypt_github() {
         # ALWAYS ensure config file exists
         setup_dnscrypt_config
 
-        # Check if systemd service exists and is enabled
-        if systemctl list-unit-files dnscrypt-proxy.service &>/dev/null 2>&1; then
-            if systemctl is-enabled --quiet dnscrypt-proxy 2>/dev/null; then
-                print_success "DNSCrypt Proxy service is already enabled"
-            else
-                print_info "DNSCrypt Proxy service exists but not enabled - enabling now..."
-                if systemctl enable dnscrypt-proxy 2>/dev/null; then
-                    print_success "DNSCrypt Proxy service enabled"
-                else
-                    print_warning "Failed to enable DNSCrypt Proxy service"
-                fi
-            fi
-        else
-            # Service file doesn't exist, create it
-            print_info "DNSCrypt Proxy service file missing - creating now..."
-            setup_dnscrypt_service "existing"
-        fi
+        setup_dnscrypt_service "existing"
 
         ensure_dns_stable_after_change "DNSCrypt installation" || true
         return 0
@@ -2861,6 +2900,8 @@ install_dnscrypt_github() {
 
         # ALWAYS ensure config file exists
         setup_dnscrypt_config
+
+        setup_dnscrypt_service "existing"
 
         ensure_dns_stable_after_change "DNSCrypt installation" || true
         return 0
@@ -4361,6 +4402,72 @@ EOF
 }
 
 # Function to setup DNSCrypt Proxy configuration file
+normalize_dnscrypt_config() {
+    local config_file="$1"
+
+    [[ -f "$config_file" ]] || return 1
+
+    sed -i \
+        -e "s/^# user_name = 'nobody'/# user_name = 'nobody'  # disabled: systemd User= handles privilege drop/" \
+        -e "s/^user_name = 'nobody'/# user_name = 'nobody'  # disabled: systemd User= handles privilege drop/" \
+        -e "s/^user_name = '_dnscrypt-proxy'/# user_name = '_dnscrypt-proxy'  # disabled: systemd User= handles privilege drop/" \
+        -e "s#^[[:space:]]*cache_file = 'public-resolvers.md'#    cache_file = '/var/cache/dnscrypt-proxy/public-resolvers.md'#" \
+        -e "s#^[[:space:]]*cache_file = 'relays.md'#    cache_file = '/var/cache/dnscrypt-proxy/relays.md'#" \
+        -e "s#^[[:space:]]*cache_file = 'odoh-servers.md'#    cache_file = '/var/cache/dnscrypt-proxy/odoh-servers.md'#" \
+        -e "s#^[[:space:]]*cache_file = 'odoh-relays.md'#    cache_file = '/var/cache/dnscrypt-proxy/odoh-relays.md'#" \
+        -e "/^fallback_resolver = /d" \
+        -e "/^fallback_resolvers = \\[/d" \
+        "$config_file"
+
+    if ! grep -q "^bootstrap_resolvers = " "$config_file" 2>/dev/null; then
+        if grep -q "^netprobe_timeout = " "$config_file" 2>/dev/null; then
+            sed -i "/^netprobe_timeout = /a\\
+bootstrap_resolvers = ['9.9.9.9:53', '1.1.1.1:53']" "$config_file"
+        else
+            printf "\nbootstrap_resolvers = ['9.9.9.9:53', '1.1.1.1:53']\n" >> "$config_file"
+        fi
+        print_success "Ensured bootstrap_resolvers is present in DNSCrypt config"
+    fi
+}
+
+find_dnscrypt_seed_dir() {
+    local candidates=(
+        "$SCRIPT_DIR/dnscrypt-resolvers"
+        "/opt/kodachi/dashboard/hooks/dnscrypt-cache"
+        "/opt/kodachi/dashboard/hooks/binaries-update-scripts/dnscrypt-resolvers"
+        "/opt/kodachi-offline-packages/proxies"
+    )
+
+    # Check user-home install paths (binary-install.sh may have placed cache here)
+    local real_user=""
+    real_user="$(id -un 2>/dev/null || echo "")"
+    if [[ -n "${SUDO_USER:-}" ]]; then
+        real_user="$SUDO_USER"
+    fi
+    if [[ -n "$real_user" ]]; then
+        local user_home=""
+        user_home="$(getent passwd "$real_user" 2>/dev/null | cut -d: -f6 || echo "")"
+        if [[ -n "$user_home" ]]; then
+            candidates+=("$user_home/Desktop/dashboard/hooks/dnscrypt-cache")
+            candidates+=("$user_home/dashboard/hooks/dnscrypt-cache")
+        fi
+    fi
+
+    if [[ -n "$PROJECT_ROOT" ]]; then
+        candidates+=("$PROJECT_ROOT/livebuilds/kodachi-terminal-build/overlays/common/includes.chroot_after_packages/opt/kodachi-offline-packages/proxies")
+    fi
+
+    local candidate=""
+    for candidate in "${candidates[@]}"; do
+        if [[ -f "$candidate/public-resolvers.md" ]] || [[ -f "$candidate/relays.md" ]]; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
 setup_dnscrypt_config() {
     local install_dir="/etc/dnscrypt-proxy"
     local config_file="$install_dir/dnscrypt-proxy.toml"
@@ -4377,6 +4484,8 @@ setup_dnscrypt_config() {
     # Check if config file already exists
     if [[ -f "$config_file" ]]; then
         print_success "DNSCrypt Proxy config file already exists"
+        normalize_dnscrypt_config "$config_file"
+        preseed_dnscrypt_server_lists
         return 0
     fi
 
@@ -4390,15 +4499,104 @@ setup_dnscrypt_config() {
     # Copy example config to actual config
     print_info "Creating config file from example..."
     if cp "$example_config" "$config_file"; then
-        # Set proper permissions
         chmod 644 "$config_file"
+        normalize_dnscrypt_config "$config_file"
         print_success "DNSCrypt Proxy config file created: $config_file"
         print_info "Config uses default settings - you can customize it later"
+        preseed_dnscrypt_server_lists
         return 0
     else
         print_error "Failed to create config file"
         return 1
     fi
+}
+
+# Pre-seed DNSCrypt server list cache on the target device.
+# Without cached lists, dnscrypt-proxy must download them on first boot.
+# If the network isn't ready yet, DNS breaks entirely (chicken-and-egg problem).
+preseed_dnscrypt_server_lists() {
+    local cache_dir="/var/cache/dnscrypt-proxy"
+    local resolver_base="https://raw.githubusercontent.com/DNSCrypt/dnscrypt-resolvers/master/v3"
+    local resolver_alt="https://download.dnscrypt.info/resolvers-list/v3"
+    local seed_dir=""
+    local seeded=0
+
+    print_step "Pre-seeding DNSCrypt server list cache..."
+    mkdir -p "$cache_dir"
+    seed_dir="$(find_dnscrypt_seed_dir || true)"
+
+    if [[ -n "$seed_dir" ]]; then
+        print_info "Using bundled DNSCrypt resolver seeds from $seed_dir"
+    fi
+
+    for listfile in public-resolvers.md relays.md; do
+        local have_seed=false
+        local have_sig_seed=false
+
+        if [[ -n "$seed_dir" && -f "$seed_dir/$listfile" ]]; then
+            install -m 644 "$seed_dir/$listfile" "$cache_dir/$listfile"
+            print_success "  $listfile seeded from bundled cache"
+            have_seed=true
+        fi
+
+        if curl -fsSL --connect-timeout 15 --max-time 60 -o "$cache_dir/$listfile" "$resolver_base/$listfile" 2>/dev/null; then
+            print_success "  $listfile downloaded (GitHub)"
+            ((seeded++)) || true
+        elif curl -fsSL --connect-timeout 15 --max-time 60 -o "$cache_dir/$listfile" "$resolver_alt/$listfile" 2>/dev/null; then
+            print_success "  $listfile downloaded (mirror)"
+            ((seeded++)) || true
+        elif [[ "$have_seed" == "true" || -f "$cache_dir/$listfile" ]]; then
+            print_info "  Keeping cached $listfile"
+            ((seeded++)) || true
+        else
+            print_warning "  Could not download $listfile (dnscrypt will fetch at runtime)"
+        fi
+
+        if [[ -n "$seed_dir" && -f "$seed_dir/${listfile}.minisig" ]]; then
+            install -m 644 "$seed_dir/${listfile}.minisig" "$cache_dir/${listfile}.minisig"
+            have_sig_seed=true
+        fi
+
+        if curl -fsSL --connect-timeout 15 --max-time 30 -o "$cache_dir/${listfile}.minisig" "$resolver_base/${listfile}.minisig" 2>/dev/null; then
+            print_info "  ${listfile}.minisig refreshed"
+        elif curl -fsSL --connect-timeout 15 --max-time 30 -o "$cache_dir/${listfile}.minisig" "$resolver_alt/${listfile}.minisig" 2>/dev/null; then
+            print_info "  ${listfile}.minisig refreshed (mirror)"
+        elif [[ "$have_sig_seed" == "true" || -f "$cache_dir/${listfile}.minisig" ]]; then
+            print_info "  Keeping cached ${listfile}.minisig"
+        else
+            print_warning "  Could not seed ${listfile}.minisig"
+        fi
+    done
+
+    if id _dnscrypt-proxy &>/dev/null; then
+        chown -R _dnscrypt-proxy:_dnscrypt-proxy "$cache_dir" 2>/dev/null || true
+    fi
+    chmod 755 "$cache_dir"
+
+    if [[ $seeded -gt 0 ]]; then
+        print_success "Server list cache ready ($seeded lists ready)"
+    else
+        print_warning "No server lists seeded - dnscrypt will download on first start"
+    fi
+}
+
+resolve_dnscrypt_binary_path() {
+    local candidate=""
+
+    for candidate in /usr/local/bin/dnscrypt-proxy /usr/sbin/dnscrypt-proxy /usr/bin/dnscrypt-proxy; do
+        if [[ -x "$candidate" ]]; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+
+    candidate="$(command -v dnscrypt-proxy 2>/dev/null || true)"
+    if [[ -n "$candidate" ]]; then
+        echo "$candidate"
+        return 0
+    fi
+
+    echo "/usr/local/bin/dnscrypt-proxy"
 }
 
 # Function to setup DNSCrypt Proxy systemd service
@@ -4407,51 +4605,68 @@ setup_dnscrypt_service() {
 
     print_step "Setting up DNSCrypt Proxy service..."
 
-    # ALWAYS ensure config file exists before setting up service
     setup_dnscrypt_config
 
-    # Check if systemd service already exists
     if systemctl list-unit-files dnscrypt-proxy.service &>/dev/null; then
-        print_info "DNSCrypt Proxy service file already exists"
+        print_info "Refreshing DNSCrypt Proxy systemd service file..."
     else
-        # Create systemd service file
         print_info "Creating DNSCrypt Proxy systemd service file..."
-        create_dnscrypt_service_file
+    fi
+    create_dnscrypt_service_file "$install_method"
+
+    print_info "Enabling DNSCrypt Proxy service..."
+    systemctl enable dnscrypt-proxy 2>/dev/null || true
+
+    # Safety: clear stuck systemd jobs before starting (boot race protection)
+    systemctl stop dnscrypt-proxy.socket 2>/dev/null || true
+    systemctl stop dnscrypt-proxy 2>/dev/null || true
+    systemctl reset-failed dnscrypt-proxy 2>/dev/null || true
+    sleep 1
+
+    print_info "Starting DNSCrypt Proxy service..."
+    if ! timeout 75 systemctl start dnscrypt-proxy 2>/dev/null; then
+        print_warning "Failed to start DNSCrypt Proxy (will start on next boot)"
+        return 0
     fi
 
-    # Enable service but do not start it
-    print_info "Enabling DNSCrypt Proxy service (not starting)..."
-    if systemctl enable dnscrypt-proxy 2>/dev/null; then
-        print_success "DNSCrypt Proxy service enabled (use 'systemctl start dnscrypt-proxy' to activate)"
+    sleep 2
+    if systemctl is-active --quiet dnscrypt-proxy 2>/dev/null; then
+        print_success "DNSCrypt Proxy service is running"
     else
-        print_warning "Failed to enable DNSCrypt Proxy service"
+        print_warning "DNSCrypt Proxy started but not yet active"
     fi
-
-    print_info "DNSCrypt Proxy service is ready but not active - user can start when needed"
 }
 
 # Function to create DNSCrypt Proxy systemd service file
 create_dnscrypt_service_file() {
-    # Ensure _dnscrypt-proxy system user exists
+    local install_method="${1:-}"
+    local dnscrypt_bin=""
+
+    dnscrypt_bin="$(resolve_dnscrypt_binary_path)"
+
     if ! id _dnscrypt-proxy &>/dev/null; then
         useradd --system --no-create-home --shell /usr/sbin/nologin _dnscrypt-proxy
         print_success "Created _dnscrypt-proxy system user"
     fi
 
-    cat > /etc/systemd/system/dnscrypt-proxy.service << 'EOF'
+    cat > /etc/systemd/system/dnscrypt-proxy.service << EOF
 [Unit]
 Description=DNSCrypt Proxy
 Documentation=https://github.com/DNSCrypt/dnscrypt-proxy/wiki
 After=network-online.target
 Before=nss-lookup.target
 Wants=network-online.target nss-lookup.target
+StartLimitIntervalSec=300
+StartLimitBurst=10
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/dnscrypt-proxy -config /etc/dnscrypt-proxy/dnscrypt-proxy.toml
+ExecStartPre=+/bin/sh -c 'i=0; while [ \$i -lt 20 ]; do ping -c1 -W2 9.9.9.9 >/dev/null 2>&1 && exit 0; i=\$((i+1)); sleep 2; done; exit 0'
+ExecStart=$dnscrypt_bin -config /etc/dnscrypt-proxy/dnscrypt-proxy.toml
 WorkingDirectory=/etc/dnscrypt-proxy
 Restart=on-failure
 RestartSec=10
+TimeoutStartSec=120
 
 # CRITICAL: Allow binding to port 53 (privileged port) as unprivileged user
 AmbientCapabilities=CAP_NET_BIND_SERVICE
@@ -4482,9 +4697,12 @@ RestrictNamespaces=true
 WantedBy=multi-user.target
 EOF
 
-    # Reload systemd to recognize new service
     systemctl daemon-reload
     print_success "DNSCrypt Proxy service file created"
+
+    if [[ -n "$install_method" ]]; then
+        print_info "DNSCrypt service refreshed for install method: $install_method"
+    fi
 }
 
 # Function to generate Pi-hole setupVars.conf for unattended installation
@@ -5239,6 +5457,8 @@ elif [[ "$INSTALL_MODE" == "interactive" ]]; then
         install_qrencode_github
         # Try to install resolvconf (optional)
         install_resolvconf_safe
+        # Re-configure systemd-resolved now that DNSCrypt may be running
+        configure_systemd_resolved
         ensure_dpkg_healthy
         # Offer Pi-hole installation
         echo ""
