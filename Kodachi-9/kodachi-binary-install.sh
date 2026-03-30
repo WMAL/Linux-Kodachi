@@ -1401,6 +1401,16 @@ else
     ln -s ../../models "$INSTALL_PATH/rust/kodachi-ai/models" 2>/dev/null || true
 fi
 
+# Copy DNSCrypt server list cache (used by kodachi-deps-install.sh as offline fallback)
+if [[ -d "$EXTRACT_DIR/dnscrypt-cache" ]]; then
+    mkdir -p "$INSTALL_PATH/dnscrypt-cache"
+    cp -a "$EXTRACT_DIR/dnscrypt-cache/." "$INSTALL_PATH/dnscrypt-cache/" 2>/dev/null || true
+    dc_count=$(find "$INSTALL_PATH/dnscrypt-cache" -type f 2>/dev/null | wc -l)
+    if [[ $dc_count -gt 0 ]]; then
+        print_success "DNSCrypt server list cache installed ($dc_count files)"
+    fi
+fi
+
 # Step 8.5: Install Conky assets and startup entry
 cleanup_legacy_autostart_entries() {
     local autostart_dir="${XDG_CONFIG_HOME:-$HOME/.config}/autostart"
@@ -1822,11 +1832,12 @@ Description=Kodachi Session Helper - Global Emergency Shortcut Daemon
 Documentation=https://kodachi.cloud/wiki/bina/binaries/kodachi-session-helper/
 After=graphical-session.target
 PartOf=graphical-session.target
-StartLimitIntervalSec=60
+StartLimitIntervalSec=120
 StartLimitBurst=5
 
 [Service]
 Type=simple
+ExecStartPre=/bin/bash -c 'n=0; while [ \$n -lt 15 ]; do xdpyinfo >/dev/null 2>&1 && exit 0; n=\$((n+1)); sleep 1; done; exit 1'
 ExecStart=$helper_bin daemon
 WorkingDirectory=$helper_dir
 Restart=on-failure
@@ -1837,9 +1848,10 @@ NoNewPrivileges=false
 ProtectSystem=strict
 ProtectHome=read-only
 PrivateTmp=false
-ReadWritePaths=/run/user
+ReadWritePaths=/run/user/%U
 Environment=DISPLAY=:0
 Environment=XAUTHORITY=%h/.Xauthority
+Environment=XDG_RUNTIME_DIR=/run/user/%U
 Environment=RUST_LOG=warn
 
 [Install]
