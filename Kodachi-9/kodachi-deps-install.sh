@@ -933,9 +933,24 @@ HEADER
 # UFW Management (enable/disable firewall and boot persistence)
 # ============================================================
 %sudo ALL=(ALL) NOPASSWD: /usr/sbin/ufw enable
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/ufw --force enable
 %sudo ALL=(ALL) NOPASSWD: /usr/sbin/ufw disable
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/ufw --force disable
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/ufw --force delete *
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/ufw --force reset
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/ufw allow *
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/ufw deny *
 %sudo ALL=(ALL) NOPASSWD: /bin/systemctl enable ufw
 %sudo ALL=(ALL) NOPASSWD: /bin/systemctl disable ufw
+
+# ============================================================
+# Portmaster Service Management (start/stop/boot only)
+# ============================================================
+%sudo ALL=(ALL) NOPASSWD: /bin/systemctl start portmaster
+%sudo ALL=(ALL) NOPASSWD: /bin/systemctl stop portmaster
+%sudo ALL=(ALL) NOPASSWD: /bin/systemctl restart portmaster
+%sudo ALL=(ALL) NOPASSWD: /bin/systemctl enable portmaster
+%sudo ALL=(ALL) NOPASSWD: /bin/systemctl disable portmaster
 
 # End of Kodachi NOPASSWD rules
 EOF
