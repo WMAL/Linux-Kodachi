@@ -72,6 +72,7 @@ This roadmap provides an overview of the current status of key components in the
 | **[Kodachi AI Capabilities](https://www.kodachi.cloud/wiki/bina/ai/index.html)**                 | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **[Kodachi Claw](https://www.kodachi.cloud/wiki/bina/ai/kodachi-claw.html)** ([GitHub](Kodachi-9/kodachi-claw) · [Docs](https://www.kodachi.cloud/wiki/bina/ai/kodachi-claw.html)) | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **[Kodachi Desktop (Debian XFCE)](https://www.kodachi.cloud/wiki/bina/desktop-debian.html)**     | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **[File Verification Tool](https://www.kodachi.cloud/wiki/bina/security/file-verify.html)**      | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 
 ### **Kodachi 9: Released!**
 
