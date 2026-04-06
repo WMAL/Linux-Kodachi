@@ -881,10 +881,18 @@ HEADER
 # ============================================================
 # Time Synchronization (welcome script)
 # ============================================================
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/ntpdig
 %sudo ALL=(ALL) NOPASSWD: /usr/sbin/ntpdig
 %sudo ALL=(ALL) NOPASSWD: /usr/sbin/ntpdate
 %sudo ALL=(ALL) NOPASSWD: /usr/sbin/ntpd
 %sudo ALL=(ALL) NOPASSWD: /usr/bin/timedatectl
+
+# ============================================================
+# Session Bootstrap Helpers
+# ============================================================
+%sudo ALL=(ALL) NOPASSWD: /usr/local/bin/kodachi-apply-grub-theme
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /run/kodachi
+%sudo ALL=(ALL) NOPASSWD: /bin/mkdir -p /run/kodachi
 
 # ============================================================
 # GUI Root Actions (Thunar and Mousepad)
@@ -1317,11 +1325,15 @@ ExecStart=/bin/bash -c '\
     [ -x "$bin" ] && exec "$bin" snapshot --refresh --quiet 2>/dev/null; \
   done; \
   exit 0'
-TimeoutSec=90
+TimeoutSec=60
 StandardOutput=null
 StandardError=journal
 Nice=15
 IOSchedulingClass=idle
+KillMode=process
+# Memory guard: prevent snapshot refresh from starving the desktop session.
+MemoryHigh=200M
+MemoryMax=300M
 EOF
         fi
 
@@ -1334,8 +1346,8 @@ Description=Kodachi Conky Snapshot Refresh Timer
 After=graphical-session.target
 
 [Timer]
-OnActiveSec=15
-OnUnitActiveSec=90
+OnActiveSec=60
+OnUnitActiveSec=180
 RandomizedDelaySec=10
 Persistent=false
 
@@ -2388,7 +2400,7 @@ MONITORING_PACKAGES="btop iftop nethogs ncdu nload iperf3 speedtest-cli"
 
 # GUI-only packages - only installed on systems with desktop environments.
 # Includes the runtime packages required by Kodachi rofi menus on installed systems.
-GUI_PACKAGES="bleachbit kitty fontconfig fonts-dejavu fonts-noto-core fonts-noto-color-emoji fonts-liberation fonts-liberation2 conky-all alsa-utils pulseaudio pulseaudio-utils libnotify-bin xclip xsel mpv xterm network-manager rofi xfce4-screenshooter xdotool xfce4-clipman xfce4-clipman-plugin copyq qalculate-gtk maim translate-shell python3 bc iproute2 iputils-ping traceroute speedtest-cli"
+GUI_PACKAGES="bleachbit kitty fontconfig fonts-dejavu fonts-noto-core fonts-noto-color-emoji fonts-liberation fonts-liberation2 conky-all alsa-utils pipewire pipewire-pulse pipewire-alsa wireplumber pulseaudio-utils libnotify-bin xclip xsel mpv xterm network-manager rofi xfce4-screenshooter xdotool xfce4-clipman xfce4-clipman-plugin copyq qalculate-gtk maim translate-shell python3 bc iproute2 iputils-ping traceroute speedtest-cli"
 
 # Packages that require contrib/non-free repositories
 CONTRIB_PACKAGES="shadowsocks-v2ray-plugin v2ray"
@@ -5534,7 +5546,7 @@ elif [[ "$INSTALL_MODE" == "interactive" ]]; then
   • Terminal: kitty, xterm terminal emulators
   • Desktop panels: Conky status widgets
   • Fonts: fontconfig, emoji support
-  • Audio: PulseAudio, ALSA utilities, mpv
+  • Audio: PipeWire (pipewire-pulse, wireplumber), ALSA utilities, mpv
   • Desktop tools: bleachbit, notifications, screenshots
   • Clipboard: xclip, xsel, CopyQ, XFCE Clipman
   • Rofi: launcher, calculator, translation, screenshot helpers

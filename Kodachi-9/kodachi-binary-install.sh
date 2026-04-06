@@ -1686,14 +1686,15 @@ ExecStart=/bin/bash -c '\
     [ -x "$bin" ] && exec "$bin" snapshot --refresh --quiet 2>/dev/null; \
   done; \
   exit 0'
-TimeoutSec=90
+TimeoutSec=60
 StandardOutput=null
 StandardError=journal
 Nice=15
 IOSchedulingClass=idle
+KillMode=process
 # Memory guard: prevent snapshot refresh from starving the desktop session.
-MemoryHigh=384M
-MemoryMax=512M
+MemoryHigh=200M
+MemoryMax=300M
 EOF
     fi
 
@@ -1706,8 +1707,8 @@ Description=Kodachi Conky Snapshot Refresh Timer
 After=graphical-session.target
 
 [Timer]
-OnActiveSec=15
-OnUnitActiveSec=90
+OnActiveSec=60
+OnUnitActiveSec=180
 RandomizedDelaySec=10
 Persistent=false
 

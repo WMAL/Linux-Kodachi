@@ -32,6 +32,7 @@
 > - **[Domain Checker](https://www.kodachi.cloud/domain-checker.html)** - Global DNS propagation checker with multi-server verification
 > - **[API Documentation Portal](https://www.kodachi.cloud/api-docs.html)** - New API docs for IP geolocation, platform stats, and binary service endpoints
 > - **[Infrastructure Status Dashboard](https://www.kodachi.cloud/apps/status.php)** - Live monitoring of servers and services across multiple regions
+> - **[File Verification Tool](https://www.kodachi.cloud/wiki/bina/security/file-verify.html)** - Browser-based file integrity verification with hash computation and automatic checksum comparison against official Kodachi releases
 > - **[Kodachi Cloud](https://www.kodachi.cloud/)** - Fresh redesigned interface
 > - **[Kodachi Homepage](https://www.digi77.com/linux-kodachi/)** - New modern look
 
