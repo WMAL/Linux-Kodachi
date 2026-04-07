@@ -2,6 +2,8 @@
 
 <div align="center">
 
+> **Login Credentials (Terminal Server & Desktop XFCE)** &nbsp;&nbsp;|&nbsp;&nbsp; Username: `kodachi` &nbsp;&nbsp;|&nbsp;&nbsp; Password: `Security4All`
+
 ### ![Announcements](https://img.shields.io/badge/-ANNOUNCEMENTS-critical?style=for-the-badge) Kodachi 9 Releases ![Announcements](https://img.shields.io/badge/-ANNOUNCEMENTS-critical?style=for-the-badge)
 
 | Release | Description | Links |
