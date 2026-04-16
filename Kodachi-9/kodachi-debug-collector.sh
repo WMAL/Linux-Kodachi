@@ -15,7 +15,7 @@
 #
 # Author: Warith Al Maawali
 # Version: 9.0.1
-# Last updated: 2026-04-04
+# Last updated: 2026-04-16
 #
 # Description:
 # Collects comprehensive system diagnostics for remote troubleshooting
@@ -184,7 +184,7 @@ show_menu() {
     clear 2>/dev/null || true
     echo -e "${GREEN}"
     echo "╔═══════════════════════════════════════════════════════════╗"
-    echo "║         KODACHI OS DEBUG COLLECTOR v1.2                  ║"
+    echo "║         KODACHI OS DEBUG COLLECTOR v1.3                  ║"
     echo "╚═══════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
     echo ""
@@ -246,7 +246,7 @@ interactive_select() {
 show_banner() {
     echo -e "${GREEN}"
     echo "╔═══════════════════════════════════════════════════════════╗"
-    echo "║         KODACHI OS DEBUG COLLECTOR v1.2                  ║"
+    echo "║         KODACHI OS DEBUG COLLECTOR v1.3                  ║"
     echo "║    Comprehensive System Diagnostics Tool                 ║"
     echo "╚═══════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
@@ -333,13 +333,16 @@ for build_meta in /opt/*/dashboard/hooks/config/build-meta.json "${REAL_HOME}"/*
     if [[ -f "$build_meta" ]]; then
         echo "build-meta.json ($build_meta):"
         cat "$build_meta" 2>/dev/null | sed 's/^/  /'
-        # Extract version from build-meta if still unknown
+        # Extract version and build info from build-meta
         if [[ "$KODACHI_VERSION" == "unknown" ]]; then
             BM_VER=$(grep -oP '"version"\s*:\s*"\K[^"]+' "$build_meta" 2>/dev/null | head -1)
             if [[ -n "$BM_VER" ]]; then
                 KODACHI_VERSION="$BM_VER"
             fi
         fi
+        NIGHTLY_VERSION=$(grep -oP '"nightly_version"\s*:\s*"\K[^"]+' "$build_meta" 2>/dev/null | head -1)
+        BUILD_NUMBER=$(grep -oP '"build_number"\s*:\s*\K[0-9]+' "$build_meta" 2>/dev/null | head -1)
+        PACK_DATE=$(grep -oP '"pack_date"\s*:\s*"\K[^"]+' "$build_meta" 2>/dev/null | head -1)
     fi
 done
 
@@ -712,6 +715,9 @@ echo "   QUICK DIAGNOSIS SUMMARY"
 echo "=============================================="
 echo ""
 echo "  Kodachi Version:    ${KODACHI_VERSION}"
+echo "  Nightly Build:      ${NIGHTLY_VERSION:-unknown}"
+echo "  Build Number:       ${BUILD_NUMBER:-unknown}"
+echo "  Pack Date:          ${PACK_DATE:-unknown}"
 echo "  System Type:        ${SYSTEM_TYPE}"
 echo "  LUKS Encryption:    ${LUKS_ACTIVE}"
 echo "  Nuke Password:      ${NUKE_STATUS}"
@@ -767,6 +773,19 @@ ROOT_FS=$(findmnt -n -o FSTYPE / 2>/dev/null || echo "unknown")
 ROOT_SOURCE=$(findmnt -n -o SOURCE / 2>/dev/null || echo "unknown")
 
 echo "KODACHI_VERSION=${KODACHI_VERSION}"
+# Extract build info from build-meta.json (re-detect in subshell)
+_NV="unknown"; _BN="unknown"; _PD="unknown"
+for _bm in /opt/*/dashboard/hooks/config/build-meta.json "${REAL_HOME}"/*/dashboard/hooks/config/build-meta.json; do
+    if [[ -f "$_bm" ]]; then
+        _NV=$(grep -oP '"nightly_version"\s*:\s*"\K[^"]+' "$_bm" 2>/dev/null | head -1)
+        _BN=$(grep -oP '"build_number"\s*:\s*\K[0-9]+' "$_bm" 2>/dev/null | head -1)
+        _PD=$(grep -oP '"pack_date"\s*:\s*"\K[^"]+' "$_bm" 2>/dev/null | head -1)
+        break
+    fi
+done
+echo "NIGHTLY_VERSION=${_NV:-unknown}"
+echo "BUILD_NUMBER=${_BN:-unknown}"
+echo "PACK_DATE=${_PD:-unknown}"
 echo "SYSTEM_TYPE=${SYSTEM_TYPE}"
 echo "LUKS_ACTIVE=${LUKS_ACTIVE}"
 echo "NUKE_STATUS=${NUKE_STATUS}"
@@ -797,6 +816,11 @@ safe_exec "$COLLECTION_DIR/01-system-boot/journalctl-errors.txt" "journalctl -b 
 safe_exec "$COLLECTION_DIR/01-system-boot/journalctl-warnings.txt" "journalctl -b -p warning --no-pager"
 safe_exec "$COLLECTION_DIR/01-system-boot/systemctl-failed.txt" "systemctl --failed --no-pager"
 safe_exec "$COLLECTION_DIR/01-system-boot/systemctl-all-units.txt" "systemctl list-units --all --no-pager"
+safe_exec "$COLLECTION_DIR/01-system-boot/systemctl-timers.txt" "systemctl list-timers --all --no-pager"
+safe_exec "$COLLECTION_DIR/01-system-boot/systemd-analyze-time.txt" "systemd-analyze time"
+safe_exec "$COLLECTION_DIR/01-system-boot/systemd-analyze-blame.txt" "systemd-analyze blame"
+safe_exec "$COLLECTION_DIR/01-system-boot/systemd-analyze-critical.txt" "systemd-analyze critical-chain"
+safe_exec "$COLLECTION_DIR/01-system-boot/kernel-taint.txt" "cat /proc/sys/kernel/tainted"
 
 # Copy system logs
 safe_copy "/var/log/syslog" "$COLLECTION_DIR/01-system-boot"
@@ -854,6 +878,35 @@ if command -v sensors &> /dev/null; then
     safe_exec "$COLLECTION_DIR/02-hardware-drivers/sensors.txt" "sensors"
 fi
 
+# Modprobe configs (blacklists, driver options)
+if [[ -d "/etc/modprobe.d" ]]; then
+    mkdir -p "$COLLECTION_DIR/02-hardware-drivers/modprobe.d"
+    for mconf in /etc/modprobe.d/*.conf; do
+        [[ -f "$mconf" ]] && cp "$mconf" "$COLLECTION_DIR/02-hardware-drivers/modprobe.d/" 2>/dev/null || true
+    done
+fi
+
+# DKMS module status
+if command -v dkms &> /dev/null; then
+    safe_exec "$COLLECTION_DIR/02-hardware-drivers/dkms-status.txt" "dkms status"
+fi
+
+# NVMe health (if nvme-cli installed)
+if command -v nvme &> /dev/null; then
+    safe_exec "$COLLECTION_DIR/02-hardware-drivers/nvme-smart.txt" "nvme smart-log /dev/nvme0n1 2>/dev/null || echo 'No NVMe device'"
+fi
+
+# S.M.A.R.T disk health
+if command -v smartctl &> /dev/null; then
+    safe_exec "$COLLECTION_DIR/02-hardware-drivers/smart-health.txt" "smartctl -H /dev/sda 2>/dev/null || smartctl -H /dev/nvme0n1 2>/dev/null || echo 'No SMART-capable device'"
+fi
+
+# Virtualization detection
+safe_exec "$COLLECTION_DIR/02-hardware-drivers/virt-detect.txt" "systemd-detect-virt 2>/dev/null || echo 'not detected'"
+
+# CPU microcode version
+safe_exec "$COLLECTION_DIR/02-hardware-drivers/cpu-microcode.txt" "grep -m1 microcode /proc/cpuinfo 2>/dev/null || echo 'no microcode info'"
+
 fi # end CATEGORY 2
 
 # ============================================================================
@@ -873,6 +926,27 @@ safe_exec "$COLLECTION_DIR/03-network/iptables-nat.txt" "iptables -t nat -L -v -
 safe_exec "$COLLECTION_DIR/03-network/nftables.txt" "nft list ruleset"
 safe_exec "$COLLECTION_DIR/03-network/listening-ports.txt" "ss -tulnp"
 safe_exec "$COLLECTION_DIR/03-network/socket-stats.txt" "ss -s"
+
+# DNS stack configs (critical for DNS degradation debugging)
+safe_copy "/etc/systemd/resolved.conf" "$COLLECTION_DIR/03-network"
+if [[ -d "/etc/systemd/resolved.conf.d" ]]; then
+    mkdir -p "$COLLECTION_DIR/03-network/resolved.conf.d"
+    cp /etc/systemd/resolved.conf.d/*.conf "$COLLECTION_DIR/03-network/resolved.conf.d/" 2>/dev/null || true
+fi
+# DNSCrypt config (redact server_names/stamps that could identify provider choice)
+if [[ -f "/etc/dnscrypt-proxy/dnscrypt-proxy.toml" ]]; then
+    grep -v -E "^(stamp|server_names)" /etc/dnscrypt-proxy/dnscrypt-proxy.toml \
+        > "$COLLECTION_DIR/03-network/dnscrypt-proxy.toml" 2>/dev/null || true
+fi
+
+# WireGuard status (redact private/preshared keys)
+if command -v wg &> /dev/null; then
+    wg show all 2>/dev/null | sed -E 's/(private key|preshared key): .*/\1: [REDACTED]/g' \
+        > "$COLLECTION_DIR/03-network/wireguard-show.txt" 2>/dev/null || true
+fi
+
+# NetworkManager dispatcher scripts (list only, don't copy contents)
+safe_exec "$COLLECTION_DIR/03-network/nm-dispatcher-scripts.txt" "ls -la /etc/NetworkManager/dispatcher.d/ 2>/dev/null || echo 'no dispatcher scripts'"
 
 # NetworkManager
 if command -v nmcli &> /dev/null; then
@@ -949,6 +1023,16 @@ mkdir -p "$COLLECTION_DIR/05-vpn"
 
 safe_exec "$COLLECTION_DIR/05-vpn/openvpn-service-status.txt" "systemctl status openvpn* --no-pager"
 
+# WireGuard service and interface status
+safe_exec "$COLLECTION_DIR/05-vpn/wireguard-service-status.txt" "systemctl status wg-quick* --no-pager 2>/dev/null || echo 'no wg-quick service'"
+if command -v wg &> /dev/null; then
+    wg show all 2>/dev/null | sed -E 's/(private key|preshared key): .*/\1: [REDACTED]/g' \
+        > "$COLLECTION_DIR/05-vpn/wireguard-detail.txt" 2>/dev/null || true
+fi
+
+# Proxy tunnel processes (tun2socks, xray, hysteria, shadowsocks)
+safe_exec "$COLLECTION_DIR/05-vpn/proxy-processes.txt" "ps auxww | grep -E 'tun2socks|xray|hysteria|ss-local|ss-redir|microsocks|redsocks' | grep -v grep || echo 'no proxy tunnels running'"
+
 # Copy VPN logs
 if [[ -d "/var/log/openvpn" ]]; then
     mkdir -p "$COLLECTION_DIR/05-vpn/logs"
@@ -956,6 +1040,9 @@ if [[ -d "/var/log/openvpn" ]]; then
         [[ -f "$logfile" ]] && safe_copy "$logfile" "$COLLECTION_DIR/05-vpn/logs"
     done
 fi
+
+# VPN routing tables (custom tables used by routing-switch)
+safe_exec "$COLLECTION_DIR/05-vpn/ip-rule-list.txt" "ip rule list"
 
 fi # end CATEGORY 5
 
@@ -1092,6 +1179,24 @@ done
 # Kodachi systemd services
 safe_exec "$COLLECTION_DIR/06-kodachi/kodachi-services.txt" "systemctl list-units 'kodachi*' --all --no-pager"
 
+# Health-control diagnostics (read-only commands, safe to run)
+if command -v health-control &> /dev/null; then
+    safe_exec "$COLLECTION_DIR/06-kodachi/health-control-security-score.txt" "health-control security-score --json 2>/dev/null || echo 'security-score unavailable'"
+    safe_exec "$COLLECTION_DIR/06-kodachi/health-control-net-check.txt" "health-control net-check --json 2>/dev/null || echo 'net-check unavailable'"
+    safe_exec "$COLLECTION_DIR/06-kodachi/health-control-ipv6-status.txt" "health-control ipv6-status --json 2>/dev/null || echo 'ipv6-status unavailable'"
+    safe_exec "$COLLECTION_DIR/06-kodachi/health-control-swap-status.txt" "health-control swap-status --json 2>/dev/null || echo 'swap-status unavailable'"
+fi
+
+# DNS-switch status
+if command -v dns-switch &> /dev/null; then
+    safe_exec "$COLLECTION_DIR/06-kodachi/dns-switch-status.txt" "dns-switch status --json 2>/dev/null || echo 'dns-switch unavailable'"
+fi
+
+# Routing-switch state
+if command -v routing-switch &> /dev/null; then
+    safe_exec "$COLLECTION_DIR/06-kodachi/routing-switch-status.txt" "routing-switch status --json 2>/dev/null || echo 'routing-switch unavailable'"
+fi
+
 fi # end CATEGORY 6
 
 # ============================================================================
@@ -1128,6 +1233,17 @@ fi
 # Post-install Kodachi finish logs
 safe_copy "/target/tmp/kodachi-grub-theme.log" "$COLLECTION_DIR/07-installation-packages"
 safe_copy "/var/log/kodachi-finish-install.log" "$COLLECTION_DIR/07-installation-packages"
+
+# Crypttab (raw copy — critical for cryptswap timeout debugging)
+safe_copy "/etc/crypttab" "$COLLECTION_DIR/07-installation-packages"
+
+# Crypttab repair logs (Kodachi's boot-time cryptswap fixer)
+safe_copy "/var/log/kodachi-crypttab-fix.log" "$COLLECTION_DIR/07-installation-packages"
+
+# Partition layout
+if command -v parted &> /dev/null; then
+    safe_exec "$COLLECTION_DIR/07-installation-packages/parted-list.txt" "parted -l 2>/dev/null || echo 'parted failed'"
+fi
 
 # Preseed configuration (used during installation)
 for preseed in /cdrom/preseed*.cfg /preseed*.cfg /tmp/preseed*.cfg; do
@@ -1220,6 +1336,13 @@ safe_exec "$COLLECTION_DIR/09-performance-processes/pressure-cpu.txt" "cat /proc
 safe_exec "$COLLECTION_DIR/09-performance-processes/pressure-memory.txt" "cat /proc/pressure/memory"
 safe_exec "$COLLECTION_DIR/09-performance-processes/pressure-io.txt" "cat /proc/pressure/io"
 
+# Top CPU and memory consumers (sorted)
+safe_exec "$COLLECTION_DIR/09-performance-processes/top-cpu-consumers.txt" "ps aux --sort=-%cpu | head -25"
+safe_exec "$COLLECTION_DIR/09-performance-processes/top-mem-consumers.txt" "ps aux --sort=-%mem | head -25"
+
+# CPU frequency/throttling state
+safe_exec "$COLLECTION_DIR/09-performance-processes/cpu-freq.txt" "cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver 2>/dev/null && cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null || echo 'cpufreq not available'"
+
 fi # end CATEGORY 9
 
 # ============================================================================
@@ -1238,6 +1361,45 @@ safe_exec "$COLLECTION_DIR/10-security-permissions/last.txt" "last -20"
 # SELinux/AppArmor
 safe_exec "$COLLECTION_DIR/10-security-permissions/getenforce.txt" "getenforce"
 safe_exec "$COLLECTION_DIR/10-security-permissions/aa-status.txt" "aa-status"
+
+# Kernel hardening sysctl values (critical for security scoring debug)
+safe_exec "$COLLECTION_DIR/10-security-permissions/sysctl-kernel.txt" "sysctl kernel.kptr_restrict kernel.dmesg_restrict kernel.unprivileged_bpf_disabled kernel.yama.ptrace_scope kernel.randomize_va_space kernel.kexec_load_disabled kernel.sysrq kernel.perf_event_paranoid fs.protected_symlinks fs.protected_hardlinks net.ipv4.tcp_syncookies net.ipv4.ip_forward net.ipv6.conf.all.disable_ipv6 2>/dev/null"
+
+# sysctl.d drop-in configs
+if [[ -d "/etc/sysctl.d" ]]; then
+    mkdir -p "$COLLECTION_DIR/10-security-permissions/sysctl.d"
+    for sconf in /etc/sysctl.d/*.conf; do
+        [[ -f "$sconf" ]] && cp "$sconf" "$COLLECTION_DIR/10-security-permissions/sysctl.d/" 2>/dev/null || true
+    done
+fi
+
+# chkrootkit config and status
+safe_copy "/etc/chkrootkit/chkrootkit.conf" "$COLLECTION_DIR/10-security-permissions"
+safe_exec "$COLLECTION_DIR/10-security-permissions/chkrootkit-service.txt" "systemctl status chkrootkit.service --no-pager 2>/dev/null || echo 'chkrootkit service not found'"
+
+# fail2ban status
+if command -v fail2ban-client &> /dev/null; then
+    safe_exec "$COLLECTION_DIR/10-security-permissions/fail2ban-status.txt" "fail2ban-client status 2>/dev/null || echo 'fail2ban not running'"
+fi
+
+# auditd rules and status
+if command -v auditctl &> /dev/null; then
+    safe_exec "$COLLECTION_DIR/10-security-permissions/auditd-rules.txt" "auditctl -l 2>/dev/null || echo 'auditd not running'"
+    safe_exec "$COLLECTION_DIR/10-security-permissions/auditd-status.txt" "systemctl status auditd --no-pager 2>/dev/null"
+fi
+
+# usbguard status
+if command -v usbguard &> /dev/null; then
+    safe_exec "$COLLECTION_DIR/10-security-permissions/usbguard-rules.txt" "usbguard list-rules 2>/dev/null || echo 'usbguard not active'"
+    safe_exec "$COLLECTION_DIR/10-security-permissions/usbguard-devices.txt" "usbguard list-devices 2>/dev/null || echo 'usbguard not active'"
+fi
+
+# NTP service status (for IPv6 bind error debugging)
+safe_exec "$COLLECTION_DIR/10-security-permissions/ntpsec-status.txt" "systemctl status ntpsec --no-pager 2>/dev/null || systemctl status ntp --no-pager 2>/dev/null || echo 'no NTP service'"
+safe_copy "/etc/ntpsec/ntp.conf" "$COLLECTION_DIR/10-security-permissions"
+
+# Sudoers (list files only, don't copy contents — too sensitive)
+safe_exec "$COLLECTION_DIR/10-security-permissions/sudoers-files.txt" "ls -la /etc/sudoers.d/ 2>/dev/null || echo 'no sudoers.d'"
 
 fi # end CATEGORY 10
 
@@ -1258,6 +1420,14 @@ safe_copy "/etc/fstab" "$COLLECTION_DIR/11-live-system"
 if [[ -d "/run/live" ]]; then
     echo "Running from LIVE system" > "$COLLECTION_DIR/11-live-system/live-status.txt"
     ls -lah /run/live >> "$COLLECTION_DIR/11-live-system/live-status.txt"
+    # Live-specific: squashfs info and overlay details
+    safe_exec "$COLLECTION_DIR/11-live-system/squashfs-mounts.txt" "mount | grep -E 'squash|overlay|aufs'"
+    if [[ -d "/run/live/medium" ]]; then
+        safe_exec "$COLLECTION_DIR/11-live-system/live-medium-contents.txt" "ls -lah /run/live/medium/"
+    fi
+    if [[ -d "/run/live/persistence" ]]; then
+        safe_exec "$COLLECTION_DIR/11-live-system/persistence-status.txt" "ls -lah /run/live/persistence/"
+    fi
 else
     echo "Running from INSTALLED system" > "$COLLECTION_DIR/11-live-system/live-status.txt"
 fi
@@ -1281,6 +1451,27 @@ safe_copy "/etc/default/grub" "$COLLECTION_DIR/12-misc-config"
 if [[ -f "/boot/grub/grub.cfg" ]]; then
     safe_copy "/boot/grub/grub.cfg" "$COLLECTION_DIR/12-misc-config"
 fi
+
+# GRUB drop-in configs
+if [[ -d "/etc/default/grub.d" ]]; then
+    mkdir -p "$COLLECTION_DIR/12-misc-config/grub.d"
+    cp /etc/default/grub.d/*.cfg "$COLLECTION_DIR/12-misc-config/grub.d/" 2>/dev/null || true
+fi
+
+# systemd core configs
+safe_copy "/etc/systemd/journald.conf" "$COLLECTION_DIR/12-misc-config"
+safe_copy "/etc/systemd/system.conf" "$COLLECTION_DIR/12-misc-config"
+if [[ -d "/etc/systemd/journald.conf.d" ]]; then
+    mkdir -p "$COLLECTION_DIR/12-misc-config/journald.conf.d"
+    cp /etc/systemd/journald.conf.d/*.conf "$COLLECTION_DIR/12-misc-config/journald.conf.d/" 2>/dev/null || true
+fi
+
+# Environment and defaults
+safe_copy "/etc/environment" "$COLLECTION_DIR/12-misc-config"
+
+# Kodachi-specific system configs
+safe_copy "/etc/kodachi-version" "$COLLECTION_DIR/12-misc-config"
+safe_copy "/etc/kodachi-release" "$COLLECTION_DIR/12-misc-config"
 
 fi # end CATEGORY 12
 
