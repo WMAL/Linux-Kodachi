@@ -418,7 +418,7 @@ write_kodachi_resolved_profile() {
 DNS=127.0.0.1 ${KODACHI_PRIMARY_DNS}
 FallbackDNS=${KODACHI_FALLBACK_DNS}
 Domains=~.
-DNSSEC=allow-downgrade
+DNSSEC=no
 Cache=yes
 LLMNR=no
 MulticastDNS=no
@@ -440,7 +440,7 @@ EOF
 DNS=${KODACHI_PRIMARY_DNS}
 FallbackDNS=${KODACHI_FALLBACK_DNS}
 Domains=~.
-DNSSEC=allow-downgrade
+DNSSEC=no
 Cache=yes
 LLMNR=no
 MulticastDNS=no
