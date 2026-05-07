@@ -1701,14 +1701,16 @@ EOF
     if [[ -f "$snapshot_timer_source" ]]; then
         cp -f "$snapshot_timer_source" "$snapshot_timer_file"
     else
+        # Fallback heredoc — only used if $snapshot_timer_source is missing.
+        # Per audit 2026-04-24: start at +120s so Tor/DNS are ready.
         cat > "$snapshot_timer_file" << EOF
 [Unit]
 Description=Kodachi Conky Snapshot Refresh Timer
 After=graphical-session.target
 
 [Timer]
-OnActiveSec=60
-OnUnitActiveSec=180
+OnActiveSec=120
+OnUnitActiveSec=90
 RandomizedDelaySec=10
 Persistent=false
 

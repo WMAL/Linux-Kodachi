@@ -347,6 +347,35 @@ dns_build_chroot_environment() {
     return 1
 }
 
+# Returns 0 (true) if systemd-resolved is masked (kodachi DNSCrypt-only arch),
+# 1 (false) otherwise. audit 2026-05-05: Kodachi installs ship with
+# systemd-resolved masked via the install hook, so any function that writes
+# /etc/systemd/resolved.conf or restarts the service should short-circuit
+# and use DNSCrypt directly via /etc/resolv.conf -> 127.0.0.1.
+systemd_resolved_is_masked() {
+    command -v systemctl >/dev/null 2>&1 || return 1
+    local state
+    state="$(systemctl is-enabled systemd-resolved.service 2>&1 || true)"
+    [ "$state" = "masked" ]
+}
+
+# Point /etc/resolv.conf directly at DNSCrypt-proxy (127.0.0.1).
+# Used as the DNSCrypt-only-architecture replacement for the legacy
+# systemd-resolved stub-resolv.conf symlink path.
+point_resolv_conf_to_dnscrypt() {
+    chattr -i /etc/resolv.conf 2>/dev/null || true
+    rm -f /etc/resolv.conf 2>/dev/null || true
+    {
+        printf '# Kodachi DNSCrypt-only resolver (managed by kodachi-deps-install.sh)\n'
+        printf '# /etc/systemd/resolved.conf is intentionally NOT used —\n'
+        printf '# systemd-resolved is masked. dnscrypt-proxy on 127.0.0.1\n'
+        printf '# is the sole resolver. Override at runtime via:\n'
+        printf '#   sudo dns-switch <command>\n'
+        printf 'nameserver 127.0.0.1\n'
+        printf 'options edns0 trust-ad\n'
+    } > /etc/resolv.conf
+}
+
 write_nameserver_file() {
     local target_file="${1:-}"
     local description="${2:-DNS configuration}"
@@ -400,6 +429,16 @@ resolved_resolv_conf_target() {
 write_kodachi_resolved_profile() {
     local profile="${1:-primary}"
     local dns_owner="${2:-systemd-resolved}"
+
+    # audit 2026-05-05 (Weyland-Yutani installed bundle): on Kodachi proper,
+    # systemd-resolved is masked. Writing /etc/systemd/resolved.conf is a
+    # no-op (the service can't read it) and leaves stale config that
+    # confuses dns-switch status output. Skip the write entirely and let
+    # /etc/resolv.conf -> 127.0.0.1 (DNSCrypt) own resolution.
+    if systemd_resolved_is_masked; then
+        print_info "systemd-resolved is masked (DNSCrypt-only arch) — skipping resolved.conf write for profile '${profile}'"
+        return 0
+    fi
 
     mkdir -p /etc/systemd
 
@@ -470,7 +509,29 @@ run_dns_switch_command() {
 
 # Function to apply fallback DNS servers (mimics dns-switch fix-dns behavior)
 apply_fallback_dns() {
-    print_step "Applying FALLBACK DNS fix (systemd-resolved + /etc/resolv.conf)..."
+    print_step "Applying FALLBACK DNS fix..."
+
+    # audit 2026-05-05: on Kodachi (DNSCrypt-only, systemd-resolved masked),
+    # there's nothing to restart and the resolved runtime files don't apply.
+    # Point /etc/resolv.conf directly at DNSCrypt-proxy and we're done.
+    if systemd_resolved_is_masked; then
+        print_info "systemd-resolved masked — applying DNSCrypt-only fallback"
+        # Make sure dnscrypt-proxy is up; if not, fall back to plain DNS
+        # at the resolver file so the system is still usable.
+        if systemctl is-active --quiet dnscrypt-proxy 2>/dev/null; then
+            point_resolv_conf_to_dnscrypt
+            print_success "Fallback applied: /etc/resolv.conf -> 127.0.0.1 (DNSCrypt)"
+        else
+            print_warning "dnscrypt-proxy is not active — writing plain DNS to /etc/resolv.conf as last resort"
+            chattr -i /etc/resolv.conf 2>/dev/null || true
+            rm -f /etc/resolv.conf 2>/dev/null || true
+            write_nameserver_file /etc/resolv.conf "emergency fallback (dnscrypt-proxy down)" "$KODACHI_PRIMARY_DNS"
+            print_success "Fallback applied (plain DNS): $KODACHI_PRIMARY_DNS"
+        fi
+        return 0
+    fi
+
+    # Legacy path: systemd-resolved-managed system.
 
     # Step 1: Check if systemd-resolved is active and restart it if needed
     if systemctl is-active --quiet systemd-resolved 2>/dev/null; then
@@ -1340,14 +1401,16 @@ EOF
         if [[ -f "$snapshot_timer_source" ]]; then
             cp -f "$snapshot_timer_source" "$snapshot_timer_file"
         else
+            # Fallback heredoc — only used if $snapshot_timer_source is missing.
+            # Per audit 2026-04-24: start at +120s so Tor/DNS are ready.
             cat > "$snapshot_timer_file" << EOF
 [Unit]
 Description=Kodachi Conky Snapshot Refresh Timer
 After=graphical-session.target
 
 [Timer]
-OnActiveSec=60
-OnUnitActiveSec=180
+OnActiveSec=120
+OnUnitActiveSec=90
 RandomizedDelaySec=10
 Persistent=false
 
@@ -2718,7 +2781,39 @@ install_privacy_packages_safe() {
 
 # Function to configure systemd-resolved safely
 configure_systemd_resolved() {
-    print_step "Configuring systemd-resolved..."
+    print_step "Configuring DNS..."
+
+    # audit 2026-05-05: on Kodachi (DNSCrypt-only, systemd-resolved masked),
+    # we don't configure resolved at all. /etc/resolv.conf -> 127.0.0.1 is
+    # the entire DNS path. Verify dnscrypt-proxy is up; if so, point
+    # resolv.conf and bail. If not, fall through to the legacy resolved
+    # path which handles the emergency case (dnscrypt-proxy not yet
+    # enabled, e.g., during a stage of fresh install before kodachi
+    # presets land).
+    if systemd_resolved_is_masked; then
+        print_info "systemd-resolved is masked (Kodachi DNSCrypt-only architecture)"
+        if systemctl is-active --quiet dnscrypt-proxy 2>/dev/null && \
+           timeout 5 dig @127.0.0.1 +short +timeout=3 debian.org >/dev/null 2>&1; then
+            point_resolv_conf_to_dnscrypt
+            print_success "DNS configured: /etc/resolv.conf -> 127.0.0.1 (DNSCrypt)"
+
+            print_verbose "Waiting 2 seconds for DNS to settle..."
+            sleep 2
+            if dns_resolution_working; then
+                print_success "DNS is working correctly"
+                return 0
+            fi
+            print_warning "DNS test failed but DNSCrypt is up — likely transient, continuing"
+            return 0
+        else
+            print_warning "dnscrypt-proxy not responsive — applying emergency fallback"
+            apply_fallback_dns
+            return 0
+        fi
+    fi
+
+    # Legacy path: systemd-resolved-managed system.
+
     local resolved_profile="primary"
     local resolved_owner="systemd-resolved"
     local resolv_conf_target=""
@@ -4852,42 +4947,63 @@ configure_pihole_port() {
             chattr -i "$pihole_config" 2>/dev/null || true
         fi
 
-        # The DNS port setting is between "cnameRecords = []" and "# Reverse server"
-        # We need to match the exact pattern: line with "  port = 53" (2 spaces, no quotes)
-        # that comes after "# Port used by the DNS server" comment
-        if grep -q "# Port used by the DNS server" "$pihole_config"; then
-            # Create backup
-            cp "$pihole_config" "${pihole_config}.bak" 2>/dev/null || true
+        # FIX (audit 2026-05-01, Battlestar-Galactica build): idempotent
+        # port=5353 enforcement in [dns] section. Combined with the install
+        # hook 0012-install-pihole.hook.chroot the previous logic produced 3
+        # duplicate `port = 5353` lines under [dns], making pihole-FTL emit
+        # "Cannot parse config file: line 7: key exists" 30+ times per session.
+        # The `awk` pre-existing branch only replaced ONE line and left the
+        # canonical heredoc port intact; the `else` branch inserted a second
+        # copy after [dns] without checking presence; together they accumulated.
+        #
+        # New behavior (matches install hook exactly):
+        #   1. If [dns] has exactly one canonical "  port = 5353" line, no-op.
+        #   2. Otherwise rewrite the file so [dns] holds exactly one canonical
+        #      "  port = 5353" line, dropping every other "port = N" inside the
+        #      [dns] section. Other sections are untouched.
+        # Create backup before rewrite
+        cp "$pihole_config" "${pihole_config}.bak" 2>/dev/null || true
 
-            # Use awk for precise line matching and replacement
+        local port_lines_in_dns
+        port_lines_in_dns=$(awk '
+            /^\[dns\]/                                                                  { in_dns=1; next }
+            /^\[/                                                                       { in_dns=0 }
+            in_dns && /^[[:space:]]*port[[:space:]]*=[[:space:]]*[0-9]+[[:space:]]*$/   { count++ }
+            END { print count+0 }
+        ' "$pihole_config")
+        local has_canonical
+        has_canonical=$(grep -cE '^  port = 5353$' "$pihole_config" 2>/dev/null || echo 0)
+
+        if [ "$port_lines_in_dns" = "1" ] && [ "$has_canonical" = "1" ]; then
+            print_info "Port 5353 already configured in $pihole_config (no changes)"
+        else
             awk '
-                /# Port used by the DNS server/ { print; found=1; next }
-                found && /^  port = [0-9]+$/ {
+                /^\[dns\]/ {
+                    print
                     print "  port = 5353"
-                    found=0
+                    in_dns=1
+                    seen_dns=1
                     next
                 }
+                /^\[/                                                                   { in_dns=0 }
+                in_dns && /^[[:space:]]*port[[:space:]]*=[[:space:]]*[0-9]+[[:space:]]*$/ { next }
                 { print }
+                END {
+                    if (!seen_dns) {
+                        print ""
+                        print "[dns]"
+                        print "  port = 5353"
+                    }
+                }
             ' "$pihole_config" > "${pihole_config}.tmp" && mv "${pihole_config}.tmp" "$pihole_config"
-
-            print_success "Updated DNS port to 5353 in $pihole_config"
-        elif grep -q "^  port = 53$" "$pihole_config"; then
-            # Fallback: update first occurrence of "  port = 53" (exact match)
-            sed -i '0,/^  port = 53$/s//  port = 5353/' "$pihole_config"
-            print_success "Updated port to 5353 in $pihole_config"
-        else
-            # Add port setting after [dns] section with proper indentation
-            if grep -q "^\[dns\]" "$pihole_config"; then
-                sed -i '/^\[dns\]/a \  # Port used by the DNS server\n  port = 5353' "$pihole_config"
-                print_success "Added port = 5353 to [dns] section in $pihole_config"
-            else
-                # Add entire dns section
-                echo "" >> "$pihole_config"
-                echo "[dns]" >> "$pihole_config"
-                echo "  # Port used by the DNS server" >> "$pihole_config"
-                echo "  port = 5353" >> "$pihole_config"
-                print_success "Added [dns] section with port = 5353 to $pihole_config"
-            fi
+            # Restore pihole:pihole ownership + 644 perms after the awk-tmp-mv
+            # rewrite (audit 2026-05-01 inspector follow-up): the rewrite path
+            # leaves the new file as root:root, which causes pihole-FTL (running
+            # as the pihole user) to fail config reads/writes silently. Mirrors
+            # the install-hook (0012-install-pihole.hook.chroot) cleanup.
+            chown pihole:pihole "$pihole_config" 2>/dev/null || true
+            chmod 644 "$pihole_config" 2>/dev/null || true
+            print_success "Port 5353 enforced in $pihole_config (deduplicated)"
         fi
 
         # Restore protection if it was originally protected
