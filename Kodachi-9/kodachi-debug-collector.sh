@@ -149,9 +149,18 @@ safe_exec() {
     local output_file="$1"
     shift
     local cmd="$*"
+    local output rc
 
-    if ! eval "$cmd" > "$output_file" 2>&1; then
-        echo "[EXIT CODE: $?] Command failed or not available: $cmd" >> "$output_file"
+    output=$(eval "$cmd" 2>&1)
+    rc=$?
+
+    if [[ $rc -ne 0 ]]; then
+        echo "[EXIT CODE: $rc] Command failed: $cmd" >> "$output_file"
+        [[ -n "$output" ]] && echo "$output" >> "$output_file"
+    elif [[ -z "$output" ]]; then
+        echo "[EXIT CODE: 0] Command produced no output: $cmd" >> "$output_file"
+    else
+        echo "$output" >> "$output_file"
     fi
 }
 
@@ -178,13 +187,82 @@ safe_copy() {
     fi
 }
 
+# Run a command as the real (non-root) user with full graphical-session env so
+# that systemctl --user, journalctl --user, xfconf-query, xrandr, dconf, etc.
+# all reach the right session bus and runtime directory. We do not assume the
+# user is root — if collector is run as the user already, fall back to plain
+# eval. audit 2026-05-07 (login-stall investigation): without this helper,
+# user-systemd state and ~/.xsession-errors were never captured, so xfce4
+# session hangs were undiagnosable.
+REAL_UID=$(id -u "${REAL_USER}" 2>/dev/null || echo "")
+safe_exec_user() {
+    local output_file="$1"
+    shift
+    local cmd="$*"
+    local output rc
+
+    if [[ -z "$REAL_UID" ]]; then
+        echo "[SKIP] real user UID unknown for: $cmd" >> "$output_file"
+        return
+    fi
+
+    if [[ "$(id -u)" == "0" ]] && [[ -n "${REAL_USER:-}" ]] && [[ "$REAL_USER" != "root" ]]; then
+        # Running as root — drop to real user with their session env restored.
+        output=$(sudo -u "$REAL_USER" \
+            XDG_RUNTIME_DIR="/run/user/${REAL_UID}" \
+            DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/${REAL_UID}/bus" \
+            DISPLAY="${DISPLAY:-:0}" \
+            HOME="$REAL_HOME" \
+            bash -lc "$cmd" 2>&1)
+        rc=$?
+    else
+        output=$(eval "$cmd" 2>&1)
+        rc=$?
+    fi
+
+    if [[ $rc -ne 0 ]]; then
+        echo "[EXIT CODE: $rc] Command failed: $cmd" >> "$output_file"
+        [[ -n "$output" ]] && echo "$output" >> "$output_file"
+    elif [[ -z "$output" ]]; then
+        echo "[EXIT CODE: 0] Command produced no output: $cmd" >> "$output_file"
+    else
+        echo "$output" >> "$output_file"
+    fi
+}
+
+# Copy a file owned by REAL_USER (e.g., ~/.xsession-errors). Falls back to
+# plain copy if collector is already running as that user.
+safe_copy_user() {
+    local src="$1"
+    local dest="$2"
+
+    if [[ "$src" != /* ]]; then
+        # Resolve relative-to-home paths.
+        src="${REAL_HOME}/${src#~/}"
+    fi
+
+    if [[ ! -e "$src" ]]; then
+        echo "File not found: $src" > "${dest}/$(basename "$src").missing"
+        return
+    fi
+
+    if [[ "$(id -u)" == "0" ]]; then
+        # Use sudo cat to preserve permissions / handle non-root home dirs.
+        sudo -u "$REAL_USER" cat "$src" > "${dest}/$(basename "$src")" 2>/dev/null \
+            || echo "Failed to copy (perm denied): $src" > "${dest}/$(basename "$src").error"
+    else
+        cp "$src" "$dest/" 2>/dev/null \
+            || echo "Failed to copy: $src" > "${dest}/$(basename "$src").error"
+    fi
+}
+
 # ---- Interactive category selection menu ----
 
 show_menu() {
     clear 2>/dev/null || true
     echo -e "${GREEN}"
     echo "╔═══════════════════════════════════════════════════════════╗"
-    echo "║         KODACHI OS DEBUG COLLECTOR v1.3                  ║"
+    echo "║         KODACHI OS DEBUG COLLECTOR v1.4                  ║"
     echo "╚═══════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
     echo ""
@@ -246,10 +324,14 @@ interactive_select() {
 show_banner() {
     echo -e "${GREEN}"
     echo "╔═══════════════════════════════════════════════════════════╗"
-    echo "║         KODACHI OS DEBUG COLLECTOR v1.3                  ║"
+    echo "║         KODACHI OS DEBUG COLLECTOR v1.4                  ║"
     echo "║    Comprehensive System Diagnostics Tool                 ║"
     echo "╚═══════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
+    echo "v1.4 (audit 2026-05-07): user-systemd, ~/.xsession-errors, xfconf,"
+    echo "autostart, Calamares, kodachi-* logs, prev-boot journals, ordering"
+    echo "cycles, cgroup hierarchy."
+    echo ""
     echo "Collecting: version, live/installed, LUKS, nuke, Tor, VPN,"
     echo "  boot logs, hardware, network, Kodachi services, and more."
     echo ""
@@ -822,6 +904,32 @@ safe_exec "$COLLECTION_DIR/01-system-boot/systemd-analyze-blame.txt" "systemd-an
 safe_exec "$COLLECTION_DIR/01-system-boot/systemd-analyze-critical.txt" "systemd-analyze critical-chain"
 safe_exec "$COLLECTION_DIR/01-system-boot/kernel-taint.txt" "cat /proc/sys/kernel/tainted"
 
+# audit 2026-05-07: extra system-side data that helps when symptoms only
+# manifest "this morning" / "after a few reboots". Without these we can't
+# correlate the slow boot to anything that changed across boots.
+safe_exec "$COLLECTION_DIR/01-system-boot/journalctl-prev-boot.txt" \
+    "journalctl -b -1 --no-pager"
+safe_exec "$COLLECTION_DIR/01-system-boot/journalctl-prev-boot-errors.txt" \
+    "journalctl -b -1 -p err --no-pager"
+safe_exec "$COLLECTION_DIR/01-system-boot/journalctl-list-boots.txt" \
+    "journalctl --list-boots --no-pager"
+safe_exec "$COLLECTION_DIR/01-system-boot/systemd-analyze-plot.svg" \
+    "systemd-analyze plot"
+safe_exec "$COLLECTION_DIR/01-system-boot/systemd-cgls.txt" \
+    "systemd-cgls --no-pager"
+safe_exec "$COLLECTION_DIR/01-system-boot/systemd-analyze-dump-targets.txt" \
+    "systemd-analyze dump | grep -E '^(Unit|.*: dependency|Following|swap|local-fs|cryptsetup|graphical-session)' | head -200"
+safe_exec "$COLLECTION_DIR/01-system-boot/systemd-analyze-units-graphical.txt" \
+    "systemd-analyze critical-chain graphical.target"
+safe_exec "$COLLECTION_DIR/01-system-boot/systemd-analyze-units-multi-user.txt" \
+    "systemd-analyze critical-chain multi-user.target"
+
+# Cycle-detection helper — surfaces any "Found ordering cycle" lines from
+# THIS boot together with the units involved so reviewers don't have to
+# grep journalctl-full.txt by hand.
+safe_exec "$COLLECTION_DIR/01-system-boot/ordering-cycles.txt" \
+    "journalctl -b --no-pager | grep -E 'ordering cycle|deleted to break|Found dependency on' || echo 'No ordering cycles detected this boot.'"
+
 # Copy system logs
 safe_copy "/var/log/syslog" "$COLLECTION_DIR/01-system-boot"
 safe_copy "/var/log/kern.log" "$COLLECTION_DIR/01-system-boot"
@@ -1118,8 +1226,14 @@ for hooks_pattern in "${KODACHI_HOOKS_DIRS[@]}"; do
     done
 done
 
-# Check Kodachi binaries in /usr/local/bin/
-KODACHI_BINARIES=(
+# Check Kodachi binaries in /usr/local/bin/.
+# Required binaries are part of every shipped ISO and must be present.
+# Optional binaries are AI/experimental components that may not be shipped
+# in every release (the orchestrator `kodachi-ai` is not yet bundled in the
+# v9.0.1 ISO cache — only the subagents ai-admin/ai-cmd/.../ai-trainer are
+# shipped); flagging them as ✗ NOT FOUND in field debug bundles caused
+# noise reports against systems that were operating correctly.
+KODACHI_BINARIES_REQUIRED=(
     "health-control"
     "tor-switch"
     "dns-switch"
@@ -1133,16 +1247,38 @@ KODACHI_BINARIES=(
     "deps-checker"
     "workflow-manager"
     "global-launcher"
+)
+KODACHI_BINARIES_OPTIONAL=(
     "kodachi-ai"
+    "ai-admin"
+    "ai-cmd"
+    "ai-discovery"
+    "ai-gateway"
+    "ai-learner"
+    "ai-monitor"
+    "ai-scheduler"
+    "ai-trainer"
 )
 
 echo "Kodachi Binary Status:" > "$COLLECTION_DIR/06-kodachi/binary-status.txt"
-for binary in "${KODACHI_BINARIES[@]}"; do
+echo "" >> "$COLLECTION_DIR/06-kodachi/binary-status.txt"
+echo "[Required]" >> "$COLLECTION_DIR/06-kodachi/binary-status.txt"
+for binary in "${KODACHI_BINARIES_REQUIRED[@]}"; do
     if command -v "$binary" &> /dev/null; then
         echo "✓ $binary: FOUND" >> "$COLLECTION_DIR/06-kodachi/binary-status.txt"
         "$binary" --version >> "$COLLECTION_DIR/06-kodachi/binary-status.txt" 2>&1 || echo "  (no version info)" >> "$COLLECTION_DIR/06-kodachi/binary-status.txt"
     else
         echo "✗ $binary: NOT FOUND" >> "$COLLECTION_DIR/06-kodachi/binary-status.txt"
+    fi
+done
+echo "" >> "$COLLECTION_DIR/06-kodachi/binary-status.txt"
+echo "[Optional / AI subsystem]" >> "$COLLECTION_DIR/06-kodachi/binary-status.txt"
+for binary in "${KODACHI_BINARIES_OPTIONAL[@]}"; do
+    if command -v "$binary" &> /dev/null; then
+        echo "✓ $binary: FOUND" >> "$COLLECTION_DIR/06-kodachi/binary-status.txt"
+        "$binary" --version >> "$COLLECTION_DIR/06-kodachi/binary-status.txt" 2>&1 || echo "  (no version info)" >> "$COLLECTION_DIR/06-kodachi/binary-status.txt"
+    else
+        echo "○ $binary: not installed (optional)" >> "$COLLECTION_DIR/06-kodachi/binary-status.txt"
     fi
 done
 
@@ -1234,6 +1370,39 @@ fi
 safe_copy "/target/tmp/kodachi-grub-theme.log" "$COLLECTION_DIR/07-installation-packages"
 safe_copy "/var/log/kodachi-finish-install.log" "$COLLECTION_DIR/07-installation-packages"
 
+# audit 2026-05-07: extra Kodachi install / first-boot logs that were
+# previously missed. Each is independently captured because Calamares,
+# kodachi-finish-install, plymouth-firstboot, and crypttab-repair write to
+# different locations and any of them can fingerprint a slow-boot incident.
+safe_copy "/var/log/kodachi-cryptswap-activate.log" "$COLLECTION_DIR/07-installation-packages"
+safe_copy "/var/log/kodachi-plymouth-firstboot.log" "$COLLECTION_DIR/07-installation-packages"
+safe_copy "/var/log/kodachi-deps-install.log" "$COLLECTION_DIR/07-installation-packages"
+safe_copy "/var/log/kodachi-binary-install.log" "$COLLECTION_DIR/07-installation-packages"
+safe_copy "/var/log/kodachi-autoshield.log" "$COLLECTION_DIR/07-installation-packages"
+safe_copy "/var/log/kodachi-fix-resolvconf.log" "$COLLECTION_DIR/07-installation-packages"
+
+# Anything else under /var/log named kodachi-*.log
+mkdir -p "$COLLECTION_DIR/07-installation-packages/kodachi-logs"
+find /var/log -maxdepth 2 -name 'kodachi-*.log' -o -name 'kodachi*.log' 2>/dev/null | head -50 | while read -r kl; do
+    safe_copy "$kl" "$COLLECTION_DIR/07-installation-packages/kodachi-logs"
+done
+
+# /var/lib/kodachi marker files (one-shot install/upgrade markers — their
+# presence/absence tells us which post-install hooks have run).
+if [[ -d /var/lib/kodachi ]]; then
+    mkdir -p "$COLLECTION_DIR/07-installation-packages/kodachi-state"
+    cp -r /var/lib/kodachi/* "$COLLECTION_DIR/07-installation-packages/kodachi-state/" 2>/dev/null || true
+    safe_exec "$COLLECTION_DIR/07-installation-packages/kodachi-state/listing.txt" \
+        "ls -laR /var/lib/kodachi"
+fi
+
+# /var/log/live-build/ if it survived install (rare but useful for live-ISO
+# build-time issues that surface only after install).
+if [[ -d /var/log/live-build ]]; then
+    mkdir -p "$COLLECTION_DIR/07-installation-packages/live-build"
+    cp -r /var/log/live-build/* "$COLLECTION_DIR/07-installation-packages/live-build/" 2>/dev/null || true
+fi
+
 # Crypttab (raw copy — critical for cryptswap timeout debugging)
 safe_copy "/etc/crypttab" "$COLLECTION_DIR/07-installation-packages"
 
@@ -1291,16 +1460,24 @@ safe_exec "$COLLECTION_DIR/07-installation-packages/apt-list.txt" "apt list --in
 fi # end CATEGORY 7
 
 # ============================================================================
-# CATEGORY 8: Display & Desktop Environment
+# CATEGORY 8: Display & Desktop Environment + User-session diagnostics
+# audit 2026-05-07: massively expanded to capture user-systemd, xsession-errors,
+# xfconf state, autostart entries, and session timing — without these the
+# 135 s post-login stall on the CentOS-Stream-9 / GLaDOS bundles was
+# undiagnosable from the collected data alone.
 # ============================================================================
 if [[ "${CAT_ENABLED[8]}" == "1" ]]; then
-progress "Collecting display and desktop information..."
+progress "Collecting display, desktop, and user-session information..."
 
 mkdir -p "$COLLECTION_DIR/08-display-desktop"
+mkdir -p "$COLLECTION_DIR/08-display-desktop/user-session"
+mkdir -p "$COLLECTION_DIR/08-display-desktop/xfce-config"
+mkdir -p "$COLLECTION_DIR/08-display-desktop/autostart"
 
 safe_copy "/var/log/Xorg.0.log" "$COLLECTION_DIR/08-display-desktop"
+safe_copy "/var/log/Xorg.0.log.old" "$COLLECTION_DIR/08-display-desktop"
 
-# Display manager logs
+# Display manager logs (lightdm + greeter + per-seat X server logs)
 for dm_dir in "/var/log/lightdm" "/var/log/sddm" "/var/log/gdm3"; do
     if [[ -d "$dm_dir" ]]; then
         mkdir -p "$COLLECTION_DIR/08-display-desktop/display-manager"
@@ -1308,10 +1485,132 @@ for dm_dir in "/var/log/lightdm" "/var/log/sddm" "/var/log/gdm3"; do
     fi
 done
 
-# Display info
+# Basic display info
 safe_exec "$COLLECTION_DIR/08-display-desktop/xrandr.txt" "xrandr --verbose"
 safe_exec "$COLLECTION_DIR/08-display-desktop/session-type.txt" "echo \${XDG_SESSION_TYPE:-not_set}"
 safe_exec "$COLLECTION_DIR/08-display-desktop/desktop-session.txt" "echo \${DESKTOP_SESSION:-not_set}"
+
+# ---- USER-SIDE SYSTEMD STATE ---------------------------------------------
+# Without this, post-login hangs (xfce4-session waiting on a user service or
+# a stuck autostart entry) are invisible. Boot-side journalctl-full.txt
+# captures system events but NOT systemd[uid].
+safe_exec_user "$COLLECTION_DIR/08-display-desktop/user-session/systemd-analyze-user-time.txt" \
+    "systemd-analyze --user time"
+safe_exec_user "$COLLECTION_DIR/08-display-desktop/user-session/systemd-analyze-user-blame.txt" \
+    "systemd-analyze --user blame"
+safe_exec_user "$COLLECTION_DIR/08-display-desktop/user-session/systemd-analyze-user-critical-chain.txt" \
+    "systemd-analyze --user critical-chain"
+safe_exec_user "$COLLECTION_DIR/08-display-desktop/user-session/systemctl-user-all-units.txt" \
+    "systemctl --user list-units --all --no-pager"
+safe_exec_user "$COLLECTION_DIR/08-display-desktop/user-session/systemctl-user-failed.txt" \
+    "systemctl --user --failed --no-pager"
+safe_exec_user "$COLLECTION_DIR/08-display-desktop/user-session/systemctl-user-timers.txt" \
+    "systemctl --user list-timers --all --no-pager"
+safe_exec_user "$COLLECTION_DIR/08-display-desktop/user-session/journalctl-user-current-boot.txt" \
+    "journalctl --user -b --no-pager"
+safe_exec_user "$COLLECTION_DIR/08-display-desktop/user-session/journalctl-user-warnings.txt" \
+    "journalctl --user -b -p warning --no-pager"
+safe_exec "$COLLECTION_DIR/08-display-desktop/user-session/journalctl-uid.txt" \
+    "journalctl _UID=${REAL_UID:-1001} -b --no-pager"
+safe_exec "$COLLECTION_DIR/08-display-desktop/user-session/loginctl-sessions.txt" \
+    "loginctl list-sessions --no-pager && echo '---' && loginctl list-users --no-pager"
+safe_exec "$COLLECTION_DIR/08-display-desktop/user-session/loginctl-session-status.txt" \
+    "for s in \$(loginctl list-sessions --no-legend | awk '{print \$1}'); do echo '=== Session '\$s' ==='; loginctl session-status \$s --no-pager; echo; done"
+safe_exec "$COLLECTION_DIR/08-display-desktop/user-session/last-logins.txt" "last -n 30"
+safe_exec "$COLLECTION_DIR/08-display-desktop/user-session/lastlog.txt" "lastlog"
+
+# ---- ~/.xsession-errors AND XFCE LOGS ------------------------------------
+# This is THE file that captures every Xsession.d/* and autostart .desktop
+# stdout/stderr — slow login symptoms always surface here first.
+safe_copy_user "${REAL_HOME}/.xsession-errors" "$COLLECTION_DIR/08-display-desktop/user-session"
+safe_copy_user "${REAL_HOME}/.xsession-errors.old" "$COLLECTION_DIR/08-display-desktop/user-session"
+safe_copy_user "${REAL_HOME}/.cache/sessions/xfce4-session-:0" "$COLLECTION_DIR/08-display-desktop/user-session"
+# XFCE-specific log files (xfsettingsd, conky, kodachi user-side scripts)
+if [[ -n "$REAL_HOME" ]] && [[ -d "$REAL_HOME/.cache" ]]; then
+    sudo -u "$REAL_USER" find "$REAL_HOME/.cache" -maxdepth 2 -type f \
+        \( -name '*.log' -o -name 'xfsettingsd*' -o -name 'kodachi-*' \) \
+        -size -5M 2>/dev/null | while read -r logf; do
+        safe_copy_user "$logf" "$COLLECTION_DIR/08-display-desktop/user-session"
+    done
+fi
+
+# Saved XFCE session files (a stale saved session is a known cause of
+# 90-180 s post-login stalls — xfce4-session retries restore with timeouts).
+if sudo -u "$REAL_USER" test -d "$REAL_HOME/.cache/sessions" 2>/dev/null; then
+    safe_exec_user "$COLLECTION_DIR/08-display-desktop/user-session/cache-sessions-listing.txt" \
+        "ls -laR \$HOME/.cache/sessions"
+fi
+
+# ---- XFCE CONFIG (xfconf channels) ---------------------------------------
+# xfconf is XFCE's per-user settings DB. Slow logins can be caused by stale
+# session restore flags, broken keyboard shortcuts pointing at missing bins,
+# or panel layouts referencing dead D-Bus services.
+safe_exec_user "$COLLECTION_DIR/08-display-desktop/xfce-config/xfconf-channels.txt" \
+    "xfconf-query -l"
+for chan in xfce4-session xfwm4 xsettings xfce4-desktop xfce4-panel xfce4-keyboard-shortcuts displays; do
+    safe_exec_user "$COLLECTION_DIR/08-display-desktop/xfce-config/xfconf-${chan}.txt" \
+        "xfconf-query -c '$chan' -lv"
+done
+
+# Per-user XFCE XML configs (always-up-to-date snapshot, even if xfconfd is
+# the one hung). Captured via filesystem to bypass any xfconfd issue.
+if sudo -u "$REAL_USER" test -d "$REAL_HOME/.config/xfce4" 2>/dev/null; then
+    sudo -u "$REAL_USER" find "$REAL_HOME/.config/xfce4" -maxdepth 5 -type f \
+        \( -name '*.xml' -o -name '*.rc' \) -size -2M 2>/dev/null | while read -r f; do
+        # Preserve relative path under xfce-config/
+        rel="${f#${REAL_HOME}/.config/xfce4/}"
+        target="$COLLECTION_DIR/08-display-desktop/xfce-config/files/$rel"
+        mkdir -p "$(dirname "$target")"
+        sudo -u "$REAL_USER" cat "$f" > "$target" 2>/dev/null || true
+    done
+fi
+
+# ---- AUTOSTART ENTRIES (system + user) -----------------------------------
+# These are the .desktop files that xfce4-session iterates at login. A
+# blocking exec here surfaces directly as a login stall.
+for d in /etc/xdg/autostart "${REAL_HOME}/.config/autostart"; do
+    if [[ -d "$d" ]]; then
+        rel="$(echo "$d" | tr '/' '_')"
+        mkdir -p "$COLLECTION_DIR/08-display-desktop/autostart/${rel}"
+        if [[ "$d" == /etc/* ]]; then
+            cp -r "$d"/*.desktop "$COLLECTION_DIR/08-display-desktop/autostart/${rel}/" 2>/dev/null || true
+        else
+            sudo -u "$REAL_USER" sh -c "cp -r '$d'/*.desktop '$COLLECTION_DIR/08-display-desktop/autostart/${rel}/'" 2>/dev/null || true
+        fi
+    fi
+done
+
+# Listing of /etc/X11/Xsession.d/ — the Debian-style scripts that run in
+# series on every graphical login. A slow one here = 100% login-stall culprit.
+safe_exec "$COLLECTION_DIR/08-display-desktop/Xsession.d-listing.txt" \
+    "ls -la /etc/X11/Xsession.d/ /etc/X11/Xsession 2>/dev/null"
+if [[ -d /etc/X11/Xsession.d ]]; then
+    mkdir -p "$COLLECTION_DIR/08-display-desktop/Xsession.d"
+    cp -r /etc/X11/Xsession.d/* "$COLLECTION_DIR/08-display-desktop/Xsession.d/" 2>/dev/null || true
+fi
+
+# /etc/profile.d/ — also runs on login shell (incl. lightdm xsession). The
+# Kodachi-specific kodachi-autoshield.sh and kodachi-path.sh live here.
+if [[ -d /etc/profile.d ]]; then
+    mkdir -p "$COLLECTION_DIR/08-display-desktop/profile.d"
+    cp /etc/profile.d/*.sh "$COLLECTION_DIR/08-display-desktop/profile.d/" 2>/dev/null || true
+fi
+
+# User shell init files — if they have side-effects (network calls, slow
+# command-not-found handlers, etc.) login feels slow even when systemd is fine.
+for shf in .profile .bash_profile .bash_login .bashrc .zshrc .xprofile .xsessionrc .xinitrc; do
+    if sudo -u "$REAL_USER" test -f "$REAL_HOME/$shf" 2>/dev/null; then
+        safe_copy_user "$REAL_HOME/$shf" "$COLLECTION_DIR/08-display-desktop/user-session"
+    fi
+done
+
+# ---- LIVE-PROCESS SNAPSHOT FOR THE USER SESSION --------------------------
+# Captures the whole xfce4-session process subtree state at collection time.
+# If a child is in 'D' (uninterruptible sleep) we see exactly which one.
+safe_exec "$COLLECTION_DIR/08-display-desktop/user-session/process-tree-user.txt" \
+    "ps -ef --forest -u ${REAL_USER}"
+safe_exec "$COLLECTION_DIR/08-display-desktop/user-session/wchan-user.txt" \
+    "ps -o pid,user,stat,wchan:30,cmd -u ${REAL_USER}"
 
 fi # end CATEGORY 8
 
