@@ -1369,11 +1369,25 @@ install_kodachi_conky_for_user() {
         if [[ -f "$snapshot_service_source" ]]; then
             cp -f "$snapshot_service_source" "$snapshot_service_file"
         else
-            cat > "$snapshot_service_file" << EOF
+            # Fallback heredoc — only used if $snapshot_service_source is missing.
+            # Kept in sync with the canonical
+            # /usr/share/kodachi/conky/systemd/conky-snapshot-refresh.service
+            # (audit 2026-05-08: Requisite= refuses activation if graphical-
+            # session.target is not active — required to prevent the service
+            # firing during the xfce4-session bring-up window).
+            #
+            # IMPORTANT: terminator is QUOTED ('EOF') so the inner /bin/bash -c
+            # body's "$bin" loop variable is preserved literally in the .service
+            # file and only expanded by bash at service runtime. With unquoted
+            # EOF, the install-time shell would substitute the (unset) $bin to
+            # empty and write a dead "[ -x \"\" ] && exec \"\"" body.
+            cat > "$snapshot_service_file" << 'EOF'
 [Unit]
 Description=Kodachi Conky Snapshot Refresh
 After=graphical-session.target
+Requisite=graphical-session.target
 ConditionPathExists=%h/.config/kodachi/conky/scripts/conky-gateway-common.sh
+ConditionPathExists=%t/kodachi-session-token.json
 
 [Service]
 Type=oneshot
@@ -1402,17 +1416,22 @@ EOF
             cp -f "$snapshot_timer_source" "$snapshot_timer_file"
         else
             # Fallback heredoc — only used if $snapshot_timer_source is missing.
-            # Per audit 2026-04-24: start at +120s so Tor/DNS are ready.
+            # Kept in sync with the canonical
+            # /usr/share/kodachi/conky/systemd/conky-snapshot-refresh.timer
+            # (audit 2026-05-08, macOS-Ventura bundle: raised OnActiveSec from
+            # 120 -> 240 because the legacy 120 s value fired DURING the
+            # xfce4-session bring-up window on installed systems with a 134 s
+            # login).
             cat > "$snapshot_timer_file" << EOF
 [Unit]
 Description=Kodachi Conky Snapshot Refresh Timer
-After=graphical-session.target
 
 [Timer]
-OnActiveSec=120
+OnActiveSec=240
 OnUnitActiveSec=90
-RandomizedDelaySec=10
+RandomizedDelaySec=15
 Persistent=false
+AccuracySec=1s
 
 [Install]
 WantedBy=default.target

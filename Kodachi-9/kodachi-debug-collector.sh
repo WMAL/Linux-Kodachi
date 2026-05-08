@@ -262,7 +262,7 @@ show_menu() {
     clear 2>/dev/null || true
     echo -e "${GREEN}"
     echo "╔═══════════════════════════════════════════════════════════╗"
-    echo "║         KODACHI OS DEBUG COLLECTOR v1.4                  ║"
+    echo "║         KODACHI OS DEBUG COLLECTOR v1.5                  ║"
     echo "╚═══════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
     echo ""
@@ -324,10 +324,16 @@ interactive_select() {
 show_banner() {
     echo -e "${GREEN}"
     echo "╔═══════════════════════════════════════════════════════════╗"
-    echo "║         KODACHI OS DEBUG COLLECTOR v1.4                  ║"
+    echo "║         KODACHI OS DEBUG COLLECTOR v1.5                  ║"
     echo "║    Comprehensive System Diagnostics Tool                 ║"
     echo "╚═══════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
+    echo "v1.5 (audit 2026-05-08): autostart Phase= summary table, dbus alias"
+    echo "state, masked-services list, install-method detect (Calamares vs"
+    echo "debian-installer), live xfce4-session pid strace/wchan, /etc/X11/"
+    echo "Xsession + /usr/bin/startxfce4 + /etc/xdg/xfce4/xinitrc capture,"
+    echo "pcscd state, pkcs11-register inspect, opensc autostart triage."
+    echo ""
     echo "v1.4 (audit 2026-05-07): user-systemd, ~/.xsession-errors, xfconf,"
     echo "autostart, Calamares, kodachi-* logs, prev-boot journals, ordering"
     echo "cycles, cgroup hierarchy."
@@ -1568,6 +1574,11 @@ fi
 # ---- AUTOSTART ENTRIES (system + user) -----------------------------------
 # These are the .desktop files that xfce4-session iterates at login. A
 # blocking exec here surfaces directly as a login stall.
+# v1.5: also produce a Phase= / Hidden= / Exec= SUMMARY TABLE so root cause
+# is identifiable without parsing each .desktop by hand. Phase=Initialization
+# entries are the ones that BLOCK xfce4-session — they are the prime suspects
+# in any post-login stall. Reproduces the macOS-Ventura bundle finding where
+# pkcs11-register's Phase=Initialization caused a 60–90 s pcscd stall.
 for d in /etc/xdg/autostart "${REAL_HOME}/.config/autostart"; do
     if [[ -d "$d" ]]; then
         rel="$(echo "$d" | tr '/' '_')"
@@ -1580,6 +1591,81 @@ for d in /etc/xdg/autostart "${REAL_HOME}/.config/autostart"; do
     fi
 done
 
+# Phase= / Hidden= / NotShowIn= summary across every visible autostart entry.
+# Output is a fixed-width table you can grep for "Initialization" to surface
+# blocking entries instantly.
+{
+    printf '%-50s %-20s %-10s %-30s %s\n' "FILE" "PHASE" "HIDDEN" "ONLY/NOTSHOWIN" "EXEC"
+    printf '%s\n' "------------------------------------------------------------------------------------------------------------------------"
+    for src in /etc/xdg/autostart "${REAL_HOME}/.config/autostart" /usr/share/xdg/autostart; do
+        [[ -d "$src" ]] || continue
+        for f in "$src"/*.desktop; do
+            [[ -f "$f" ]] || continue
+            phase=$(grep -m1 '^X-GNOME-Autostart-Phase=' "$f" 2>/dev/null | cut -d= -f2-)
+            phase="${phase:-Application}"
+            hidden=$(grep -m1 '^Hidden=' "$f" 2>/dev/null | cut -d= -f2-)
+            hidden="${hidden:-false}"
+            only=$(grep -m1 '^OnlyShowIn=' "$f" 2>/dev/null | cut -d= -f2-)
+            notshow=$(grep -m1 '^NotShowIn=' "$f" 2>/dev/null | cut -d= -f2-)
+            scope="${only:+only=$only }${notshow:+not=$notshow}"
+            scope="${scope:- - }"
+            execv=$(grep -m1 '^Exec=' "$f" 2>/dev/null | cut -d= -f2-)
+            printf '%-50s %-20s %-10s %-30s %s\n' "$(basename "$f")" "$phase" "$hidden" "$scope" "${execv:0:80}"
+        done
+    done | sort -k2,2
+} > "$COLLECTION_DIR/08-display-desktop/autostart/SUMMARY-phase-table.txt" 2>/dev/null
+
+# Highlight Phase=Initialization entries — these BLOCK xfce4-session startup.
+{
+    echo "=== Phase=Initialization autostart entries (BLOCKING xfce4-session) ==="
+    echo "These run synchronously and xfce4-session waits for each to exit"
+    echo "or hit its timeout before continuing to WindowManager phase."
+    echo ""
+    for src in /etc/xdg/autostart "${REAL_HOME}/.config/autostart" /usr/share/xdg/autostart; do
+        [[ -d "$src" ]] || continue
+        for f in "$src"/*.desktop; do
+            [[ -f "$f" ]] || continue
+            if grep -q '^X-GNOME-Autostart-Phase=Initialization' "$f" 2>/dev/null; then
+                hidden=$(grep -m1 '^Hidden=' "$f" 2>/dev/null | cut -d= -f2-)
+                if [[ "${hidden:-false}" != "true" ]]; then
+                    echo "BLOCKING: $f"
+                    grep -E '^(Name|Exec|TryExec|X-GNOME-Autostart-)' "$f" 2>/dev/null | sed 's/^/  /'
+                    echo ""
+                fi
+            fi
+        done
+    done
+} > "$COLLECTION_DIR/08-display-desktop/autostart/INITIALIZATION-PHASE-blocking.txt" 2>/dev/null
+
+# pkcs11-register inspection (top suspect for login stalls — its
+# Phase=Initialization + pcscd 60s idle timeout = ~60-90 s stall).
+{
+    echo "=== pkcs11-register binary + autostart status ==="
+    if command -v pkcs11-register >/dev/null 2>&1; then
+        pkcs11-register --version 2>&1 | head -3
+        echo ""
+        echo "Autostart file:"
+        ls -la /etc/xdg/autostart/pkcs11-register.desktop 2>/dev/null || echo "  (not present in /etc/xdg/autostart)"
+        if [[ -f /etc/xdg/autostart/pkcs11-register.desktop ]]; then
+            echo ""
+            echo "Hidden override status:"
+            hidden=$(grep -m1 '^Hidden=' /etc/xdg/autostart/pkcs11-register.desktop 2>/dev/null | cut -d= -f2-)
+            echo "  Hidden=${hidden:-false}"
+        fi
+        echo ""
+        echo "User override:"
+        ls -la "${REAL_HOME}/.config/autostart/pkcs11-register.desktop" 2>/dev/null || echo "  (no user override)"
+    else
+        echo "pkcs11-register binary NOT installed."
+    fi
+    echo ""
+    echo "=== pcscd state (triggered by pkcs11-register) ==="
+    systemctl status pcscd.service pcscd.socket 2>/dev/null | head -40 || true
+    echo ""
+    echo "=== opensc package state ==="
+    dpkg-query -W -f='${Package}\t${Version}\t${Status}\n' 'opensc*' 'pcscd' 2>/dev/null || true
+} > "$COLLECTION_DIR/08-display-desktop/autostart/pkcs11-register-triage.txt" 2>/dev/null
+
 # Listing of /etc/X11/Xsession.d/ — the Debian-style scripts that run in
 # series on every graphical login. A slow one here = 100% login-stall culprit.
 safe_exec "$COLLECTION_DIR/08-display-desktop/Xsession.d-listing.txt" \
@@ -1588,6 +1674,127 @@ if [[ -d /etc/X11/Xsession.d ]]; then
     mkdir -p "$COLLECTION_DIR/08-display-desktop/Xsession.d"
     cp -r /etc/X11/Xsession.d/* "$COLLECTION_DIR/08-display-desktop/Xsession.d/" 2>/dev/null || true
 fi
+# v1.5: capture the upstream xfce4-session entry-point chain. Without these
+# we cannot tell whether a 134 s post-login stall is in the Xsession script,
+# in startxfce4, in /etc/xdg/xfce4/xinitrc, or in xfce4-session itself.
+mkdir -p "$COLLECTION_DIR/08-display-desktop/xfce4-startup-chain"
+for src in \
+    /etc/X11/Xsession \
+    /etc/X11/Xsession.options \
+    /usr/bin/startxfce4 \
+    /usr/bin/xfce4-session \
+    /etc/xdg/xfce4/xinitrc \
+    /etc/xdg/xfce4-session/xfce4-session.rc \
+    /etc/xdg/xfce4/defaults.list \
+    /usr/share/xfce4-session/xinitrc.d ; do
+    if [[ -e "$src" ]]; then
+        dst="$COLLECTION_DIR/08-display-desktop/xfce4-startup-chain/$(basename "$src")"
+        if [[ -d "$src" ]]; then
+            cp -rL "$src" "$dst" 2>/dev/null || true
+        else
+            cp -L "$src" "$dst" 2>/dev/null || true
+        fi
+    fi
+done
+{
+    echo "=== xfce4-session binary inspect ==="
+    ls -la /usr/bin/xfce4-session /usr/bin/startxfce4 2>/dev/null
+    echo ""
+    /usr/bin/xfce4-session --version 2>&1 | head -5
+    echo ""
+    echo "=== /etc/xdg/xfce4/ tree ==="
+    find /etc/xdg/xfce4 -maxdepth 3 -type f 2>/dev/null | head -20
+} > "$COLLECTION_DIR/08-display-desktop/xfce4-startup-chain/INSPECT.txt" 2>/dev/null
+
+# v1.5: dbus alias state — the bug discovered in the macOS-Ventura bundle
+# was 12 dbus-org.freedesktop.resolve1.service "File exists" failures because
+# the alias symlink survived `systemctl mask systemd-resolved`. Capture the
+# full state of every dbus-* alias unit so this regression is detectable.
+{
+    echo "=== /etc/systemd/system/dbus-* alias links ==="
+    ls -la /etc/systemd/system/dbus-* 2>/dev/null || echo "  (none in /etc/systemd/system)"
+    echo ""
+    echo "=== /usr/lib/systemd/system/dbus-* alias links ==="
+    ls -la /usr/lib/systemd/system/dbus-* 2>/dev/null | head -30 || true
+    echo ""
+    echo "=== systemctl is-enabled state for key dbus aliases ==="
+    for unit in dbus-org.freedesktop.resolve1.service dbus-org.freedesktop.timedate1.service dbus-org.freedesktop.hostname1.service dbus-org.freedesktop.locale1.service systemd-resolved.service; do
+        state=$(systemctl is-enabled "$unit" 2>&1)
+        active=$(systemctl is-active "$unit" 2>&1)
+        printf '  %-50s enabled=%-15s active=%s\n' "$unit" "$state" "$active"
+    done
+    echo ""
+    echo "=== deb-systemd-helper state (alias resurrection breadcrumbs) ==="
+    ls -la /var/lib/systemd/deb-systemd-helper-enabled/ 2>/dev/null | head -30 || true
+    echo ""
+    if [[ -f /var/lib/systemd/deb-systemd-helper-enabled/systemd-resolved.service.dsh-also ]]; then
+        echo "=== systemd-resolved.service.dsh-also (will replay these aliases on reinstall) ==="
+        cat /var/lib/systemd/deb-systemd-helper-enabled/systemd-resolved.service.dsh-also 2>/dev/null
+    fi
+    echo ""
+    echo "=== Recent dbus activation failures from journal ==="
+    journalctl -b 2>/dev/null | grep -E "Activation via systemd failed|failed to load properly" | tail -30
+} > "$COLLECTION_DIR/08-display-desktop/dbus-alias-state.txt" 2>/dev/null
+
+# v1.5: list of all MASKED services (those that were /dev/null-symlinked).
+# This is essential for verifying the install hook actually applied — when
+# the macOS-Ventura bundle's mask was incomplete, the mask state was
+# invisible without explicit listing.
+{
+    echo "=== Masked system units (/etc/systemd/system → /dev/null) ==="
+    find /etc/systemd/system -maxdepth 2 -type l 2>/dev/null | while read -r f; do
+        target=$(readlink "$f" 2>/dev/null)
+        if [[ "$target" == "/dev/null" ]]; then
+            printf '  MASKED   %s\n' "$f"
+        fi
+    done
+    echo ""
+    echo "=== Disabled-and-not-masked Kodachi-relevant services ==="
+    for unit in systemd-resolved.service systemd-resolved.socket avahi-daemon.service \
+                cups.service cups.socket cups-browsed.service ModemManager.service \
+                bluetooth.service bluetooth.target wpa_supplicant.service; do
+        state=$(systemctl is-enabled "$unit" 2>&1)
+        active=$(systemctl is-active "$unit" 2>&1)
+        printf '  %-40s enabled=%-15s active=%s\n' "$unit" "$state" "$active"
+    done
+} > "$COLLECTION_DIR/08-display-desktop/masked-services.txt" 2>/dev/null
+
+# v1.5: install-method detection — Calamares vs debian-installer. Critical
+# for triaging hook bugs because our 9999-zzz install hook runs in the
+# chroot at ISO build time (always present in squashfs), but post-install
+# regenerations can vary by installer flavour.
+{
+    echo "=== Install method detection ==="
+    if [[ -f /var/log/Calamares.log ]]; then
+        echo "Method: CALAMARES"
+        echo "  /var/log/Calamares.log: $(stat -c '%y' /var/log/Calamares.log 2>/dev/null)"
+        echo "  Last 30 lines:"
+        tail -30 /var/log/Calamares.log 2>/dev/null | sed 's/^/    /'
+    elif [[ -d /var/log/installer ]]; then
+        echo "Method: DEBIAN-INSTALLER (d-i)"
+        echo "  /var/log/installer/ contents:"
+        ls -la /var/log/installer/ 2>/dev/null | sed 's/^/    /'
+        if [[ -f /var/log/installer/syslog ]]; then
+            echo ""
+            echo "  /var/log/installer/syslog last 30 lines:"
+            tail -30 /var/log/installer/syslog 2>/dev/null | sed 's/^/    /'
+        fi
+    else
+        echo "Method: UNKNOWN (no Calamares.log, no /var/log/installer)"
+    fi
+    echo ""
+    echo "=== /var/log/kodachi-finish-install.log ==="
+    if [[ -f /var/log/kodachi-finish-install.log ]]; then
+        cat /var/log/kodachi-finish-install.log 2>/dev/null | head -100
+    else
+        echo "  (not present — kodachi-finish-install did not run)"
+    fi
+    echo ""
+    echo "=== /tmp/kodachi-grub-theme.log (during install) ==="
+    if [[ -f /tmp/kodachi-grub-theme.log ]]; then
+        cat /tmp/kodachi-grub-theme.log 2>/dev/null | head -50
+    fi
+} > "$COLLECTION_DIR/07-installation-packages/install-method.txt" 2>/dev/null
 
 # /etc/profile.d/ — also runs on login shell (incl. lightdm xsession). The
 # Kodachi-specific kodachi-autoshield.sh and kodachi-path.sh live here.
@@ -1611,6 +1818,74 @@ safe_exec "$COLLECTION_DIR/08-display-desktop/user-session/process-tree-user.txt
     "ps -ef --forest -u ${REAL_USER}"
 safe_exec "$COLLECTION_DIR/08-display-desktop/user-session/wchan-user.txt" \
     "ps -o pid,user,stat,wchan:30,cmd -u ${REAL_USER}"
+
+# v1.5: deep inspection of xfce4-session if it's still running. The
+# macOS-Ventura bundle proved that when xfce4-session stalls for 134 s
+# during login, NONE of the existing data captures what it's blocked on.
+# /proc/$pid/stack + status + io + a 5-second strace gives us syscalls
+# visible at collection time — enough to prove "blocked on read() of
+# Firefox cert9.db" or "blocked on connect() to dbus". 5 s is short
+# enough not to disturb a healthy session and long enough to catch a
+# blocked syscall.
+XFCE_PIDS=$(pgrep -u "$REAL_USER" -x 'xfce4-session' 2>/dev/null || true)
+if [[ -n "$XFCE_PIDS" ]]; then
+    mkdir -p "$COLLECTION_DIR/08-display-desktop/user-session/xfce4-session-pid-inspect"
+    for pid in $XFCE_PIDS; do
+        ppath="$COLLECTION_DIR/08-display-desktop/user-session/xfce4-session-pid-inspect/pid-${pid}"
+        mkdir -p "$ppath"
+        # /proc snapshots — read once, no syscall trace
+        for f in status stat wchan stack syscall io comm cmdline environ limits; do
+            if [[ -r "/proc/$pid/$f" ]]; then
+                cat "/proc/$pid/$f" 2>/dev/null > "$ppath/$f.txt" || true
+            fi
+        done
+        # File descriptors — see what's open (sockets, files, pipes).
+        ls -la "/proc/$pid/fd/" 2>/dev/null > "$ppath/fd-listing.txt" || true
+        # Memory map — heavy but useful when a stuck mmap is suspected.
+        ( cat "/proc/$pid/maps" 2>/dev/null | head -200 ) > "$ppath/maps-head200.txt" || true
+        # Children — recurse one level.
+        ls "/proc/$pid/task/" 2>/dev/null > "$ppath/threads.txt" || true
+        # Short strace — only if strace is installed AND xfce4-session has been
+        # alive for under 300 s (so we ONLY capture stalls during the post-login
+        # window, never disturb a long-running healthy desktop).
+        if command -v strace >/dev/null 2>&1; then
+            session_age=$(awk -v pid="$pid" -v now="$(date +%s)" '
+                BEGIN { uptime = -1 }
+                /^btime/ { btime = $2 }
+                END { print btime }
+            ' /proc/stat)
+            start_jiffies=$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null)
+            hertz=$(getconf CLK_TCK 2>/dev/null || echo 100)
+            uptime=$(awk '{print int($1)}' /proc/uptime 2>/dev/null)
+            if [[ -n "$start_jiffies" && -n "$uptime" ]]; then
+                start_secs_after_boot=$((start_jiffies / hertz))
+                age=$((uptime - start_secs_after_boot))
+                echo "xfce4-session pid=$pid age=${age}s" > "$ppath/age.txt"
+                if [[ "$age" -lt 300 ]]; then
+                    echo "" >> "$ppath/age.txt"
+                    echo "Age < 300s: capturing 5-second strace summary..." >> "$ppath/age.txt"
+                    timeout 5 strace -f -c -p "$pid" 2>"$ppath/strace-summary.txt" || true
+                    timeout 3 strace -f -p "$pid" -e trace=read,openat,connect,futex,poll 2>"$ppath/strace-blocking-syscalls.txt" || true
+                fi
+            fi
+        fi
+    done
+fi
+# Same deep-inspect for lightdm session-child (parent of Xsession), and
+# any startxfce4 / ssh-agent processes still alive — these are the chain
+# between PAM and xfce4-session.
+for pname in lightdm startxfce4 ssh-agent; do
+    pids=$(pgrep -u "$REAL_USER" -x "$pname" 2>/dev/null || true)
+    [[ -z "$pids" ]] && continue
+    for pid in $pids; do
+        ppath="$COLLECTION_DIR/08-display-desktop/user-session/${pname}-pid-${pid}"
+        mkdir -p "$ppath"
+        for f in status stat wchan stack syscall comm cmdline; do
+            [[ -r "/proc/$pid/$f" ]] && cat "/proc/$pid/$f" 2>/dev/null > "$ppath/$f.txt" || true
+        done
+        ls -la "/proc/$pid/fd/" 2>/dev/null > "$ppath/fd-listing.txt" || true
+    done
+done
 
 fi # end CATEGORY 8
 
