@@ -42,6 +42,9 @@
 #   # Run with sudo (required for system log access)
 #   curl -sSL https://www.kodachi.cloud/apps/os/install/kodachi-debug-collector.sh | sudo bash
 #
+#   # or for fully automated
+#   curl -sSL https://www.kodachi.cloud/apps/os/install/kodachi-debug-collector.sh | sudo bash -s -- --all
+#
 #   # Or run locally
 #   sudo bash kodachi-debug-collector.sh
 #
@@ -184,6 +187,84 @@ safe_copy() {
         echo "Original file size: $file_size bytes (truncated to last 50MB)" >> "${dest}/$(basename "$src").truncated"
     else
         cp "$src" "$dest/" 2>/dev/null || echo "Failed to copy: $src" > "${dest}/$(basename "$src").error"
+    fi
+}
+
+# ---- Credential redaction (defense-in-depth) ----
+# audit 2026-05-17 (Conference-Room-A bundle): hooks-results/hooks-config/
+# hooks-logs were copied with NO or incomplete redaction, leaking live
+# routing secrets (cached_card_*.json contained an OpenVPN private key,
+# WireGuard keys, a password, and hysteria2:// / ss:// URIs). This filter
+# is applied to EVERY Kodachi config/result/log file before it enters the
+# bundle. It over-redacts on purpose — privacy beats completeness here.
+#
+# awk handles multi-line secret blocks (PEM keys, OpenVPN inline <key>/
+# <tls-crypt>/<tls-auth>/<static> tags); sed handles single-line key/value,
+# WireGuard keys, auth-user-pass, and credential-bearing proxy URIs.
+# Patterns avoid gawk-only IGNORECASE so this works under Debian's mawk.
+redact_secrets() {
+    awk '
+    BEGIN { inblock = 0 }
+    {
+        if (inblock) {
+            if ($0 ~ /-----END / || $0 ~ /^[ \t]*<\/(key|cert|ca|tls-crypt|tls-crypt-v2|tls-auth|static)>/) {
+                print $0; inblock = 0
+            } else {
+                print "[REDACTED]"
+            }
+            next
+        }
+        # Whole secret block already on ONE physical line (JSON-escaped with
+        # literal \n, single-line .ovpn fragment, etc.): do NOT enter
+        # multi-line mode (that would over-redact the rest of the file and
+        # the print $0 would emit the key). Leave it to the sed single-line
+        # collapse rules below.
+        if ( ($0 ~ /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/ && $0 ~ /-----END [A-Z0-9 ]*PRIVATE KEY-----/) || \
+             ($0 ~ /-----BEGIN OpenVPN Static key/ && $0 ~ /-----END OpenVPN Static key/) || \
+             ($0 ~ /<(key|tls-crypt|tls-crypt-v2|tls-auth|static)>/ && $0 ~ /<\/(key|tls-crypt|tls-crypt-v2|tls-auth|static)>/) ) {
+            print $0; next
+        }
+        if ($0 ~ /-----BEGIN ([A-Z0-9]+ )*PRIVATE KEY-----/ || $0 ~ /-----BEGIN OpenVPN Static key/) {
+            print $0; print "[REDACTED]"; inblock = 1; next
+        }
+        if ($0 ~ /^[ \t]*<(key|tls-crypt|tls-crypt-v2|tls-auth|static)>/) {
+            print $0; print "[REDACTED]"; inblock = 1; next
+        }
+        print $0
+    }' | sed -E '
+        s/-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*-----END [A-Z0-9 ]*PRIVATE KEY-----/[REDACTED-KEY-BLOCK]/Ig
+        s/-----BEGIN OpenVPN Static key.*-----END OpenVPN Static key.*-----/[REDACTED-KEY-BLOCK]/Ig
+        s#<(key|tls-crypt|tls-crypt-v2|tls-auth|static|cert|ca)>.*</(key|tls-crypt|tls-crypt-v2|tls-auth|static|cert|ca)>#<\1>[REDACTED]</\1>#Ig
+        s/("?(pass|password|passwd|secret|psk|preshared[-_]?key|private[-_]?key|privkey|api[-_]?key|apikey|token|auth[-_]?token|access[-_]?key|secret[-_]?key|client[-_]?secret|wep-key[0-9]*|leap-password|private-key-password|pin)"?[[:space:]]*[:=][[:space:]]*"?)[^",}[:space:]]+/\1[REDACTED]/Ig
+        s/((PrivateKey|PresharedKey|PublicKey)[[:space:]]*=[[:space:]]*)[A-Za-z0-9+/=]+/\1[REDACTED]/Ig
+        s/(auth-user-pass[[:space:]]).*/\1[REDACTED]/Ig
+        s#((ss|ssr|vmess|vless|trojan|hysteria2?|hy2|tuic|socks5?|https?)://)[^[:space:]"<>]+#\1[REDACTED]#Ig
+    '
+}
+
+# Copy a file into the bundle THROUGH redact_secrets, preserving an optional
+# relative sub-path. Truncates oversized files (still redacted).
+safe_copy_redacted() {
+    local src="$1"
+    local dest_dir="$2"
+    local rel="${3:-$(basename "$1")}"
+    local dest="$dest_dir/$rel"
+    local max_size=$((50 * 1024 * 1024))
+
+    if [[ ! -f "$src" ]]; then
+        echo "File not found: $src" > "${dest_dir}/$(basename "$src").missing"
+        return
+    fi
+    mkdir -p "$(dirname "$dest")" 2>/dev/null || true
+
+    local fsz
+    fsz=$(stat -c%s "$src" 2>/dev/null || echo 0)
+    if [[ $fsz -gt $max_size ]]; then
+        tail -c 50M "$src" 2>/dev/null | redact_secrets > "$dest" 2>/dev/null || true
+        echo "[Original $fsz bytes; truncated to last 50MB, redacted]" >> "$dest"
+    else
+        redact_secrets < "$src" > "$dest" 2>/dev/null \
+            || echo "Failed to copy (redacted): $src" > "${dest}.error"
     fi
 }
 
@@ -408,8 +489,17 @@ echo "----------------------------------------------"
 KODACHI_VERSION="unknown"
 
 if [[ -f "/etc/kodachi-version" ]]; then
-    KODACHI_VERSION=$(cat /etc/kodachi-version 2>/dev/null || echo "unreadable")
-    echo "Version (kodachi-version file): $KODACHI_VERSION"
+    # /etc/kodachi-version is a multi-line ASCII banner. Display the full
+    # content for context but extract ONLY the "Version: X.Y.Z" line into
+    # the scalar — capturing the whole banner into $KODACHI_VERSION breaks
+    # downstream consumers (meta-vars.txt, summary box).
+    echo "kodachi-version file content:"
+    sed 's/^/  /' /etc/kodachi-version 2>/dev/null
+    KV_LINE=$(grep -oP '^\s*Version:\s*\K[0-9][0-9A-Za-z.+-]*' /etc/kodachi-version 2>/dev/null | head -1)
+    if [[ -n "$KV_LINE" ]]; then
+        KODACHI_VERSION="$KV_LINE"
+        echo "Version (parsed): $KODACHI_VERSION"
+    fi
 fi
 
 if [[ -f "/etc/kodachi_version" ]]; then
@@ -609,11 +699,17 @@ echo "----------------------------------------------"
 
 NUKE_STATUS="NOT DETECTED"
 
-# Check if cryptsetup-nuke-password package is installed
-if dpkg -l 2>/dev/null | grep -qi "cryptsetup-nuke"; then
+# Check if cryptsetup-nuke-password package is installed.
+# audit 2026-05-10: dpkg -l | grep proved unreliable — observed bundle had
+# "ii cryptsetup-nuke-password 8" in dpkg-list.txt yet the collector
+# reported NOT INSTALLED. Likely cause: dpkg-query column wrap on narrow
+# COLUMNS env in the collector context, where the package name was split
+# across the "ii" status word and the next dpkg pager line. dpkg-query
+# bypasses the formatter and queries the database directly.
+if dpkg-query -W -f='${Status}' cryptsetup-nuke-password 2>/dev/null | grep -q '^install ok installed$'; then
     NUKE_STATUS="PACKAGE INSTALLED"
     echo "cryptsetup-nuke-password package: INSTALLED"
-    dpkg -l 2>/dev/null | grep -i "nuke" | sed 's/^/  /'
+    dpkg -l cryptsetup-nuke-password 2>/dev/null | tail -1 | sed 's/^/  /'
 else
     echo "cryptsetup-nuke-password package: NOT INSTALLED"
 fi
@@ -824,8 +920,15 @@ echo "=============================================="
 (
 set +e
 KODACHI_VERSION="unknown"
-if [[ -f "/etc/kodachi-version" ]]; then KODACHI_VERSION=$(cat /etc/kodachi-version 2>/dev/null || echo "unknown"); fi
-if [[ -f "/etc/kodachi_version" ]]; then KODACHI_VERSION=$(cat /etc/kodachi_version 2>/dev/null || echo "unknown"); fi
+if [[ -f "/etc/kodachi-version" ]]; then
+    # Extract the scalar version from the banner file (see meta-summary section).
+    KV=$(grep -oP '^\s*Version:\s*\K[0-9][0-9A-Za-z.+-]*' /etc/kodachi-version 2>/dev/null | head -1)
+    [[ -n "$KV" ]] && KODACHI_VERSION="$KV"
+fi
+if [[ -f "/etc/kodachi_version" ]]; then
+    KV=$(grep -oP '^\s*Version:\s*\K[0-9][0-9A-Za-z.+-]*' /etc/kodachi_version 2>/dev/null | head -1)
+    [[ -n "$KV" ]] && KODACHI_VERSION="$KV"
+fi
 # Check build-meta.json
 if [[ "$KODACHI_VERSION" == "unknown" ]]; then
     for bm in /opt/*/dashboard/hooks/config/build-meta.json; do
@@ -1077,17 +1180,27 @@ if [[ -d "/etc/NetworkManager" ]]; then
         mkdir -p "$(dirname "$dest_file")"
         if echo "$nm_file" | grep -qE "(system-connections|secrets)"; then
             # Redact passwords, PSK, secrets from connection profiles
+            # NM-specific narrow pass THEN the general redactor, which also
+            # covers WireGuard-in-NM private-key=/preshared-key=, inline PEM
+            # and credential URIs the narrow sed missed.
             sed -E 's/(psk=).*/\1[REDACTED]/g; s/(password=).*/\1[REDACTED]/g; s/(secret=).*/\1[REDACTED]/g; s/(wep-key[0-9]*=).*/\1[REDACTED]/g; s/(leap-password=).*/\1[REDACTED]/g; s/(pin=).*/\1[REDACTED]/g; s/(private-key-password=).*/\1[REDACTED]/g' \
-                "$nm_file" > "$dest_file" 2>/dev/null || true
+                "$nm_file" 2>/dev/null | redact_secrets > "$dest_file" 2>/dev/null || true
         else
             cp "$nm_file" "$dest_file" 2>/dev/null || true
         fi
     done
 fi
 
-# resolvectl if available
+# resolvectl only when systemd-resolved is actually running. Kodachi uses
+# DNSCrypt with systemd-resolved masked, so calling resolvectl there just
+# spams "Unit dbus-org.freedesktop.resolve1.service is masked" failures.
 if command -v resolvectl &> /dev/null; then
-    safe_exec "$COLLECTION_DIR/03-network/resolvectl.txt" "resolvectl status"
+    if systemctl is-active --quiet systemd-resolved 2>/dev/null; then
+        safe_exec "$COLLECTION_DIR/03-network/resolvectl.txt" "resolvectl status"
+    else
+        echo "[SKIPPED] systemd-resolved is not active (masked/disabled) — resolvectl not applicable on this DNS setup" \
+            > "$COLLECTION_DIR/03-network/resolvectl.txt"
+    fi
 fi
 
 # DNS resolution testing (tests functionality only, no IP collection)
@@ -1145,7 +1258,7 @@ if command -v wg &> /dev/null; then
 fi
 
 # Proxy tunnel processes (tun2socks, xray, hysteria, shadowsocks)
-safe_exec "$COLLECTION_DIR/05-vpn/proxy-processes.txt" "ps auxww | grep -E 'tun2socks|xray|hysteria|ss-local|ss-redir|microsocks|redsocks' | grep -v grep || echo 'no proxy tunnels running'"
+safe_exec "$COLLECTION_DIR/05-vpn/proxy-processes.txt" "{ ps auxww | grep -E 'tun2socks|xray|hysteria|ss-local|ss-redir|microsocks|redsocks' | grep -v grep || echo 'no proxy tunnels running'; } | redact_secrets"
 
 # Copy VPN logs
 if [[ -d "/var/log/openvpn" ]]; then
@@ -1180,10 +1293,13 @@ for hooks_pattern in "${KODACHI_HOOKS_DIRS[@]}"; do
         if [[ -d "$hooks_dir" ]]; then
             echo "Found Kodachi hooks at: $hooks_dir" >> "$COLLECTION_DIR/06-kodachi/hooks-locations.txt"
 
-            # Copy logs
+            # Copy logs (redacted — hook execution output can echo secrets)
             if [[ -d "$hooks_dir/logs" ]]; then
                 mkdir -p "$COLLECTION_DIR/06-kodachi/hooks-logs"
-                cp -r "$hooks_dir/logs"/* "$COLLECTION_DIR/06-kodachi/hooks-logs/" 2>/dev/null || true
+                find "$hooks_dir/logs" -type f 2>/dev/null | while read -r lfile; do
+                    lrel="${lfile#"$hooks_dir"/logs/}"
+                    safe_copy_redacted "$lfile" "$COLLECTION_DIR/06-kodachi/hooks-logs" "$lrel"
+                done
             fi
 
             # Copy results (excluding privacy-sensitive files)
@@ -1199,33 +1315,13 @@ for hooks_pattern in "${KODACHI_HOOKS_DIRS[@]}"; do
                             continue
                             ;;
                     esac
-                    # Determine relative path and recreate structure
-                    rrel="${rfile#$hooks_dir/results/}"
-                    rdest="$COLLECTION_DIR/06-kodachi/hooks-results/$rrel"
-                    mkdir -p "$(dirname "$rdest")"
-                    # Redact credentials from VPN/proxy config files
-                    case "$rbase" in
-                        *.ovpn|*.conf|*.json)
-                            if echo "$rrel" | grep -qE "^configs/"; then
-                                sed -E \
-                                    's/("password"[[:space:]]*:[[:space:]]*")[^"]*"/\1[REDACTED]"/gi;
-                                     s/("secret"[[:space:]]*:[[:space:]]*")[^"]*"/\1[REDACTED]"/gi;
-                                     s/("psk"[[:space:]]*:[[:space:]]*")[^"]*"/\1[REDACTED]"/gi;
-                                     s/("key"[[:space:]]*:[[:space:]]*")[^"]*"/\1[REDACTED]"/gi;
-                                     s/(password[= ]).*/\1[REDACTED]/gi;
-                                     s/(auth-user-pass).*/\1 [REDACTED]/gi;
-                                     s/(secret[= ]).*/\1[REDACTED]/gi;
-                                     s/(password=)[^ ]*/\1[REDACTED]/gi;
-                                     s/(hysteria2:\/\/[^?]*\?password=)[^ &"]*/\1[REDACTED]/gi' \
-                                    "$rfile" > "$rdest" 2>/dev/null || cp "$rfile" "$rdest" 2>/dev/null || true
-                            else
-                                cp "$rfile" "$rdest" 2>/dev/null || true
-                            fi
-                            ;;
-                        *)
-                            cp "$rfile" "$rdest" 2>/dev/null || true
-                            ;;
-                    esac
+                    # Determine relative path and recreate structure.
+                    # EVERY result file is copied through redact_secrets —
+                    # the previous code left non-configs/ files and all
+                    # non-json/conf/ovpn files unredacted, which is exactly
+                    # how cached_card_*.json leaked live keys.
+                    rrel="${rfile#"$hooks_dir"/results/}"
+                    safe_copy_redacted "$rfile" "$COLLECTION_DIR/06-kodachi/hooks-results" "$rrel"
                 done
             fi
         fi
@@ -1308,10 +1404,11 @@ for hooks_pattern in "/opt/kodachi/dashboard/hooks" "${REAL_HOME}/dashboard/hook
             find "$hooks_dir/config" -type f \( -name "*.json" -o -name "*.conf" -o -name "*.toml" \) \
                 ! -path "*/signkeys/*" ! -path "*/secrets/*" ! -path "*credential*" ! -path "*password*" ! -path "*token*" \
                 2>/dev/null | while read -r cfile; do
-                crel="${cfile#$hooks_dir/config/}"
-                cdest="$COLLECTION_DIR/06-kodachi/hooks-config/$crel"
-                mkdir -p "$(dirname "$cdest")"
-                cp "$cfile" "$cdest" 2>/dev/null || true
+                crel="${cfile#"$hooks_dir"/config/}"
+                # Path-based exclusions above are not enough — a file named
+                # general-config.json can still embed credentials. Redact
+                # every copied config file as well.
+                safe_copy_redacted "$cfile" "$COLLECTION_DIR/06-kodachi/hooks-config" "$crel"
             done
             break 2
         fi
@@ -1522,8 +1619,22 @@ safe_exec "$COLLECTION_DIR/08-display-desktop/user-session/loginctl-sessions.txt
     "loginctl list-sessions --no-pager && echo '---' && loginctl list-users --no-pager"
 safe_exec "$COLLECTION_DIR/08-display-desktop/user-session/loginctl-session-status.txt" \
     "for s in \$(loginctl list-sessions --no-legend | awk '{print \$1}'); do echo '=== Session '\$s' ==='; loginctl session-status \$s --no-pager; echo; done"
-safe_exec "$COLLECTION_DIR/08-display-desktop/user-session/last-logins.txt" "last -n 30"
-safe_exec "$COLLECTION_DIR/08-display-desktop/user-session/lastlog.txt" "lastlog"
+# audit 2026-05-10: last(1) and lastlog(1) were dropped from the default
+# Trixie install (replaced by lastlog2 / wtmpdb). Probe several backends
+# in order so the bundle keeps producing useful login history regardless
+# of which tools the host actually ships.
+safe_exec "$COLLECTION_DIR/08-display-desktop/user-session/last-logins.txt" \
+    "if command -v last >/dev/null 2>&1; then last -n 30; \
+     elif command -v wtmpdb >/dev/null 2>&1; then wtmpdb last 2>/dev/null | head -30; \
+     else journalctl _COMM=systemd-logind --no-pager -n 100 2>/dev/null | grep -E 'New session|Removed session' | tail -30; fi"
+safe_exec "$COLLECTION_DIR/08-display-desktop/user-session/lastlog.txt" \
+    "if command -v lastlog >/dev/null 2>&1; then lastlog; \
+     elif command -v lastlog2 >/dev/null 2>&1; then lastlog2; \
+     else echo '(no lastlog/lastlog2 — Trixie ships neither by default; falling back to per-user systemd journal:)'; \
+          for u in \$(awk -F: '\$3>=1000 && \$3<60000 {print \$1}' /etc/passwd); do \
+              echo \"--- \$u ---\"; \
+              journalctl _UID=\$(id -u \"\$u\" 2>/dev/null) --no-pager -n 1 -o short-iso 2>/dev/null | tail -1 || true; \
+          done; fi"
 
 # ---- ~/.xsession-errors AND XFCE LOGS ------------------------------------
 # This is THE file that captures every Xsession.d/* and autostart .desktop
@@ -1897,7 +2008,7 @@ progress "Collecting performance and process information..."
 
 mkdir -p "$COLLECTION_DIR/09-performance-processes"
 
-safe_exec "$COLLECTION_DIR/09-performance-processes/ps-tree.txt" "ps auxf"
+safe_exec "$COLLECTION_DIR/09-performance-processes/ps-tree.txt" "ps auxf | redact_secrets"
 safe_exec "$COLLECTION_DIR/09-performance-processes/top-snapshot.txt" "top -bn1"
 safe_exec "$COLLECTION_DIR/09-performance-processes/vmstat.txt" "vmstat 1 5"
 
@@ -1930,7 +2041,7 @@ mkdir -p "$COLLECTION_DIR/10-security-permissions"
 safe_exec "$COLLECTION_DIR/10-security-permissions/id.txt" "id"
 safe_exec "$COLLECTION_DIR/10-security-permissions/who.txt" "who"
 safe_exec "$COLLECTION_DIR/10-security-permissions/w.txt" "w"
-safe_exec "$COLLECTION_DIR/10-security-permissions/last.txt" "last -20"
+safe_exec "$COLLECTION_DIR/10-security-permissions/last.txt" "if command -v last >/dev/null 2>&1; then last -20; elif command -v wtmpdb >/dev/null 2>&1; then wtmpdb last 2>/dev/null | head -20; else echo 'last/wtmpdb unavailable (no wtmp login history on this system)'; fi"
 
 # SELinux/AppArmor
 safe_exec "$COLLECTION_DIR/10-security-permissions/getenforce.txt" "getenforce"

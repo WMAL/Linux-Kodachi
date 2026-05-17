@@ -1352,6 +1352,67 @@ if [[ -d "$EXTRACT_DIR/others" ]]; then
         print_success "Offline documents and extra artifacts installed ($other_count files)"
         print_info "Artifacts location: $INSTALL_PATH/others/"
     fi
+
+    # Offline documentation site resilience.
+    #
+    # The bundled LibreWolf profile ships a static bookmark pointing at the
+    # canonical path file:///opt/kodachi/dashboard/hooks/others/site/index.html
+    # (a binary places.sqlite that cannot be rewritten per-install). When the
+    # install fell back off the canonical /opt/kodachi location, bridge the
+    # canonical path to the real one with a symlink so the bookmark still
+    # resolves. The matching AppArmor profile (kodachi.librewolf) follows the
+    # dereferenced path and already allows the standard fallback site dirs.
+    #
+    # Best-effort and non-fatal: never deletes existing data; a degraded
+    # environment without write access simply keeps the printed file:// path.
+    CANONICAL_HOOKS_DIR="/opt/kodachi/dashboard/hooks"
+    SITE_INDEX="$INSTALL_PATH/others/site/index.html"
+    if [[ -f "$SITE_INDEX" && "$INSTALL_PATH" != "$CANONICAL_HOOKS_DIR" ]]; then
+        REAL_SITE_DIR="$(cd "$INSTALL_PATH/others/site" 2>/dev/null && pwd -P)"
+        CANONICAL_SITE_DIR="$CANONICAL_HOOKS_DIR/others/site"
+        CANONICAL_SITE_INDEX="$CANONICAL_SITE_DIR/index.html"
+        site_bridged=false
+        if [[ -n "$REAL_SITE_DIR" ]]; then
+            if [[ -e "$CANONICAL_SITE_INDEX" ]]; then
+                # A canonical install (real dir or prior symlink) already
+                # resolves — leave it untouched.
+                site_bridged=true
+            elif [[ ! -e "$CANONICAL_SITE_DIR" || -L "$CANONICAL_SITE_DIR" ]]; then
+                # Path is free or a replaceable symlink — safe to (re)link.
+                if mkdir -p "$CANONICAL_HOOKS_DIR/others" 2>/dev/null \
+                    && ln -sfn "$REAL_SITE_DIR" "$CANONICAL_SITE_DIR" 2>/dev/null; then
+                    site_bridged=true
+                elif command -v sudo >/dev/null 2>&1 \
+                    && sudo mkdir -p "$CANONICAL_HOOKS_DIR/others" 2>/dev/null \
+                    && sudo ln -sfn "$REAL_SITE_DIR" "$CANONICAL_SITE_DIR" 2>/dev/null; then
+                    site_bridged=true
+                fi
+            fi
+        fi
+        # The confined LibreWolf AppArmor profile (kodachi.librewolf) allows the
+        # canonical /opt path and the standard HOME fallbacks only. A custom
+        # --path target resolves on disk via the bridge but the
+        # sandboxed browser will still be denied, so report that honestly
+        # instead of a misleading success.
+        site_aa_covered=false
+        case "$REAL_SITE_DIR" in
+            "$HOME/dashboard/hooks/others/site"|\
+            "$HOME/k900/dashboard/hooks/others/site"|\
+            "$HOME/Desktop/dashboard/hooks/others/site")
+                site_aa_covered=true
+                ;;
+        esac
+        if [[ "$site_bridged" == true && "$site_aa_covered" == true ]]; then
+            print_info "Offline site bookmark bridged: $CANONICAL_SITE_INDEX -> $REAL_SITE_DIR"
+        elif [[ "$site_bridged" == true ]]; then
+            print_info "Offline site bookmark bridged: $CANONICAL_SITE_INDEX -> $REAL_SITE_DIR"
+            print_warning "Custom install path is outside the sandboxed-browser allowlist; the bundled LibreWolf may still block it."
+            print_info "Open in an unconfined browser, or read it directly: file://$SITE_INDEX"
+        else
+            print_warning "Offline site installed off the canonical path; the bundled browser bookmark will not resolve."
+            print_info "Open it directly: file://$SITE_INDEX"
+        fi
+    fi
 fi
 
 # Copy AI model files (support multiple package layouts)
@@ -1965,16 +2026,21 @@ setup_dashboard_autostart() {
         return 0
     fi
 
-    # Create launcher script if it doesn't exist
+    # Create the launcher script if missing, or refresh it when an older copy
+    # (pre-seeded by the ISO or a prior install) lacks the NVIDIA GPU-driver
+    # detection. Mirrors the autostart .desktop "outdated -> replace" logic.
     local launcher_script="/usr/local/bin/kodachi-dashboard-launcher"
-    if [[ ! -f "$launcher_script" ]]; then
-        print_info "Creating VM-compatible dashboard launcher script..."
+    if [[ ! -f "$launcher_script" ]] || ! grep -q 'NVIDIA_PROPRIETARY' "$launcher_script" 2>/dev/null || ! grep -q 'DASHBOARD_BIN=' "$launcher_script" 2>/dev/null; then
+        print_info "Installing/refreshing dashboard launcher script..."
         sudo tee "$launcher_script" > /dev/null << 'LAUNCHER_EOF'
 #!/bin/bash
-# Kodachi Dashboard Launcher with VM detection
-# Auto-detects VM environments and passes --no-gpu flag
+# Kodachi Dashboard Launcher with VM + GPU-driver detection
+# Auto-detects VM environments and the NVIDIA proprietary driver,
+# applying the WebKitGTK software-render fallback and --no-gpu so the
+# dashboard does not come up as a blank window.
 
 VM_DETECTED=false
+NVIDIA_PROPRIETARY=false
 
 # Check for VM indicators
 if [ -f /sys/class/dmi/id/sys_vendor ]; then
@@ -1995,12 +2061,43 @@ if [ -f /sys/class/dmi/id/product_name ]; then
     esac
 fi
 
-# Launch dashboard with appropriate flags
-if [ "$VM_DETECTED" = "true" ]; then
-    exec /usr/local/bin/kodachi-dashboard --no-gpu "$@"
-else
-    exec /usr/local/bin/kodachi-dashboard "$@"
+# NVIDIA proprietary driver (nouveau does NOT create these)
+if [ -f /proc/driver/nvidia/version ]; then
+    NVIDIA_PROPRIETARY=true
+elif lsmod 2>/dev/null | grep -qE '^nvidia[[:space:]]'; then
+    NVIDIA_PROPRIETARY=true
 fi
+
+if [ "$NVIDIA_PROPRIETARY" = "true" ]; then
+    export WEBKIT_DISABLE_DMABUF_RENDERER=1
+    export WEBKIT_DISABLE_COMPOSITING_MODE=1
+fi
+
+# Resolve the dashboard binary at runtime. global-launcher normally
+# symlinks it to /usr/local/bin/kodachi-dashboard, but that symlink is
+# absent if global-launcher's deploy step never ran. Fall back across the
+# known install locations so the launcher never dies with "No such file".
+DASHBOARD_BIN=""
+for _cand in /usr/local/bin/kodachi-dashboard \
+             /opt/kodachi/dashboard/hooks/kodachi-dashboard \
+             "$HOME/dashboard/hooks/kodachi-dashboard" \
+             "$HOME/Desktop/dashboard/hooks/kodachi-dashboard" \
+             "$HOME/k900/dashboard/hooks/kodachi-dashboard"; do
+    if [ -x "$_cand" ]; then DASHBOARD_BIN="$_cand"; break; fi
+done
+[ -z "$DASHBOARD_BIN" ] && DASHBOARD_BIN="$(command -v kodachi-dashboard 2>/dev/null || true)"
+if [ -z "$DASHBOARD_BIN" ]; then
+    echo "kodachi-dashboard-launcher: dashboard binary not found" >&2
+    exit 1
+fi
+
+# Launch dashboard with appropriate flags
+if [ "$VM_DETECTED" = "true" ] || [ "$NVIDIA_PROPRIETARY" = "true" ]; then
+    exec "$DASHBOARD_BIN" --no-gpu "$@"
+else
+    exec "$DASHBOARD_BIN" "$@"
+fi
+
 LAUNCHER_EOF
         sudo chmod 755 "$launcher_script"
         print_success "Created launcher script: $launcher_script"
@@ -2187,7 +2284,7 @@ Version=1.0
 Type=Application
 Name=Kodachi Dashboard
 Comment=Kodachi Security Dashboard
-Exec=$INSTALL_PATH/kodachi-dashboard
+Exec=/usr/local/bin/kodachi-dashboard-launcher
 TryExec=$INSTALL_PATH/kodachi-dashboard
 Path=$INSTALL_PATH
 Icon=$ICON_PATH
@@ -2268,7 +2365,8 @@ Type=Application
 Name=Kodachi Dashboard
 GenericName=Security Dashboard
 Comment=Kodachi Security Dashboard - control privacy, networking, and system hardening
-Exec=kodachi-dashboard
+Exec=/usr/local/bin/kodachi-dashboard-launcher
+TryExec=/usr/local/bin/kodachi-dashboard-launcher
 Icon=/usr/share/icons/kodachi/kodachi32.png
 Terminal=false
 Categories=System;Security;
