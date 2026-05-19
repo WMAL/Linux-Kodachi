@@ -232,13 +232,28 @@ redact_secrets() {
         }
         print $0
     }' | sed -E '
-        s/-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*-----END [A-Z0-9 ]*PRIVATE KEY-----/[REDACTED-KEY-BLOCK]/Ig
-        s/-----BEGIN OpenVPN Static key.*-----END OpenVPN Static key.*-----/[REDACTED-KEY-BLOCK]/Ig
-        s#<(key|tls-crypt|tls-crypt-v2|tls-auth|static|cert|ca)>.*</(key|tls-crypt|tls-crypt-v2|tls-auth|static|cert|ca)>#<\1>[REDACTED]</\1>#Ig
-        s/("?(pass|password|passwd|secret|psk|preshared[-_]?key|private[-_]?key|privkey|api[-_]?key|apikey|token|auth[-_]?token|access[-_]?key|secret[-_]?key|client[-_]?secret|wep-key[0-9]*|leap-password|private-key-password|pin)"?[[:space:]]*[:=][[:space:]]*"?)[^",}[:space:]]+/\1[REDACTED]/Ig
+        # JSON-safe: bound block collapses with [^"] so a PEM/inline tag
+        # inside ONE JSON string value cannot swallow the closing quote and
+        # the following keys (the greedy .* form corrupted cached_card JSON).
+        # Flat .conf/.ovpn files have no " so [^"]* still spans the block.
+        s/-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[^"]*-----END [A-Z0-9 ]*PRIVATE KEY-----/[REDACTED-KEY-BLOCK]/Ig
+        s/-----BEGIN OpenVPN Static key[^"]*-----END OpenVPN Static key[A-Za-z0-9 ]*-----/[REDACTED-KEY-BLOCK]/Ig
+        s#<(key|tls-crypt|tls-crypt-v2|tls-auth|static|cert|ca)>[^"]*</(key|tls-crypt|tls-crypt-v2|tls-auth|static|cert|ca)>#<\1>[REDACTED]</\1>#Ig
+        # uuid added: vmess/vless UUIDs are bearer credentials.
+        s/("?(pass|password|passwd|secret|psk|preshared[-_]?key|private[-_]?key|privkey|api[-_]?key|apikey|access[-_]?token|token|auth[-_]?token|access[-_]?key|secret[-_]?key|client[-_]?secret|wep-key[0-9]*|leap-password|private-key-password|pin|uuid|signature|sig|key)"?[[:space:]]*[:=][[:space:]]*"?)[^",}[:space:]]+/\1[REDACTED]/Ig
         s/((PrivateKey|PresharedKey|PublicKey)[[:space:]]*=[[:space:]]*)[A-Za-z0-9+/=]+/\1[REDACTED]/Ig
-        s/(auth-user-pass[[:space:]]).*/\1[REDACTED]/Ig
-        s#((ss|ssr|vmess|vless|trojan|hysteria2?|hy2|tuic|socks5?|https?)://)[^[:space:]"<>]+#\1[REDACTED]#Ig
+        s/(auth-user-pass[[:space:]])[^"]*/\1[REDACTED]/Ig
+        # Generic credential-in-URL for ANY scheme (the previous allowlist
+        # missed mierus:// and any future proxy scheme). Only the userinfo
+        # is redacted, preserving scheme+host so the bundle stays diagnostic
+        # and the JSON string boundary (") is never crossed.
+        s#([a-zA-Z][a-zA-Z0-9.+-]*://)[^/@"[:space:]<>]+(:[^/@"[:space:]<>]*)?@#\1[REDACTED]@#Ig
+        # Known PROXY schemes only: nuke the whole URL (these embed creds/
+        # tokens in the path/fragment). http(s) is intentionally NOT here —
+        # ordinary URLs must stay readable for diagnostics; real https
+        # credentials are already covered by the userinfo rule above and the
+        # key-name rule (token=/key=/password= in query strings).
+        s#((ss|ssr|vmess|vless|trojan|hysteria2?|hy2|tuic|socks5?)://)[^[:space:]"<>]+#\1[REDACTED]#Ig
     '
 }
 
@@ -333,6 +348,33 @@ safe_copy_user() {
             || echo "Failed to copy (perm denied): $src" > "${dest}/$(basename "$src").error"
     else
         cp "$src" "$dest/" 2>/dev/null \
+            || echo "Failed to copy: $src" > "${dest}/$(basename "$src").error"
+    fi
+}
+
+# Like safe_copy_user, but pipes the content through redact_secrets.
+# User-session logs (~/.xsession-errors) capture app stderr that has been
+# observed to contain Discord account/session identifiers and similar
+# sensitive data, so they must not enter the bundle verbatim.
+safe_copy_user_redacted() {
+    local src="$1"
+    local dest="$2"
+
+    if [[ "$src" != /* ]]; then
+        src="${REAL_HOME}/${src#~/}"
+    fi
+
+    if [[ ! -e "$src" ]]; then
+        echo "File not found: $src" > "${dest}/$(basename "$src").missing"
+        return
+    fi
+
+    if [[ "$(id -u)" == "0" ]]; then
+        sudo -u "$REAL_USER" cat "$src" 2>/dev/null | redact_secrets \
+            > "${dest}/$(basename "$src")" 2>/dev/null \
+            || echo "Failed to copy (perm denied): $src" > "${dest}/$(basename "$src").error"
+    else
+        redact_secrets < "$src" > "${dest}/$(basename "$src")" 2>/dev/null \
             || echo "Failed to copy: $src" > "${dest}/$(basename "$src").error"
     fi
 }
@@ -1639,8 +1681,8 @@ safe_exec "$COLLECTION_DIR/08-display-desktop/user-session/lastlog.txt" \
 # ---- ~/.xsession-errors AND XFCE LOGS ------------------------------------
 # This is THE file that captures every Xsession.d/* and autostart .desktop
 # stdout/stderr — slow login symptoms always surface here first.
-safe_copy_user "${REAL_HOME}/.xsession-errors" "$COLLECTION_DIR/08-display-desktop/user-session"
-safe_copy_user "${REAL_HOME}/.xsession-errors.old" "$COLLECTION_DIR/08-display-desktop/user-session"
+safe_copy_user_redacted "${REAL_HOME}/.xsession-errors" "$COLLECTION_DIR/08-display-desktop/user-session"
+safe_copy_user_redacted "${REAL_HOME}/.xsession-errors.old" "$COLLECTION_DIR/08-display-desktop/user-session"
 safe_copy_user "${REAL_HOME}/.cache/sessions/xfce4-session-:0" "$COLLECTION_DIR/08-display-desktop/user-session"
 # XFCE-specific log files (xfsettingsd, conky, kodachi user-side scripts)
 if [[ -n "$REAL_HOME" ]] && [[ -d "$REAL_HOME/.cache" ]]; then

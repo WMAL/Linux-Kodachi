@@ -839,10 +839,10 @@ configure_kodachi_sudoers() {
         "ai-scheduler"
         "ai-discovery"
         "ai-gateway"
-        # Autonomous AI assistant
-        "kodachi-claw"
-        "zeroclaw"
-        "zeroclaw-desktop"
+        # [CLAW-ARCHIVED 2026-05-18] autonomous AI assistants retired (moved to dashboard/hooks/rust-archive)
+        # "kodachi-claw"
+        # "zeroclaw"
+        # "zeroclaw-desktop"
         # Session helper
         "kodachi-session-helper"
     )
@@ -7175,9 +7175,10 @@ else
     print_info "This is normal if Kodachi binaries are not yet compiled"
     print_info "To deploy later:"
     echo -e "  ${CYAN}1. Build Kodachi binaries:${NC}"
-    echo -e "  ${CYAN}   cd dashboard/hooks/rust/kodachi-claw && ./build.sh${NC}"
-    echo -e "  ${CYAN}   cd ../zero-claw && ./build.sh${NC}"
-    echo -e "  ${CYAN}   cd ../zeroclaw-desktop && ./build.sh${NC}"
+    # [CLAW-ARCHIVED 2026-05-18] kodachi-claw/zero-claw/zeroclaw-desktop retired
+    # echo -e "  ${CYAN}   cd dashboard/hooks/rust/kodachi-claw && ./build.sh${NC}"
+    # echo -e "  ${CYAN}   cd ../zero-claw && ./build.sh${NC}"
+    # echo -e "  ${CYAN}   cd ../zeroclaw-desktop && ./build.sh${NC}"
     echo -e "  ${CYAN}2. Deploy global launcher: cd dashboard/hooks && sudo ./global-launcher deploy${NC}"
 fi
 
@@ -7999,9 +8000,9 @@ echo ""
 # ============================================================================
 # PRE-CREATE KODACHI-CLAW CONFIG DIRECTORY
 # ============================================================================
-# Create ~/.kodachi-claw/ owned by the real user BEFORE onboarding runs.
-# This ensures correct ownership from the start.
-
+# [CLAW-ARCHIVED 2026-05-18] kodachi-claw retired — ~/.kodachi-claw pre-creation
+# disabled. Original block preserved verbatim below (inert).
+: <<'CLAW_ARCHIVED_BLOCK'
 if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
     REAL_HOME=$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6)
     if [[ -n "$REAL_HOME" && -d "$REAL_HOME" ]]; then
@@ -8015,6 +8016,7 @@ if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
         fi
     fi
 fi
+CLAW_ARCHIVED_BLOCK
 
 # ============================================================================
 # FINAL MESSAGE

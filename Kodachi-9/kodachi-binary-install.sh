@@ -2464,12 +2464,13 @@ echo ""
 print_success "Kodachi binaries installed to: $INSTALL_PATH"
 print_info "Binaries total: $TOTAL_COUNT"
 print_info "Binaries installed: $VERIFIED_COUNT"
-if [[ -x "$INSTALL_PATH/kodachi-claw" || -x "$INSTALL_PATH/zeroclaw" ]]; then
-    print_info "Agent binaries available: kodachi-claw and zeroclaw (shipped as separate binaries)"
-fi
-if [[ -x "$INSTALL_PATH/zeroclaw-desktop" ]]; then
-    print_info "ZeroClaw Desktop GUI available: zeroclaw-desktop (Tauri companion app)"
-fi
+# [CLAW-ARCHIVED 2026-05-18] kodachi-claw/zeroclaw/zeroclaw-desktop retired (not shipped)
+# if [[ -x "$INSTALL_PATH/kodachi-claw" || -x "$INSTALL_PATH/zeroclaw" ]]; then
+#     print_info "Agent binaries available: kodachi-claw and zeroclaw (shipped as separate binaries)"
+# fi
+# if [[ -x "$INSTALL_PATH/zeroclaw-desktop" ]]; then
+#     print_info "ZeroClaw Desktop GUI available: zeroclaw-desktop (Tauri companion app)"
+# fi
 if [[ $SKIPPED_COUNT -gt 0 ]]; then
     print_warning "Binaries skipped: $SKIPPED_COUNT"
 fi

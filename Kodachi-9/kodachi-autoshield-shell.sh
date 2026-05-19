@@ -67,8 +67,8 @@ done
 # Source: main-info.json (terminal section)
 # DO NOT EDIT MANUALLY - Run pack-kodachi.sh to update these values
 BUILD_VERSION="9.0.1"  # From: terminal.main_version
-BUILD_NUM="139"          # From: terminal.build_number (auto-incremented)
-BUILD_DATE="2026-05-17"  # From: terminal.last_build_date
+BUILD_NUM="146"          # From: terminal.build_number (auto-incremented)
+BUILD_DATE="2026-05-19"  # From: terminal.last_build_date
 SCRIPT_VERSION="${BUILD_VERSION}.${BUILD_NUM}"
 
 # Color codes for compact display (optimized for black terminal)
@@ -2495,8 +2495,12 @@ handle_submenu() {
                         ;;
                     5) # Flush iptables and nftables
                         echo -e "\n${YELLOW}Flushing iptables and nftables...${NC}\n"
-                        run_command tor-switch 30 flush-iptables
-                        run_command tor-switch 30 flush-nftables
+                        # --force: flush-iptables/flush-nftables are destructive
+                        # force-gated ops; selecting menu option 5 IS the user
+                        # confirmation, so pass --force or the calls refuse and
+                        # the flush silently no-ops.
+                        run_command tor-switch 30 flush-iptables --force
+                        run_command tor-switch 30 flush-nftables --force
                         echo ""
                         echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
                         echo -e "${BOLD}Return to Menu Options:${NC}"
