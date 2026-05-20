@@ -28,7 +28,7 @@
 # - Website: https://www.kodachi.cloud
 # - GitHub: https://github.com/WMAL
 # - Discord: https://discord.gg/KEFErEx
-# - LinkedIn: https://www.linkedin.com/in/warith1977
+# - LinkedIn: https://om.linkedin.com/in/warith1977
 # - X (Twitter): https://x.com/warith2020
 #
 # Usage:
@@ -1439,28 +1439,63 @@ else
     print_warning "AI model directory not found in package (expected models/ or rust/kodachi-ai/models/)"
 fi
 
-# Compatibility links for tools expecting nested model layouts.
-# Production layout: <hooks>/models
-# Compatibility layouts:
-#   - <hooks>/kodachi-ai/models
-#   - <hooks>/rust/kodachi-ai/models
-mkdir -p "$INSTALL_PATH/kodachi-ai" "$INSTALL_PATH/rust/kodachi-ai"
+# Purge legacy compat model layouts on upgrade.
+#
+# Older installs created two compat dirs/symlinks here:
+#   <hooks>/kodachi-ai/models          → models   (symlink, or real dir on upgrade)
+#   <hooks>/rust/kodachi-ai/models     → ../../models
+# Plus the empty parent dirs <hooks>/kodachi-ai/ and <hooks>/rust/kodachi-ai/.
+#
+# Audit (2026-05-20) confirmed no Rust binary or shell script actually depends
+# on those nested paths — ai-engine's resolve_models_dir() walks parents and
+# tries env overrides + canonical /opt/kodachi/dashboard/hooks/models, so the
+# single <hooks>/models layout is sufficient. The compat dirs were dead code.
+#
+# Worse, the pre-2026-05-20 logic fell back to `cp -an` when a real dir already
+# existed at the compat path, so upgrade-over-upgrade accumulated **full
+# duplicate ONNX + GGUF copies** (~160 MB ONNX + up to ~2.4 GB GGUF per user).
+# Now we actively reclaim that space and never re-create the compat layout.
+prune_legacy_compat_model_dirs() {
+    local reclaimed_bytes=0
+    local target=""
+    local size=""
 
-if [[ -L "$INSTALL_PATH/kodachi-ai/models" ]]; then
-    :
-elif [[ -d "$INSTALL_PATH/kodachi-ai/models" ]]; then
-    cp -an "$INSTALL_PATH/models/." "$INSTALL_PATH/kodachi-ai/models/" 2>/dev/null || true
-else
-    ln -s ../models "$INSTALL_PATH/kodachi-ai/models" 2>/dev/null || true
-fi
+    for target in \
+        "$INSTALL_PATH/kodachi-ai/models" \
+        "$INSTALL_PATH/rust/kodachi-ai/models"
+    do
+        if [[ -L "$target" ]]; then
+            # Old-style symlink — silent remove, no space to reclaim.
+            rm -f "$target" 2>/dev/null || true
+        elif [[ -d "$target" ]]; then
+            # Real dir with accumulated duplicate ONNX/GGUF — reclaim space.
+            size=$(du -sb "$target" 2>/dev/null | awk '{print $1}')
+            [[ -n "$size" ]] && reclaimed_bytes=$((reclaimed_bytes + size))
+            rm -rf "$target" 2>/dev/null || true
+        elif [[ -e "$target" ]]; then
+            # Unexpected file at this path — remove to keep tree clean.
+            rm -f "$target" 2>/dev/null || true
+        fi
+    done
 
-if [[ -L "$INSTALL_PATH/rust/kodachi-ai/models" ]]; then
-    :
-elif [[ -d "$INSTALL_PATH/rust/kodachi-ai/models" ]]; then
-    cp -an "$INSTALL_PATH/models/." "$INSTALL_PATH/rust/kodachi-ai/models/" 2>/dev/null || true
-else
-    ln -s ../../models "$INSTALL_PATH/rust/kodachi-ai/models" 2>/dev/null || true
-fi
+    # Remove the now-empty compat parent dirs (rmdir refuses if non-empty,
+    # so existing legitimate content under those paths is safe).
+    rmdir "$INSTALL_PATH/kodachi-ai" 2>/dev/null || true
+    rmdir "$INSTALL_PATH/rust/kodachi-ai" 2>/dev/null || true
+    rmdir "$INSTALL_PATH/rust" 2>/dev/null || true
+
+    if [[ $reclaimed_bytes -gt 0 ]]; then
+        # Human-readable size via numfmt if available, fall back to MB rounded.
+        local human=""
+        if command -v numfmt >/dev/null 2>&1; then
+            human=$(numfmt --to=iec --suffix=B "$reclaimed_bytes" 2>/dev/null)
+        fi
+        [[ -z "$human" ]] && human="$((reclaimed_bytes / 1024 / 1024)) MB"
+        print_success "Reclaimed $human from legacy duplicate model dirs (kodachi-ai/models, rust/kodachi-ai/models)"
+    fi
+}
+
+prune_legacy_compat_model_dirs
 
 # Copy DNSCrypt server list cache (used by kodachi-deps-install.sh as offline fallback)
 if [[ -d "$EXTRACT_DIR/dnscrypt-cache" ]]; then

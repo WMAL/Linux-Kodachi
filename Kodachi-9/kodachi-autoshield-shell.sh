@@ -28,7 +28,7 @@ set -o pipefail
 # - Website: https://www.kodachi.cloud
 # - GitHub: https://github.com/WMAL
 # - Discord: https://discord.gg/KEFErEx
-# - LinkedIn: https://www.linkedin.com/in/warith1977
+# - LinkedIn: https://om.linkedin.com/in/warith1977
 # - X (Twitter): https://x.com/warith2020
 #
 # Installation:
@@ -67,8 +67,8 @@ done
 # Source: main-info.json (terminal section)
 # DO NOT EDIT MANUALLY - Run pack-kodachi.sh to update these values
 BUILD_VERSION="9.0.1"  # From: terminal.main_version
-BUILD_NUM="146"          # From: terminal.build_number (auto-incremented)
-BUILD_DATE="2026-05-19"  # From: terminal.last_build_date
+BUILD_NUM="161"          # From: terminal.build_number (auto-incremented)
+BUILD_DATE="2026-05-20"  # From: terminal.last_build_date
 SCRIPT_VERSION="${BUILD_VERSION}.${BUILD_NUM}"
 
 # Color codes for compact display (optimized for black terminal)

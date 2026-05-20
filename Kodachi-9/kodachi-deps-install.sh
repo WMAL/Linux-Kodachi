@@ -39,7 +39,7 @@
 # - Website: https://www.kodachi.cloud
 # - GitHub: https://github.com/WMAL
 # - Discord: https://discord.gg/KEFErEx
-# - LinkedIn: https://www.linkedin.com/in/warith1977
+# - LinkedIn: https://om.linkedin.com/in/warith1977
 # - X (Twitter): https://x.com/warith2020
 #
 # Usage:
@@ -3415,6 +3415,18 @@ if [[ ! -d "/opt/kodachi/dashboard/hooks" ]]; then
     mkdir -p /opt/kodachi/dashboard/hooks
 fi
 mkdir -p /opt/kodachi/dashboard/hooks/others
+# Pre-create runtime data tree so first-boot tools (conky-status → ip-fetch,
+# health-control, etc.) don't race the chown below. ip-fetch in particular
+# was caught failing with "Failed to create cache directory" / "Failed to
+# create IPs cache directory" on early-boot debug-collector runs because
+# its create_dir_all call landed before /opt/kodachi/dashboard/hooks was
+# writable by the desktop user. Creating these here lets the single chown
+# below cover them in one walk. Permissions tighten to 0700 at runtime via
+# ip-fetch's set_permissions call (see dashboard/hooks/rust/ip-fetch/src/cache/mod.rs).
+mkdir -p /opt/kodachi/dashboard/hooks/cache/ip-fetch/ips
+mkdir -p /opt/kodachi/dashboard/hooks/logs
+mkdir -p /opt/kodachi/dashboard/hooks/results
+mkdir -p /opt/kodachi/dashboard/hooks/tmp
 if [[ -n "$SUDO_USER" ]]; then
     chown -R "$(id -u "$SUDO_USER"):$(id -g "$SUDO_USER")" /opt/kodachi
 fi

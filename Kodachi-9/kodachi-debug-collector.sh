@@ -35,7 +35,7 @@
 # - Website: https://www.kodachi.cloud
 # - GitHub: https://github.com/WMAL
 # - Discord: https://discord.gg/KEFErEx
-# - LinkedIn: https://www.linkedin.com/in/warith1977
+# - LinkedIn: https://om.linkedin.com/in/warith1977
 # - X (Twitter): https://x.com/warith2020
 #
 # Usage:
