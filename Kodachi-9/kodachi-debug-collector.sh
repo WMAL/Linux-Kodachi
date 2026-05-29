@@ -25,10 +25,10 @@
 #
 # Privacy:
 # This script does NOT collect any personal data, browsing history,
-# IP addresses, WiFi passwords, home folder contents, or any data
-# that could compromise user privacy. Only system/service diagnostics
-# are collected. WiFi credentials are automatically redacted from
-# NetworkManager configs.
+# IP addresses, MAC addresses, WiFi passwords, home folder contents,
+# or any data that could compromise user privacy. Only system/service
+# diagnostics are collected. Network identifiers and WiFi credentials
+# are automatically redacted before packaging.
 #
 # Links:
 # - Website: https://www.digi77.com
@@ -157,11 +157,17 @@ safe_exec() {
     output=$(eval "$cmd" 2>&1)
     rc=$?
 
+    local redacted_cmd
+    redacted_cmd=$(printf '%s\n' "$cmd" | redact_secrets)
+    if [[ -n "$output" ]]; then
+        output=$(printf '%s\n' "$output" | redact_secrets)
+    fi
+
     if [[ $rc -ne 0 ]]; then
-        echo "[EXIT CODE: $rc] Command failed: $cmd" >> "$output_file"
+        echo "[EXIT CODE: $rc] Command failed: $redacted_cmd" >> "$output_file"
         [[ -n "$output" ]] && echo "$output" >> "$output_file"
     elif [[ -z "$output" ]]; then
-        echo "[EXIT CODE: 0] Command produced no output: $cmd" >> "$output_file"
+        echo "[EXIT CODE: 0] Command produced no output: $redacted_cmd" >> "$output_file"
     else
         echo "$output" >> "$output_file"
     fi
@@ -182,11 +188,11 @@ safe_copy() {
     file_size=$(stat -c%s "$src" 2>/dev/null || echo 0)
 
     if [[ $file_size -gt $max_size ]]; then
-        # Truncate large files
-        tail -c 50M "$src" > "${dest}/$(basename "$src").truncated" 2>/dev/null || true
-        echo "Original file size: $file_size bytes (truncated to last 50MB)" >> "${dest}/$(basename "$src").truncated"
+        # Truncate large files, then redact private identifiers/secrets.
+        tail -c 50M "$src" 2>/dev/null | redact_secrets > "${dest}/$(basename "$src").truncated" 2>/dev/null || true
+        echo "Original file size: $file_size bytes (truncated to last 50MB, redacted)" >> "${dest}/$(basename "$src").truncated"
     else
-        cp "$src" "$dest/" 2>/dev/null || echo "Failed to copy: $src" > "${dest}/$(basename "$src").error"
+        redact_secrets < "$src" > "${dest}/$(basename "$src")" 2>/dev/null || echo "Failed to copy: $src" > "${dest}/$(basename "$src").error"
     fi
 }
 
@@ -254,6 +260,11 @@ redact_secrets() {
         # credentials are already covered by the userinfo rule above and the
         # key-name rule (token=/key=/password= in query strings).
         s#((ss|ssr|vmess|vless|trojan|hysteria2?|hy2|tuic|socks5?)://)[^[:space:]"<>]+#\1[REDACTED]#Ig
+        # Network identifiers are private in support bundles. Redact them
+        # everywhere, including logs, command output, routes and copied files.
+        s/([0-9]{1,3}\.){3}[0-9]{1,3}/[REDACTED-IPV4]/g
+        s/([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}/[REDACTED-MAC]/Ig
+        s/([[:xdigit:]]{0,4}:){3,7}[[:xdigit:]]{0,4}(%[A-Za-z0-9_.-]+)?/[REDACTED-IPV6]/Ig
     '
 }
 
@@ -316,11 +327,17 @@ safe_exec_user() {
         rc=$?
     fi
 
+    local redacted_cmd
+    redacted_cmd=$(printf '%s\n' "$cmd" | redact_secrets)
+    if [[ -n "$output" ]]; then
+        output=$(printf '%s\n' "$output" | redact_secrets)
+    fi
+
     if [[ $rc -ne 0 ]]; then
-        echo "[EXIT CODE: $rc] Command failed: $cmd" >> "$output_file"
+        echo "[EXIT CODE: $rc] Command failed: $redacted_cmd" >> "$output_file"
         [[ -n "$output" ]] && echo "$output" >> "$output_file"
     elif [[ -z "$output" ]]; then
-        echo "[EXIT CODE: 0] Command produced no output: $cmd" >> "$output_file"
+        echo "[EXIT CODE: 0] Command produced no output: $redacted_cmd" >> "$output_file"
     else
         echo "$output" >> "$output_file"
     fi
@@ -343,11 +360,11 @@ safe_copy_user() {
     fi
 
     if [[ "$(id -u)" == "0" ]]; then
-        # Use sudo cat to preserve permissions / handle non-root home dirs.
-        sudo -u "$REAL_USER" cat "$src" > "${dest}/$(basename "$src")" 2>/dev/null \
+        # Use sudo cat to preserve permissions / handle non-root home dirs, then redact.
+        sudo -u "$REAL_USER" cat "$src" 2>/dev/null | redact_secrets > "${dest}/$(basename "$src")" 2>/dev/null \
             || echo "Failed to copy (perm denied): $src" > "${dest}/$(basename "$src").error"
     else
-        cp "$src" "$dest/" 2>/dev/null \
+        redact_secrets < "$src" > "${dest}/$(basename "$src")" 2>/dev/null \
             || echo "Failed to copy: $src" > "${dest}/$(basename "$src").error"
     fi
 }
@@ -2238,6 +2255,27 @@ mkdir -p "$COLLECTION_DIR/00-metadata"
     df -h "$DESKTOP_DIR"
     echo ""
 } > "$COLLECTION_DIR/00-metadata/collection-info.txt" 2>&1
+
+
+# Final privacy sweep: some collection paths intentionally copy whole config
+# trees or generated summaries. Run every text-like file through the same
+# redactor immediately before archiving so no raw IP/MAC/secret can bypass
+# individual safe_copy/safe_exec call sites.
+final_redaction_sweep() {
+    local file tmp
+    while IFS= read -r -d '' file; do
+        [[ -f "$file" ]] || continue
+        if LC_ALL=C grep -Iq . "$file" 2>/dev/null; then
+            tmp="${file}.redact.$$"
+            if redact_secrets < "$file" > "$tmp" 2>/dev/null; then
+                cat "$tmp" > "$file" 2>/dev/null || true
+            fi
+            rm -f "$tmp" 2>/dev/null || true
+        fi
+    done < <(find "$COLLECTION_DIR" -type f -print0 2>/dev/null)
+}
+
+final_redaction_sweep
 
 # Collection tree
 tree "$COLLECTION_DIR" > "$COLLECTION_DIR/00-metadata/directory-tree.txt" 2>/dev/null || \

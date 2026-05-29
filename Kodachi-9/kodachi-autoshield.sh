@@ -83,8 +83,8 @@ fi
 # Source: main-info.json (terminal section)
 # DO NOT EDIT MANUALLY - Run pack-kodachi.sh to update these values
 BUILD_VERSION="9.0.1"  # From: terminal.main_version
-BUILD_NUM="161"          # From: terminal.build_number (auto-incremented)
-BUILD_DATE="2026-05-20"  # From: terminal.last_build_date
+BUILD_NUM="166"          # From: terminal.build_number (auto-incremented)
+BUILD_DATE="2026-05-28"  # From: terminal.last_build_date
 SCRIPT_VERSION="${BUILD_VERSION}.${BUILD_NUM}"
 
 # Color codes for compact display (optimized for black terminal)
@@ -863,12 +863,14 @@ authenticate() {
 setup_dnscrypt() {
     # Check if this is first run - only force configuration on first boot
     # Detect hooks directory silently (function prints output, we just need the path)
+    # Use a function-local copy of HOOKS_DIR so we never accidentally clobber
+    # the global one set by detect_hooks_dir for the rest of the script.
     detect_hooks_dir >/dev/null 2>&1
-    local HOOKS_DIR="${HOOKS_DIR:-${KODACHI_HOOKS_DIR:-${KODACHI_HOME:-/opt/kodachi/dashboard/hooks}}}"
-    if ! verify_hooks_structure "$HOOKS_DIR"; then
-        HOOKS_DIR="$REAL_HOME/dashboard/hooks"
+    local _hooks_dir="${HOOKS_DIR:-${KODACHI_HOOKS_DIR:-${KODACHI_HOME:-/opt/kodachi/dashboard/hooks}}}"
+    if ! verify_hooks_structure "$_hooks_dir"; then
+        _hooks_dir="$REAL_HOME/dashboard/hooks"
     fi
-    local DNS_MARKER="$HOOKS_DIR/results/dns-configured"
+    local DNS_MARKER="$_hooks_dir/results/dns-configured"
     local IS_FIRST_RUN=false
 
     if [ ! -f "$DNS_MARKER" ] || [ "$FORCE_DNS_SETUP" = "true" ]; then
@@ -1584,8 +1586,21 @@ fetch_system_info() {
         ROUTING_JSON=$(run_command routing-switch 50 status --json 2>/dev/null)
         CONNECTED=$(parse_json "$ROUTING_JSON" ".data.connected" || echo "false")
         PROTOCOL=$(parse_json "$ROUTING_JSON" ".data.protocol" || echo "none")
+        # 2026-05-24: routing-switch status now also carries provider_name
+        # (Mullvad / IVPN / NordVPN / etc.) and connection_source
+        # (kodachi | provider:<id>) when the active tunnel was raised via
+        # the providers panel. Surface the source so this script's status
+        # line shows "wireguard via Mullvad" instead of just "wireguard".
+        VPN_SOURCE=$(parse_json "$ROUTING_JSON" ".data.connection_source" || echo "")
+        VPN_PROVIDER_NAME=$(parse_json "$ROUTING_JSON" ".data.provider_name" || echo "")
         if [ "$CONNECTED" = "true" ]; then
-            NET_STATUS="${GREEN}${PROTOCOL}${NC}"  # Bright green for VPN
+            if [ -n "$VPN_PROVIDER_NAME" ] && [ "$VPN_PROVIDER_NAME" != "null" ]; then
+                NET_STATUS="${GREEN}${PROTOCOL} via ${VPN_PROVIDER_NAME}${NC}"
+            elif [ "$VPN_SOURCE" = "kodachi" ]; then
+                NET_STATUS="${GREEN}${PROTOCOL} (Kodachi)${NC}"
+            else
+                NET_STATUS="${GREEN}${PROTOCOL}${NC}"  # Bright green for VPN
+            fi
         else
             NET_STATUS="${RED}No VPN${NC}"
         fi
@@ -2204,6 +2219,11 @@ execute_profile() {
             read -r refresh_choice
             ;;
         19)
+            # NOTE: reboot and shutdown intentionally bypass is_allowed_run_command
+            # and call sudo -n directly. The allowlist gates the Kodachi service
+            # binaries (health-control, dns-switch, etc); system power verbs are
+            # standard /sbin tools and are gated by the y/N confirmation above.
+            # Do not "fix" by adding them to is_allowed_run_command.
             echo -e "\n${YELLOW}Reboot System${NC}"
             echo -ne "${RED}Are you sure you want to reboot? [y/N]:${NC} "
             read -r confirm
@@ -2216,6 +2236,7 @@ execute_profile() {
             fi
             ;;
         20)
+            # See note on case 19: power verbs intentionally bypass the allowlist.
             echo -e "\n${YELLOW}Shutdown System${NC}"
             echo -ne "${RED}Are you sure you want to shutdown? [y/N]:${NC} "
             read -r confirm
@@ -2661,68 +2682,68 @@ main() {
         # Track if at least one sync succeeded
         any_sync_succeeded=false
 
-    # Method 1: ntpdig with time.cloudflare.com (PRIORITY - privacy-focused, most accurate)
-    if ! $any_sync_succeeded; then
-        if run_privileged_command ntpdig -S time.cloudflare.com >/dev/null 2>&1; then
-            any_sync_succeeded=true
-        fi
-    fi
-
-    # Method 2: ntpdig with pool.ntp.org (if Cloudflare fails)
-    if ! $any_sync_succeeded; then
-        if run_privileged_command ntpdig -S pool.ntp.org >/dev/null 2>&1; then
-            any_sync_succeeded=true
-        fi
-    fi
-
-    # Method 3: ntpdig with time.nist.gov (if both above fail)
-    if ! $any_sync_succeeded; then
-        if run_privileged_command ntpdig -S time.nist.gov >/dev/null 2>&1; then
-            any_sync_succeeded=true
-        fi
-    fi
-
-    # Method 4: timedatectl (if all ntpdig fail)
-    if ! $any_sync_succeeded; then
-        if run_privileged_command timedatectl set-ntp true 2>/dev/null; then
-            any_sync_succeeded=true
-        fi
-    fi
-
-    # Method 5: ntpdate with pool.ntp.org (legacy fallback)
-    if ! $any_sync_succeeded; then
-        if command -v ntpdate >/dev/null 2>&1; then
-            if run_privileged_command ntpdate pool.ntp.org >/dev/null 2>&1; then
-                any_sync_succeeded=true
-            fi
-        elif [ -x /usr/sbin/ntpdate ]; then
-            if run_privileged_command /usr/sbin/ntpdate pool.ntp.org >/dev/null 2>&1; then
+        # Method 1: ntpdig with time.cloudflare.com (PRIORITY - privacy-focused, most accurate)
+        if ! $any_sync_succeeded; then
+            if run_privileged_command ntpdig -S time.cloudflare.com >/dev/null 2>&1; then
                 any_sync_succeeded=true
             fi
         fi
-    fi
 
-    # Method 6: ntpdate with time.nist.gov (legacy fallback)
-    if ! $any_sync_succeeded; then
-        if command -v ntpdate >/dev/null 2>&1; then
-            if run_privileged_command ntpdate time.nist.gov >/dev/null 2>&1; then
-                any_sync_succeeded=true
-            fi
-        elif [ -x /usr/sbin/ntpdate ]; then
-            if run_privileged_command /usr/sbin/ntpdate time.nist.gov >/dev/null 2>&1; then
+        # Method 2: ntpdig with pool.ntp.org (if Cloudflare fails)
+        if ! $any_sync_succeeded; then
+            if run_privileged_command ntpdig -S pool.ntp.org >/dev/null 2>&1; then
                 any_sync_succeeded=true
             fi
         fi
-    fi
 
-    # Method 7: ntpd one-shot sync (final fallback)
-    if ! $any_sync_succeeded; then
-        if [ -x /usr/sbin/ntpd ]; then
-            if run_privileged_command /usr/sbin/ntpd -gq >/dev/null 2>&1; then
+        # Method 3: ntpdig with time.nist.gov (if both above fail)
+        if ! $any_sync_succeeded; then
+            if run_privileged_command ntpdig -S time.nist.gov >/dev/null 2>&1; then
                 any_sync_succeeded=true
             fi
         fi
-    fi
+
+        # Method 4: timedatectl (if all ntpdig fail)
+        if ! $any_sync_succeeded; then
+            if run_privileged_command timedatectl set-ntp true 2>/dev/null; then
+                any_sync_succeeded=true
+            fi
+        fi
+
+        # Method 5: ntpdate with pool.ntp.org (legacy fallback)
+        if ! $any_sync_succeeded; then
+            if command -v ntpdate >/dev/null 2>&1; then
+                if run_privileged_command ntpdate pool.ntp.org >/dev/null 2>&1; then
+                    any_sync_succeeded=true
+                fi
+            elif [ -x /usr/sbin/ntpdate ]; then
+                if run_privileged_command /usr/sbin/ntpdate pool.ntp.org >/dev/null 2>&1; then
+                    any_sync_succeeded=true
+                fi
+            fi
+        fi
+
+        # Method 6: ntpdate with time.nist.gov (legacy fallback)
+        if ! $any_sync_succeeded; then
+            if command -v ntpdate >/dev/null 2>&1; then
+                if run_privileged_command ntpdate time.nist.gov >/dev/null 2>&1; then
+                    any_sync_succeeded=true
+                fi
+            elif [ -x /usr/sbin/ntpdate ]; then
+                if run_privileged_command /usr/sbin/ntpdate time.nist.gov >/dev/null 2>&1; then
+                    any_sync_succeeded=true
+                fi
+            fi
+        fi
+
+        # Method 7: ntpd one-shot sync (final fallback)
+        if ! $any_sync_succeeded; then
+            if [ -x /usr/sbin/ntpd ]; then
+                if run_privileged_command /usr/sbin/ntpd -gq >/dev/null 2>&1; then
+                    any_sync_succeeded=true
+                fi
+            fi
+        fi
 
         # Report accurate status based on actual results
         end_timer

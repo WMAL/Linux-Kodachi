@@ -167,6 +167,88 @@ resolve_user_home() {
     echo "$home"
 }
 
+enable_xfce_compositor_for_user() {
+    # Conky panels declare own_window_argb_value 0 (transparent), but that
+    # only renders see-through when a compositor is active. XFCE's default
+    # use_compositing=false on fresh installs leaves conky painted solid
+    # black. We enable the xfwm4 compositor for each human user by writing
+    # the per-user xfconf XML directly (works even before any xfce session
+    # has been opened, unlike xfconf-query which needs a live D-Bus).
+    local user_home="${1:-}"
+    local user="${2:-}"
+    [[ -z "$user_home" || ! -d "$user_home" ]] && return 0
+
+    # Only relevant where XFCE is installed.
+    if ! command -v xfwm4 >/dev/null 2>&1 && [[ ! -x /usr/bin/xfwm4 ]]; then
+        return 0
+    fi
+
+    local xfconf_dir="$user_home/.config/xfce4/xfconf/xfce-perchannel-xml"
+    local xfconf_file="$xfconf_dir/xfwm4.xml"
+
+    # Smart-skip: if the compositor is already enabled in this user's
+    # xfwm4.xml, do not rewrite the file or try to live-reload xfconfd.
+    # Rewriting on top of an already-correct configuration can race with
+    # the running xfconfd's in-memory state and leave the live session
+    # with stale use_compositing=false even though the file says true.
+    # The binary installer (running as the user) sets the canonical state;
+    # deps installer just verifies and skips when binary already did the work.
+    if [[ -f "$xfconf_file" ]] \
+       && grep -q '<property name="use_compositing"[^/]*value="true"' "$xfconf_file"; then
+        return 0
+    fi
+
+    mkdir -p "$xfconf_dir" 2>/dev/null || return 0
+
+    if [[ ! -f "$xfconf_file" ]]; then
+        cat > "$xfconf_file" <<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+
+<channel name="xfwm4" version="1.0">
+  <property name="general" type="empty">
+    <property name="use_compositing" type="bool" value="true"/>
+  </property>
+</channel>
+XML
+    else
+        # File exists — patch or insert the use_compositing property.
+        if grep -q 'name="use_compositing"' "$xfconf_file"; then
+            sed -i 's|\(<property name="use_compositing"[^/]*value="\)false\("[^/]*/>\)|\1true\2|' "$xfconf_file"
+        elif grep -q '<property name="general"[^>]*/>' "$xfconf_file"; then
+            # Self-closing general tag with no children — expand into open/close
+            # form and insert use_compositing as the new child. Without this branch,
+            # the open-tag branch below would match the self-closing form and insert
+            # use_compositing as a SIBLING of general (still inside channel), so
+            # xfconf reads /general/use_compositing as "not found".
+            sed -i 's|\(<property name="general"[^/]*\)/>|\1>\n    <property name="use_compositing" type="bool" value="true"/>\n  </property>|' "$xfconf_file"
+        elif grep -q '<property name="general"' "$xfconf_file"; then
+            sed -i 's|\(<property name="general"[^>]*>\)|\1\n    <property name="use_compositing" type="bool" value="true"/>|' "$xfconf_file"
+        else
+            sed -i 's|</channel>|  <property name="general" type="empty">\n    <property name="use_compositing" type="bool" value="true"/>\n  </property>\n</channel>|' "$xfconf_file"
+        fi
+    fi
+
+    if [[ -n "$user" ]] && id -u "$user" >/dev/null 2>&1; then
+        chown -R "$user":"$(id -gn "$user" 2>/dev/null || echo "$user")" \
+            "$user_home/.config/xfce4" 2>/dev/null || true
+    fi
+
+    # If an xfce session is live, push the value via xfconf-query too so
+    # the change takes effect without re-login.
+    if [[ -n "$user" ]] && command -v sudo >/dev/null 2>&1 \
+       && command -v xfconf-query >/dev/null 2>&1; then
+        local display_var=""
+        for display_var in :0.0 :0 :1; do
+            if sudo -n -u "$user" DISPLAY="$display_var" xfconf-query -c xfwm4 \
+                   -p /general/use_compositing -s true >/dev/null 2>&1; then
+                break
+            fi
+        done
+    fi
+
+    return 0
+}
+
 list_system_user_homes() {
     getent passwd | awk -F: '{print $6}' | while IFS= read -r home; do
         [[ -n "$home" && -d "$home" ]] || continue
@@ -877,11 +959,33 @@ configure_kodachi_sudoers() {
     # Create sudoers.d directory if it doesn't exist
     mkdir -p /etc/sudoers.d
 
-    # Backup existing sudoers file
+    # AUDIT 2026-05-24: keep only ONE backup of the previous sudoers file
+    # instead of one-per-install (a freshly built live ISO accumulated
+    # kodachi-binaries.backup.1779625167 + .1779625248 within minutes).
+    # /etc/sudoers.d is sourced by every sudo invocation, so cruft there
+    # is mildly security-sensitive and worth pruning.
+    #
+    # AUDIT 2026-05-27: during live-build chroot the previous sudoers file
+    # has no value (it is the just-shipped baseline), and the backup file
+    # ends up shipped INSIDE the ISO at /etc/sudoers.d/kodachi-binaries.backup.<epoch>
+    # — sudo loads every file in that dir regardless of name, so the
+    # baseline rules are loaded twice on every fresh boot. Skip the backup
+    # when running inside the build chroot (detected via env vars set by
+    # live-build / offline-package shim hook OR absence of a real package
+    # manager state file). Always prune stale backups regardless.
     local sudoers_file="/etc/sudoers.d/kodachi-binaries"
-    if [[ -f "$sudoers_file" ]]; then
-        print_info "Backing up existing sudoers file..."
+    find /etc/sudoers.d -maxdepth 1 -type f -name 'kodachi-binaries.backup.*' \
+        -delete 2>/dev/null || true
+    local _in_build_chroot=0
+    if [[ -n "${KODACHI_LIVE_BUILD:-}" ]] || [[ -n "${LB_CHROOT:-}" ]] || \
+       [[ -f /.live-build-stamp ]] || [[ -f /var/lib/dpkg/info/.live-build-stamp ]]; then
+        _in_build_chroot=1
+    fi
+    if [[ -f "$sudoers_file" && "$_in_build_chroot" -eq 0 ]]; then
+        print_info "Backing up existing sudoers file (keeping latest only)..."
         cp "$sudoers_file" "${sudoers_file}.backup.$(date +%s)"
+    elif [[ "$_in_build_chroot" -eq 1 ]]; then
+        print_info "Live-build chroot detected — skipping sudoers backup creation"
     fi
 
     # Create the kodachi-binaries sudoers file with ALL binaries for BOTH paths
@@ -987,10 +1091,14 @@ HEADER
 %sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t * -S
 %sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t * -S *
 %sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t * -L *
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables-save
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables-save -t *
 %sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables -S
 %sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables -S *
 %sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables -t * -S
 %sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables -t * -L *
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables-save
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables-save -t *
 
 # ============================================================
 # WireGuard Status (read-only monitoring)
@@ -1115,16 +1223,26 @@ configure_emergency_shortcut_input_access() {
     fi
 }
 
-# Ensure model paths are compatible across development and production layouts.
-# Dev layout:  <hooks>/rust/kodachi-ai/models
-# Prod layout: <hooks>/models
+# Ensure model paths are compatible across development LAYOUTS ONLY.
+# Dev layout:  <hooks>/rust/kodachi-ai/models    (binaries run from target/release)
+# Prod layout: <hooks>/models                     (binaries deployed flat to /opt/kodachi)
+#
+# Audited 2026-05-20: ai-engine::resolve_models_dir candidates do NOT include
+# rust/kodachi-ai/models — production binaries at /opt/kodachi/dashboard/hooks/
+# resolve <hooks>/models directly via base_dir.join("models"). Creating the
+# compat symlink in /opt/kodachi/ ADDS the rust/kodachi-ai/ tree to the live
+# ISO for no functional reason. So /opt/kodachi/dashboard/hooks is intentionally
+# EXCLUDED from this loop. Dev-tree paths (~/k900, ~/Desktop, ~/dashboard) keep
+# the symlink because binaries run from target/release/ walk parent dirs and
+# benefit from the hardlinked rust/kodachi-ai/models sibling.
 ensure_ai_model_path_compatibility() {
     local real_user_home="${1:-$HOME}"
     local hooks_roots=(
         "$real_user_home/dashboard/hooks"
         "$real_user_home/Desktop/dashboard/hooks"
         "$real_user_home/k900/dashboard/hooks"
-        "/opt/kodachi/dashboard/hooks"
+        # /opt/kodachi/dashboard/hooks intentionally NOT in this list.
+        # See header comment above for the rationale.
     )
     local fixed_count=0
     local hooks_root=""
@@ -1287,6 +1405,29 @@ install_kodachi_conky_for_user() {
         real_user_home=$(resolve_user_home "$actual_user")
     fi
 
+    # Smart-skip: if kodachi-binary-install.sh (or a previous deps run)
+    # already deployed conky configs AND the per-user systemd watchdog
+    # is enabled, do not re-deploy. Redeploying over a running conky
+    # session was breaking the user's font cache + compositor state on
+    # test PCs where binary installer correctly set them up first. The
+    # binary installer is the canonical owner; deps acts as a fallback
+    # only when the user runs deps without binary.
+    #
+    # Enabled-check: we use the on-disk symlink under default.target.wants
+    # rather than `systemctl --user is-enabled`, because the latter needs a
+    # live user D-Bus and XDG_RUNTIME_DIR — neither of which is threaded
+    # through `runuser` from a sudo-root deps-install context. The symlink
+    # IS what `systemctl --user enable` creates; root can read it; no bus
+    # required.
+    local _smart_conky_dir="$real_user_home/.config/kodachi/conky"
+    local _smart_user_systemd="$real_user_home/.config/systemd/user"
+    if [[ -f "$_smart_conky_dir/configs/conkyrc-focus-alert.conf" ]] \
+       && [[ -f "$_smart_user_systemd/conky-watchdog.service" ]] \
+       && [[ -L "$_smart_user_systemd/default.target.wants/conky-watchdog.service" ]]; then
+        print_info "Conky already fully configured for $actual_user (configs + watchdog wants-symlink present). Skipping deps-side setup."
+        return 0
+    fi
+
     local conky_install_dir="$real_user_home/.config/kodachi/conky"
     local conky_source=""
     local candidates=(
@@ -1397,15 +1538,17 @@ ExecStart=/bin/bash -c '\
     "%h/k900/dashboard/hooks/conky-status" \
     "%h/dashboard/hooks/conky-status" \
     /usr/local/bin/conky-status; do \
-    [ -x "$bin" ] && exec "$bin" snapshot --refresh --quiet 2>/dev/null; \
+    [ -x "$bin" ] && exec "$bin" snapshot --refresh --quiet --max-parallel 1 --timeout-ms 7000 2>/dev/null; \
   done; \
   exit 0'
-TimeoutSec=60
+TimeoutSec=130
+TimeoutStopSec=5
 StandardOutput=null
 StandardError=journal
 Nice=15
 IOSchedulingClass=idle
 KillMode=process
+SendSIGKILL=no
 # Memory guard: prevent snapshot refresh from starving the desktop session.
 MemoryHigh=200M
 MemoryMax=300M
@@ -1428,8 +1571,8 @@ Description=Kodachi Conky Snapshot Refresh Timer
 
 [Timer]
 OnActiveSec=240
-OnUnitActiveSec=90
-RandomizedDelaySec=15
+OnUnitActiveSec=120
+RandomizedDelaySec=30
 Persistent=false
 AccuracySec=1s
 
@@ -1649,6 +1792,21 @@ setup_session_helper_service() {
     local systemd_user_dir="$real_user_home/.config/systemd/user"
     local service_file="$systemd_user_dir/kodachi-session-helper.service"
     local wants_dir="$systemd_user_dir/default.target.wants"
+
+    # Smart-skip: if kodachi-binary-install.sh already deployed the
+    # service unit AND enabled it for this user, do not rewrite the file
+    # or daemon-reload. Re-deploying a service that's already wired by
+    # the binary installer just re-triggers daemon-reload + restart for
+    # no behavioral change. Binary installer is the canonical owner.
+    #
+    # Enabled-check: see install_kodachi_conky_for_user for the same
+    # symlink-vs-systemctl rationale. systemctl --user via runuser fails
+    # under sudo-root with no D-Bus; the wants symlink is authoritative.
+    if [[ -f "$service_file" ]] \
+       && [[ -L "$wants_dir/kodachi-session-helper.service" ]]; then
+        print_info "Session helper service already deployed + enabled for $actual_user. Skipping."
+        return 0
+    fi
     local legacy_wants_link="$systemd_user_dir/graphical-session.target.wants/kodachi-session-helper.service"
     local dropin_dir="$systemd_user_dir/kodachi-session-helper.service.d"
     local backup_suffix
@@ -1747,6 +1905,24 @@ setup_dashboard_autostart() {
     local autostart_dir="$real_user_home/.config/autostart"
     local autostart_file="$autostart_dir/kodachi-dashboard.desktop"
 
+    # Smart-skip: if kodachi-binary-install.sh already wrote the autostart
+    # entry pointing at the canonical launcher, do not rewrite. The binary
+    # installer is the canonical owner of the dashboard autostart (the
+    # dashboard IS a Kodachi binary). Deps acts as fallback only.
+    #
+    # We match the literal canonical Exec line that both binary installer
+    # (kodachi-binary-install.sh:2305) and deps installer itself (line 2032)
+    # write — `Exec=/usr/local/bin/kodachi-dashboard-launcher`. Using
+    # parse-then-test-x failed open when the launcher script was missing
+    # at check time even though the autostart entry was canonical; literal
+    # match avoids that parsing failure mode entirely and sidesteps the
+    # quoted-path edge case.
+    if [[ -f "$autostart_file" ]] \
+       && grep -q '^Exec=/usr/local/bin/kodachi-dashboard-launcher$' "$autostart_file"; then
+        print_info "Dashboard autostart already configured for $actual_user (canonical Exec line present). Skipping."
+        return 0
+    fi
+
     # Detect the kodachi-dashboard binary location.
     # IMPORTANT: We MUST use the full absolute path in the Exec= line because
     # the hooks directory is NOT guaranteed to be in the user's $PATH at login time.
@@ -1774,22 +1950,27 @@ setup_dashboard_autostart() {
     fi
 
     # Create the launcher script if missing, or refresh it when an older copy
-    # (pre-seeded by the ISO or a prior install) lacks the NVIDIA GPU-driver
-    # detection. Mirrors the autostart .desktop "outdated -> replace" logic.
+    # (pre-seeded by the ISO or a prior install) lacks the broadened
+    # GPU-driver detection (nouveau / legacy radeon + NVIDIA proprietary).
+    # Refresh marker is GPU_NEEDS_FALLBACK — older launchers used the
+    # narrower NVIDIA_PROPRIETARY token and get rewritten on next install.
     local launcher_script="/usr/local/bin/kodachi-dashboard-launcher"
-    if [[ ! -f "$launcher_script" ]] || ! grep -q 'NVIDIA_PROPRIETARY' "$launcher_script" 2>/dev/null || ! grep -q 'DASHBOARD_BIN=' "$launcher_script" 2>/dev/null; then
+    if [[ ! -f "$launcher_script" ]] || ! grep -q 'GPU_NEEDS_FALLBACK' "$launcher_script" 2>/dev/null || ! grep -q 'DASHBOARD_BIN=' "$launcher_script" 2>/dev/null; then
         print_info "Installing/refreshing dashboard launcher script..."
         cat > "$launcher_script" << 'LAUNCHER_EOF'
 #!/bin/bash
 # Kodachi Dashboard Launcher with VM + GPU-driver detection
-# Auto-detects VM environments and the NVIDIA proprietary driver,
-# applying the WebKitGTK software-render fallback and --no-gpu so the
-# dashboard does not come up as a blank window.
+# Auto-detects VM environments and GPU drivers that need the WebKitGTK
+# software-render fallback so the dashboard does not come up as a blank
+# window. Covers: NVIDIA proprietary, Nouveau (Mesa, GTX Kepler/Maxwell
+# era), and legacy radeon (pre-amdgpu).
 
 VM_DETECTED=false
-NVIDIA_PROPRIETARY=false
+GPU_NEEDS_FALLBACK=false
+GPU_IS_MESA_DRIVER=false
+GPU_IS_NVIDIA_PROPRIETARY=false
 
-# Check for VM indicators
+# VM detection
 if [ -f /sys/class/dmi/id/sys_vendor ]; then
     vendor=$(cat /sys/class/dmi/id/sys_vendor 2>/dev/null | tr '[:upper:]' '[:lower:]')
     case "$vendor" in
@@ -1808,22 +1989,44 @@ if [ -f /sys/class/dmi/id/product_name ]; then
     esac
 fi
 
-# NVIDIA proprietary driver (nouveau does NOT create these)
-if [ -f /proc/driver/nvidia/version ]; then
-    NVIDIA_PROPRIETARY=true
-elif lsmod 2>/dev/null | grep -qE '^nvidia[[:space:]]'; then
-    NVIDIA_PROPRIETARY=true
+# 1. NVIDIA proprietary driver
+if [ -f /proc/driver/nvidia/version ] || \
+   lsmod 2>/dev/null | grep -qE '^nvidia[[:space:]]'; then
+    GPU_NEEDS_FALLBACK=true
+    GPU_IS_NVIDIA_PROPRIETARY=true
 fi
 
-if [ "$NVIDIA_PROPRIETARY" = "true" ]; then
+# 2. Nouveau (open-source NVIDIA, Mesa) — catches older NVIDIA chips
+#    (e.g. GTX 770 / Kepler) whose Nouveau GBM/EGL silently breaks
+#    WebKitGTK DMABUF init, producing a black dashboard window.
+if lsmod 2>/dev/null | grep -qE '^nouveau[[:space:]]'; then
+    GPU_NEEDS_FALLBACK=true
+    GPU_IS_MESA_DRIVER=true
+fi
+
+# 3. Legacy AMD via radeon module (pre-amdgpu, GCN1 and earlier)
+if lsmod 2>/dev/null | grep -qE '^radeon[[:space:]]' && \
+   ! lsmod 2>/dev/null | grep -qE '^amdgpu[[:space:]]'; then
+    GPU_NEEDS_FALLBACK=true
+    GPU_IS_MESA_DRIVER=true
+fi
+
+if [ "$GPU_NEEDS_FALLBACK" = "true" ]; then
     export WEBKIT_DISABLE_DMABUF_RENDERER=1
     export WEBKIT_DISABLE_COMPOSITING_MODE=1
 fi
 
-# Resolve the dashboard binary at runtime. global-launcher normally
-# symlinks it to /usr/local/bin/kodachi-dashboard, but that symlink is
-# absent if global-launcher's deploy step never ran. Fall back across the
-# known install locations so the launcher never dies with "No such file".
+# LIBGL_ALWAYS_SOFTWARE is Mesa-only — NVIDIA proprietary GL ignores it.
+if [ "$GPU_IS_MESA_DRIVER" = "true" ]; then
+    export LIBGL_ALWAYS_SOFTWARE=1
+fi
+
+# NVIDIA proprietary Wayland explicit-sync can crash WebKitGTK.
+if [ "$GPU_IS_NVIDIA_PROPRIETARY" = "true" ]; then
+    export __NV_DISABLE_EXPLICIT_SYNC=1
+fi
+
+# Resolve dashboard binary at runtime across the known install locations.
 DASHBOARD_BIN=""
 for _cand in /usr/local/bin/kodachi-dashboard \
              /opt/kodachi/dashboard/hooks/kodachi-dashboard \
@@ -1838,8 +2041,7 @@ if [ -z "$DASHBOARD_BIN" ]; then
     exit 1
 fi
 
-# Launch dashboard with appropriate flags
-if [ "$VM_DETECTED" = "true" ] || [ "$NVIDIA_PROPRIETARY" = "true" ]; then
+if [ "$VM_DETECTED" = "true" ] || [ "$GPU_NEEDS_FALLBACK" = "true" ]; then
     exec "$DASHBOARD_BIN" --no-gpu "$@"
 else
     exec "$DASHBOARD_BIN" "$@"
@@ -2519,7 +2721,7 @@ MONITORING_PACKAGES="btop iftop nethogs ncdu nload iperf3 speedtest-cli"
 
 # GUI-only packages - only installed on systems with desktop environments.
 # Includes the runtime packages required by Kodachi rofi menus on installed systems.
-GUI_PACKAGES="bleachbit kitty fontconfig fonts-dejavu fonts-noto-core fonts-noto-color-emoji fonts-liberation fonts-liberation2 conky-all alsa-utils pipewire pipewire-pulse pipewire-alsa wireplumber pulseaudio-utils libnotify-bin xclip xsel mpv xterm network-manager rofi xfce4-screenshooter xdotool xfce4-clipman xfce4-clipman-plugin copyq qalculate-gtk maim translate-shell python3 bc iproute2 iputils-ping traceroute speedtest-cli"
+GUI_PACKAGES="bleachbit kitty fontconfig fonts-dejavu fonts-noto-core fonts-noto-color-emoji fonts-liberation fonts-liberation2 ttf-mscorefonts-installer conky-all alsa-utils pipewire pipewire-pulse pipewire-alsa wireplumber pulseaudio-utils libnotify-bin xclip xsel mpv xterm network-manager rofi xfce4-screenshooter xdotool xfce4-clipman xfce4-clipman-plugin copyq qalculate-gtk maim translate-shell python3 bc iproute2 iputils-ping traceroute speedtest-cli wsdd2"
 
 # Packages that require contrib/non-free repositories
 CONTRIB_PACKAGES="shadowsocks-v2ray-plugin v2ray"
@@ -3924,6 +4126,16 @@ install_packages() {
 
     export DEBIAN_FRONTEND=noninteractive
 
+    # Pre-accept Microsoft TrueType core fonts EULA so ttf-mscorefonts-installer
+    # can install non-interactively (used by conky panels for the Impact title font).
+    # No-op when that package is not in the install set.
+    if command -v debconf-set-selections >/dev/null 2>&1; then
+        echo 'msttcorefonts msttcorefonts/accepted-mscorefonts-eula select true' \
+            | debconf-set-selections 2>/dev/null || true
+        echo 'ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true' \
+            | debconf-set-selections 2>/dev/null || true
+    fi
+
     # Check and display status for each package
     for pkg in $packages; do
         # Special handling for dnsutils - check for actual commands
@@ -4199,25 +4411,67 @@ install_v2ray() {
         return 0
     fi
 
-    # First try apt if contrib/non-free are enabled
-    if check_contrib_nonfree; then
-        echo "Attempting to install v2ray from apt..."
-        if timeout 60 apt-get install -y -o DPkg::Use-Pty=0 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" < /dev/null v2ray 2>&1 | tail -5; then
-            if command -v v2ray &>/dev/null; then
-                print_success "v2ray installed via apt"
+    # Prefer the ISO-refreshed cache so clean builds do not install stale apt
+    # or legacy /opt/kodachi-offline-packages/proxies payloads.
+    local cache_zip="/opt/kodachi-offline-packages/external-proxy-binaries-cache/v2ray-linux-64.zip"
+    if [ -f "$cache_zip" ]; then
+        echo -e "${BLUE}[INFO]${NC} v2ray: installing from refreshed offline cache"
+        echo -e "${BLUE}[INFO]${NC}        $cache_zip ($(du -h "$cache_zip" 2>/dev/null | cut -f1))"
+        local tmpd
+        tmpd="$(mktemp -d /tmp/v2ray-cache-XXXXXX)"
+        if unzip -q "$cache_zip" -d "$tmpd"; then
+            if [ -f "$tmpd/v2ray" ]; then
+                install -d -m 0755 /usr/local/bin /usr/local/share/v2ray /etc/v2ray 2>/dev/null
+                install -m 0755 -o root -g root "$tmpd/v2ray" /usr/local/bin/v2ray 2>/dev/null || cp "$tmpd/v2ray" /usr/local/bin/v2ray
+                [ -f "$tmpd/v2ctl" ] && install -m 0755 -o root -g root "$tmpd/v2ctl" /usr/local/bin/v2ctl 2>/dev/null || true
+                cp "$tmpd"/*.dat /usr/local/share/v2ray/ 2>/dev/null || true
+                chmod 0755 /usr/local/bin/v2ray
+                rm -rf "$tmpd"
+                if /usr/local/bin/v2ray version >/dev/null 2>&1; then
+                    print_success "v2ray installed from cache: $(/usr/local/bin/v2ray version 2>/dev/null | head -1)"
+                    return 0
+                fi
+            fi
+        fi
+        rm -rf "$tmpd"
+        echo -e "${YELLOW}[WARN]${NC} v2ray cache install failed, falling back to apt/GitHub"
+    fi
+
+    # 2026-05-26 fix: pull latest v2ray-linux-64.zip directly from GitHub
+    # releases/latest. Previous path used fhs-install-v2ray which pins to a
+    # specific version (5.40.0 as of testing — 9 minor versions behind
+    # upstream 5.49.0). The apt path is even older. Match what install_xray
+    # already does for XTLS/Xray-core: always fetch latest at install time
+    # so a clean ISO build is never months behind upstream.
+    echo "Installing v2ray from GitHub releases/latest..."
+    local v2ray_url="https://github.com/v2fly/v2ray-core/releases/latest/download/v2ray-linux-64.zip"
+    local tmpd
+    tmpd="$(mktemp -d /tmp/v2ray-install-XXXXXX)"
+    if retry_download "$v2ray_url" "$tmpd/v2ray-linux-64.zip"; then
+        if unzip -q "$tmpd/v2ray-linux-64.zip" -d "$tmpd" 2>/dev/null; then
+            install -d -m 0755 /usr/local/bin /usr/local/share/v2ray /etc/v2ray 2>/dev/null
+            install -m 0755 -o root -g root "$tmpd/v2ray" /usr/local/bin/v2ray 2>/dev/null || cp "$tmpd/v2ray" /usr/local/bin/v2ray
+            [ -f "$tmpd/v2ctl" ] && install -m 0755 -o root -g root "$tmpd/v2ctl" /usr/local/bin/v2ctl 2>/dev/null || true
+            cp "$tmpd"/*.dat /usr/local/share/v2ray/ 2>/dev/null || true
+            chmod 0755 /usr/local/bin/v2ray
+            rm -rf "$tmpd"
+            if /usr/local/bin/v2ray version >/dev/null 2>&1; then
+                print_success "v2ray installed from upstream latest: $(/usr/local/bin/v2ray version 2>/dev/null | head -1)"
                 return 0
             fi
         fi
     fi
+    rm -rf "$tmpd"
 
-    # Fallback to GitHub installation
-    echo "Installing v2ray from GitHub..."
-    # Download and execute the v2ray installer script
+    # Last-resort fallbacks: pinned fhs-install-v2ray script, then apt.
+    # These are deliberately ordered AFTER the upstream-latest path so a
+    # build that has network reaches GitHub directly first.
+    echo -e "${YELLOW}[WARN]${NC} upstream-latest install failed; trying fhs-install-v2ray (may be older)"
     if retry_download "https://github.com/v2fly/fhs-install-v2ray/raw/master/install-release.sh" "/tmp/v2ray-install.sh"; then
         if timeout 120 bash /tmp/v2ray-install.sh; then
             rm -f /tmp/v2ray-install.sh
             if command -v v2ray &>/dev/null; then
-                print_success "v2ray installed successfully from GitHub"
+                print_success "v2ray installed from fhs-install-v2ray (pinned version)"
                 return 0
             fi
         else
@@ -4225,11 +4479,29 @@ install_v2ray() {
         fi
     fi
 
+    if check_contrib_nonfree; then
+        echo "Last resort: attempting apt install (likely older)..."
+        if timeout 60 apt-get install -y -o DPkg::Use-Pty=0 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" < /dev/null v2ray 2>&1 | tail -5; then
+            if command -v v2ray &>/dev/null; then
+                print_success "v2ray installed via apt (note: older than upstream)"
+                return 0
+            fi
+        fi
+    fi
+
     print_error "Failed to install v2ray"
     print_info "You can try manual installation from: https://github.com/v2fly/v2ray-core"
 }
 
-# Function to install xray
+# Function to install xray.
+#
+# 2026-05-26 (Bug Q): prefer the cached binary from
+# `/opt/kodachi-offline-packages/external-proxy-binaries-cache/Xray-linux-64.zip`
+# (populated by build-iso.sh::ensure_latest_proxy_binaries_cache) — that
+# cache is checked against upstream every refresh build, so the ISO is
+# never more than one ISO cycle out of date. Fall back to the upstream
+# curl|bash installer only when the cache is absent (network install on
+# an existing system, or a fast/skip build that didn't refresh).
 install_xray() {
     print_step "Installing xray..."
 
@@ -4238,7 +4510,32 @@ install_xray() {
         return 0
     fi
 
-    echo "Downloading and installing xray..."
+    # === Cache fast-path ====================================================
+    local cache_zip="/opt/kodachi-offline-packages/external-proxy-binaries-cache/Xray-linux-64.zip"
+    if [ -f "$cache_zip" ]; then
+        echo -e "${BLUE}[INFO]${NC} xray: installing from offline cache"
+        echo -e "${BLUE}[INFO]${NC}        $cache_zip ($(du -h "$cache_zip" 2>/dev/null | cut -f1))"
+        local tmpd
+        tmpd="$(mktemp -d /tmp/xray-cache-XXXXXX)"
+        if unzip -q "$cache_zip" -d "$tmpd"; then
+            install -m 0755 -o root -g root "$tmpd/xray" /usr/local/bin/xray 2>/dev/null || \
+                cp "$tmpd/xray" /usr/local/bin/xray
+            chmod 0755 /usr/local/bin/xray
+            # geosite/geoip ride along in the cached zip per upstream convention
+            install -d -m 0755 /usr/local/share/xray 2>/dev/null
+            [ -f "$tmpd/geoip.dat" ] && cp "$tmpd/geoip.dat" /usr/local/share/xray/ 2>/dev/null
+            [ -f "$tmpd/geosite.dat" ] && cp "$tmpd/geosite.dat" /usr/local/share/xray/ 2>/dev/null
+            rm -rf "$tmpd"
+            if /usr/local/bin/xray version >/dev/null 2>&1; then
+                print_success "xray installed from cache: $(/usr/local/bin/xray version | head -1)"
+                return 0
+            fi
+        fi
+        rm -rf "$tmpd"
+        echo -e "${YELLOW}[WARN]${NC} cache install failed, falling back to upstream"
+    fi
+
+    echo "Downloading and installing xray (cache absent or stale)..."
 
     # SECURITY FIX: Download script to temp file and verify before execution
     local xray_script="/tmp/xray-install-$$.sh"
@@ -5729,12 +6026,13 @@ elif [[ "$INSTALL_MODE" == "interactive" ]]; then
         GUI_DESC="GUI-specific packages for desktop environments:
   • Terminal: kitty, xterm terminal emulators
   • Desktop panels: Conky status widgets
-  • Fonts: fontconfig, emoji support
+  • Fonts: fontconfig, emoji support, MS core fonts (Impact for conky HUD titles)
   • Audio: PipeWire (pipewire-pulse, wireplumber), ALSA utilities, mpv
   • Desktop tools: bleachbit, notifications, screenshots
   • Clipboard: xclip, xsel, CopyQ, XFCE Clipman
   • Rofi: launcher, calculator, translation, screenshot helpers
-  • Network: NetworkManager (nmcli), iproute2, ping, traceroute, speedtest-cli"
+  • Network: NetworkManager (nmcli), iproute2, ping, traceroute, speedtest-cli
+  • Network share discovery: wsdd2"
 
         GUI_PACKAGES_TO_INSTALL="$(get_gui_packages_for_install)"
         if [[ "$GUI_PACKAGES_TO_INSTALL" != *"conky-all"* ]]; then
@@ -5970,6 +6268,23 @@ elif [[ "$INSTALL_MODE" == "full" ]]; then
         install_packages "$GUI_PACKAGES_TO_INSTALL" "GUI"
         ensure_dpkg_healthy
         wait_for_apt
+
+        # Enable XFCE compositor for every human user so conky's
+        # own_window_argb_value 0 actually renders transparent. Without this
+        # the panels paint solid black on fresh installs where xfwm4's
+        # use_compositing defaults to false.
+        if command -v xfwm4 >/dev/null 2>&1 || [[ -x /usr/bin/xfwm4 ]]; then
+            print_step "Enabling XFCE compositor (required for conky transparency)..."
+            _xc_user="" _xc_home="" _xc_uid=""
+            while IFS=: read -r _xc_user _ _xc_uid _ _ _xc_home _; do
+                [[ "$_xc_uid" =~ ^[0-9]+$ ]] || continue
+                if (( _xc_uid < 1000 || _xc_uid > 60000 )); then continue; fi
+                [[ -d "$_xc_home" ]] || continue
+                enable_xfce_compositor_for_user "$_xc_home" "$_xc_user"
+                print_info "  ✓ XFCE compositor enabled for $_xc_user ($_xc_home)"
+            done < <(getent passwd)
+            unset _xc_user _xc_home _xc_uid
+        fi
     else
         print_warning "Skipping GUI packages (no desktop environment detected). Use --forcegui to install them anyway."
     fi
@@ -6074,6 +6389,23 @@ else
         install_packages "$GUI_PACKAGES_TO_INSTALL" "GUI"
         ensure_dpkg_healthy
         wait_for_apt
+
+        # Enable XFCE compositor for every human user so conky's
+        # own_window_argb_value 0 actually renders transparent. Without this
+        # the panels paint solid black on fresh installs where xfwm4's
+        # use_compositing defaults to false.
+        if command -v xfwm4 >/dev/null 2>&1 || [[ -x /usr/bin/xfwm4 ]]; then
+            print_step "Enabling XFCE compositor (required for conky transparency)..."
+            _xc_user="" _xc_home="" _xc_uid=""
+            while IFS=: read -r _xc_user _ _xc_uid _ _ _xc_home _; do
+                [[ "$_xc_uid" =~ ^[0-9]+$ ]] || continue
+                if (( _xc_uid < 1000 || _xc_uid > 60000 )); then continue; fi
+                [[ -d "$_xc_home" ]] || continue
+                enable_xfce_compositor_for_user "$_xc_home" "$_xc_user"
+                print_info "  ✓ XFCE compositor enabled for $_xc_user ($_xc_home)"
+            done < <(getent passwd)
+            unset _xc_user _xc_home _xc_uid
+        fi
     else
         print_warning "Skipping GUI packages (no desktop environment detected). Use --forcegui to install them anyway."
     fi

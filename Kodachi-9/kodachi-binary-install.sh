@@ -1162,7 +1162,7 @@ print_success "Package extracted successfully"
 
 # Step 5: Create installation directory structure
 print_step "Creating installation directories..."
-mkdir -p "$INSTALL_PATH"/{config/signkeys,config/profiles,icons,logs,tmp,results/signatures,backups,others,sounds,flags,licenses,binaries-update-scripts,models,data}
+mkdir -p "$INSTALL_PATH"/{config/signkeys,config/profiles,icons,logs,tmp,results/signatures,backups,others,sounds,flags,licenses,binaries-update-scripts,models,data,cache/ip-fetch/ips}
 print_success "Directory structure created"
 
 # Step 5.5: Pre-copy safety drain for hooks binary replacement
@@ -1793,15 +1793,17 @@ ExecStart=/bin/bash -c '\
     "%h/k900/dashboard/hooks/conky-status" \
     "%h/dashboard/hooks/conky-status" \
     /usr/local/bin/conky-status; do \
-    [ -x "$bin" ] && exec "$bin" snapshot --refresh --quiet 2>/dev/null; \
+    [ -x "$bin" ] && exec "$bin" snapshot --refresh --quiet --max-parallel 1 --timeout-ms 7000 2>/dev/null; \
   done; \
   exit 0'
-TimeoutSec=60
+TimeoutSec=130
+TimeoutStopSec=5
 StandardOutput=null
 StandardError=journal
 Nice=15
 IOSchedulingClass=idle
 KillMode=process
+SendSIGKILL=no
 # Memory guard: prevent snapshot refresh from starving the desktop session.
 MemoryHigh=200M
 MemoryMax=300M
@@ -1824,8 +1826,8 @@ Description=Kodachi Conky Snapshot Refresh Timer
 
 [Timer]
 OnActiveSec=240
-OnUnitActiveSec=90
-RandomizedDelaySec=15
+OnUnitActiveSec=120
+RandomizedDelaySec=30
 Persistent=false
 AccuracySec=1s
 
@@ -1886,6 +1888,142 @@ EOF
     return 0
 }
 
+enable_xfce_compositor_for_self() {
+    # Conky's own_window_argb_value 0 only paints transparent when a
+    # compositor is active. XFCE's xfwm4 ships with use_compositing=false
+    # by default on stock installs, so a fresh deps+binary install path
+    # ends up with solid-black conky panels. This helper enables it for
+    # the running user without needing root.
+    if ! command -v xfwm4 >/dev/null 2>&1 && [[ ! -x /usr/bin/xfwm4 ]]; then
+        return 0
+    fi
+
+    local xfconf_dir="${XDG_CONFIG_HOME:-$HOME/.config}/xfce4/xfconf/xfce-perchannel-xml"
+    local xfconf_file="$xfconf_dir/xfwm4.xml"
+
+    mkdir -p "$xfconf_dir" 2>/dev/null || return 0
+
+    if [[ ! -f "$xfconf_file" ]]; then
+        cat > "$xfconf_file" <<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+
+<channel name="xfwm4" version="1.0">
+  <property name="general" type="empty">
+    <property name="use_compositing" type="bool" value="true"/>
+  </property>
+</channel>
+XML
+    else
+        if grep -q 'name="use_compositing"' "$xfconf_file"; then
+            sed -i 's|\(<property name="use_compositing"[^/]*value="\)false\("[^/]*/>\)|\1true\2|' "$xfconf_file"
+        elif grep -q '<property name="general"[^>]*/>' "$xfconf_file"; then
+            # Self-closing general tag with no children — expand into open/close
+            # form and insert use_compositing as the new child. Without this branch,
+            # the open-tag branch below would match the self-closing form and insert
+            # use_compositing as a SIBLING of general (still inside channel), so
+            # xfconf reads /general/use_compositing as "not found".
+            sed -i 's|\(<property name="general"[^/]*\)/>|\1>\n    <property name="use_compositing" type="bool" value="true"/>\n  </property>|' "$xfconf_file"
+        elif grep -q '<property name="general"' "$xfconf_file"; then
+            sed -i 's|\(<property name="general"[^>]*>\)|\1\n    <property name="use_compositing" type="bool" value="true"/>|' "$xfconf_file"
+        else
+            sed -i 's|</channel>|  <property name="general" type="empty">\n    <property name="use_compositing" type="bool" value="true"/>\n  </property>\n</channel>|' "$xfconf_file"
+        fi
+    fi
+
+    # Live-apply via xfconf-query if an xfce session is running. The xml write
+    # above is authoritative; this query only saves the user from re-logging.
+    local _live_applied="false"
+    if command -v xfconf-query >/dev/null 2>&1; then
+        local _disp
+        for _disp in "${DISPLAY:-}" :0.0 :0 :1; do
+            [[ -n "$_disp" ]] || continue
+            if DISPLAY="$_disp" xfconf-query -c xfwm4 -p /general/use_compositing -s true >/dev/null 2>&1; then
+                _live_applied="true"
+                break
+            fi
+        done
+    fi
+
+    if [[ "$_live_applied" == "true" ]]; then
+        print_info "  ✓ XFCE compositor enabled (xfwm4 use_compositing=true, live-applied)"
+    else
+        print_info "  ✓ XFCE compositor enabled (xfwm4 use_compositing=true, takes effect on next login)"
+    fi
+    return 0
+}
+
+install_conky_fonts() {
+    # The conky focus-alert + panel titles use ${font Impact:size=...}.
+    # Without Impact, fontconfig falls back to Noto Sans and the HUD title
+    # renders in the wrong theme. Two delivery paths in priority order:
+    #
+    #   1) Tarball-bundled Impact.ttf at $EXTRACT_DIR/fonts/msttcorefonts/Impact.ttf
+    #      — works offline, written by pack-kodachi.sh from the same overlay
+    #      file the ISO build ships.
+    #   2) apt-get install -y ttf-mscorefonts-installer with the EULA
+    #      preseeded via debconf — fallback for older tarballs that don't
+    #      bundle the .ttf yet OR when copy fails for any reason.
+    #
+    # Silent skip on systems without sudo / apt is fine; the deps installer
+    # covers those paths.
+    local target_dir="/usr/share/fonts/truetype/msttcorefonts"
+    local target_path="$target_dir/Impact.ttf"
+
+    # Already present and resolvable? Nothing to do.
+    if command -v fc-match >/dev/null 2>&1; then
+        if fc-match "Impact:size=18" 2>/dev/null | grep -qi 'Impact.ttf'; then
+            return 0
+        fi
+    elif [[ -f "$target_path" ]]; then
+        return 0
+    fi
+
+    print_step "Installing Impact font (required for conky HUD titles)..."
+
+    # Path 1: tarball-bundled .ttf.
+    local bundled=""
+    if [[ -n "${EXTRACT_DIR:-}" && -f "$EXTRACT_DIR/fonts/msttcorefonts/Impact.ttf" ]]; then
+        bundled="$EXTRACT_DIR/fonts/msttcorefonts/Impact.ttf"
+    fi
+
+    if [[ -n "$bundled" ]] && command -v sudo >/dev/null 2>&1; then
+        if sudo -n mkdir -p "$target_dir" 2>/dev/null && \
+           sudo -n install -m 0644 "$bundled" "$target_path" 2>/dev/null; then
+            sudo -n fc-cache -f >/dev/null 2>&1 || true
+            if command -v fc-match >/dev/null 2>&1 && \
+               fc-match "Impact:size=18" 2>/dev/null | grep -qi 'Impact.ttf'; then
+                print_success "  ✓ Installed bundled Impact.ttf to $target_path"
+                return 0
+            fi
+            print_warning "  Bundled Impact.ttf copied but fc-match still does not resolve to Impact; trying apt fallback"
+        else
+            print_warning "  Could not write $target_path (no passwordless sudo?); trying apt fallback"
+        fi
+    fi
+
+    # Path 2: apt fallback (works on Debian/Ubuntu with network).
+    if command -v apt-get >/dev/null 2>&1 && command -v sudo >/dev/null 2>&1; then
+        if command -v debconf-set-selections >/dev/null 2>&1; then
+            echo 'msttcorefonts msttcorefonts/accepted-mscorefonts-eula select true' \
+                | sudo -n debconf-set-selections 2>/dev/null || true
+            echo 'ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true' \
+                | sudo -n debconf-set-selections 2>/dev/null || true
+        fi
+        if sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -o DPkg::Use-Pty=0 \
+                -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" \
+                ttf-mscorefonts-installer >/dev/null 2>&1; then
+            sudo -n fc-cache -f >/dev/null 2>&1 || true
+            print_success "  ✓ Installed ttf-mscorefonts-installer (Impact + other MS core fonts)"
+            return 0
+        fi
+        print_warning "  apt-get install ttf-mscorefonts-installer failed (offline? package unavailable?); conky HUD titles will use Noto Sans fallback"
+        return 1
+    fi
+
+    print_warning "  No bundled Impact.ttf and apt unavailable; conky HUD titles will use Noto Sans fallback"
+    return 1
+}
+
 setup_conky() {
     # Check build variant marker file (written by build-iso.sh during ISO creation)
     local _build_variant=""
@@ -1902,6 +2040,8 @@ setup_conky() {
     fi
 
     if install_conky_assets; then
+        install_conky_fonts || true
+        enable_xfce_compositor_for_self || true
         install_conky_watchdog || true
         if install_conky_autostart; then
             CONKY_SETUP_DONE=true
@@ -2062,22 +2202,27 @@ setup_dashboard_autostart() {
     fi
 
     # Create the launcher script if missing, or refresh it when an older copy
-    # (pre-seeded by the ISO or a prior install) lacks the NVIDIA GPU-driver
-    # detection. Mirrors the autostart .desktop "outdated -> replace" logic.
+    # (pre-seeded by the ISO or a prior install) lacks the broadened
+    # GPU-driver detection (nouveau / legacy radeon + NVIDIA proprietary).
+    # Refresh marker is GPU_NEEDS_FALLBACK — older launchers used the
+    # narrower NVIDIA_PROPRIETARY token and get rewritten on next install.
     local launcher_script="/usr/local/bin/kodachi-dashboard-launcher"
-    if [[ ! -f "$launcher_script" ]] || ! grep -q 'NVIDIA_PROPRIETARY' "$launcher_script" 2>/dev/null || ! grep -q 'DASHBOARD_BIN=' "$launcher_script" 2>/dev/null; then
+    if [[ ! -f "$launcher_script" ]] || ! grep -q 'GPU_NEEDS_FALLBACK' "$launcher_script" 2>/dev/null || ! grep -q 'DASHBOARD_BIN=' "$launcher_script" 2>/dev/null; then
         print_info "Installing/refreshing dashboard launcher script..."
         sudo tee "$launcher_script" > /dev/null << 'LAUNCHER_EOF'
 #!/bin/bash
 # Kodachi Dashboard Launcher with VM + GPU-driver detection
-# Auto-detects VM environments and the NVIDIA proprietary driver,
-# applying the WebKitGTK software-render fallback and --no-gpu so the
-# dashboard does not come up as a blank window.
+# Auto-detects VM environments and GPU drivers that need the WebKitGTK
+# software-render fallback so the dashboard does not come up as a blank
+# window. Covers: NVIDIA proprietary, Nouveau (Mesa, GTX Kepler/Maxwell
+# era), and legacy radeon (pre-amdgpu).
 
 VM_DETECTED=false
-NVIDIA_PROPRIETARY=false
+GPU_NEEDS_FALLBACK=false
+GPU_IS_MESA_DRIVER=false
+GPU_IS_NVIDIA_PROPRIETARY=false
 
-# Check for VM indicators
+# VM detection
 if [ -f /sys/class/dmi/id/sys_vendor ]; then
     vendor=$(cat /sys/class/dmi/id/sys_vendor 2>/dev/null | tr '[:upper:]' '[:lower:]')
     case "$vendor" in
@@ -2096,22 +2241,44 @@ if [ -f /sys/class/dmi/id/product_name ]; then
     esac
 fi
 
-# NVIDIA proprietary driver (nouveau does NOT create these)
-if [ -f /proc/driver/nvidia/version ]; then
-    NVIDIA_PROPRIETARY=true
-elif lsmod 2>/dev/null | grep -qE '^nvidia[[:space:]]'; then
-    NVIDIA_PROPRIETARY=true
+# 1. NVIDIA proprietary driver
+if [ -f /proc/driver/nvidia/version ] || \
+   lsmod 2>/dev/null | grep -qE '^nvidia[[:space:]]'; then
+    GPU_NEEDS_FALLBACK=true
+    GPU_IS_NVIDIA_PROPRIETARY=true
 fi
 
-if [ "$NVIDIA_PROPRIETARY" = "true" ]; then
+# 2. Nouveau (open-source NVIDIA, Mesa) — catches older NVIDIA chips
+#    (e.g. GTX 770 / Kepler) whose Nouveau GBM/EGL silently breaks
+#    WebKitGTK DMABUF init, producing a black dashboard window.
+if lsmod 2>/dev/null | grep -qE '^nouveau[[:space:]]'; then
+    GPU_NEEDS_FALLBACK=true
+    GPU_IS_MESA_DRIVER=true
+fi
+
+# 3. Legacy AMD via radeon module (pre-amdgpu, GCN1 and earlier)
+if lsmod 2>/dev/null | grep -qE '^radeon[[:space:]]' && \
+   ! lsmod 2>/dev/null | grep -qE '^amdgpu[[:space:]]'; then
+    GPU_NEEDS_FALLBACK=true
+    GPU_IS_MESA_DRIVER=true
+fi
+
+if [ "$GPU_NEEDS_FALLBACK" = "true" ]; then
     export WEBKIT_DISABLE_DMABUF_RENDERER=1
     export WEBKIT_DISABLE_COMPOSITING_MODE=1
 fi
 
-# Resolve the dashboard binary at runtime. global-launcher normally
-# symlinks it to /usr/local/bin/kodachi-dashboard, but that symlink is
-# absent if global-launcher's deploy step never ran. Fall back across the
-# known install locations so the launcher never dies with "No such file".
+# LIBGL_ALWAYS_SOFTWARE is Mesa-only — NVIDIA proprietary GL ignores it.
+if [ "$GPU_IS_MESA_DRIVER" = "true" ]; then
+    export LIBGL_ALWAYS_SOFTWARE=1
+fi
+
+# NVIDIA proprietary Wayland explicit-sync can crash WebKitGTK.
+if [ "$GPU_IS_NVIDIA_PROPRIETARY" = "true" ]; then
+    export __NV_DISABLE_EXPLICIT_SYNC=1
+fi
+
+# Resolve dashboard binary at runtime across the known install locations.
 DASHBOARD_BIN=""
 for _cand in /usr/local/bin/kodachi-dashboard \
              /opt/kodachi/dashboard/hooks/kodachi-dashboard \
@@ -2126,8 +2293,7 @@ if [ -z "$DASHBOARD_BIN" ]; then
     exit 1
 fi
 
-# Launch dashboard with appropriate flags
-if [ "$VM_DETECTED" = "true" ] || [ "$NVIDIA_PROPRIETARY" = "true" ]; then
+if [ "$VM_DETECTED" = "true" ] || [ "$GPU_NEEDS_FALLBACK" = "true" ]; then
     exec "$DASHBOARD_BIN" --no-gpu "$@"
 else
     exec "$DASHBOARD_BIN" "$@"

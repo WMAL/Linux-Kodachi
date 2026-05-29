@@ -1,8 +1,30 @@
 #!/bin/bash
 set -o pipefail
 
-# Kodachi AutoShield Script - Login Session Information Display
+# Kodachi AutoShield Script - MANUAL TESTING VARIANT
 # ===========================================================
+#
+# !!! READ THIS FIRST !!!
+# This file is the MANUAL-TESTING / DEVELOPER variant of kodachi-autoshield.sh.
+# It is NOT shipped in the ISO and NOT installed at /etc/profile.d/.
+# The production file that runs on user login is kodachi-autoshield.sh
+# (no -shell suffix), which lives in the same directory and is copied to
+# /etc/profile.d/kodachi-autoshield.sh by the live-build overlay.
+#
+# Differences from the production kodachi-autoshield.sh:
+#   1. The early-return gating block has been removed
+#      (no KODACHI_SKIP_WELCOME / non-interactive / KODACHI_WELCOME_AUTO checks),
+#      so this variant ALWAYS runs main() when executed.
+#   2. Top-level function wrappers for sleep / curl / timeout / read add
+#      SIGINT/SIGTERM propagation through terminate_autoshield. These wrappers
+#      live at script scope on purpose for the standalone-execution model.
+#   3. propagate_signal_exit calls are inserted after every PIPESTATUS capture
+#      in the DNSCrypt setup paths.
+#
+# DO NOT install this file at /etc/profile.d/ and DO NOT source it from a
+# login shell. If sourced, the top-level function wrappers and the missing
+# interactive guard will pollute the calling shell and break non-interactive
+# sessions (ssh, scp, rsync, cron). Use kodachi-autoshield.sh for that role.
 #
 # SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.0
 # Copyright (c) 2013-2026 Warith Al Maawali
@@ -16,11 +38,11 @@ set -o pipefail
 #
 # Author: Warith Al Maawali
 # Version: 9.0.1
-# Last updated: 2026-03-11
+# Last updated: 2026-05-23
 #
 # Description:
-# This script displays system status, security information, and network details
-# when users log in to Kodachi OS. Optimized for 80x24 terminal resolution.
+# Manual-testing harness for the AutoShield login flow. Displays system status,
+# security information, and network details. Optimized for 80x24 terminal.
 # Provides interactive menu for executing common system profiles and workflows.
 #
 # Links:
@@ -31,14 +53,10 @@ set -o pipefail
 # - LinkedIn: https://om.linkedin.com/in/warith1977
 # - X (Twitter): https://x.com/warith2020
 #
-# Installation:
-#   sudo cp kodachi-autoshield.sh /etc/profile.d/kodachi-autoshield.sh
-#   sudo chmod +x /etc/profile.d/kodachi-autoshield.sh
-#
-# Usage:
-#   Automatically runs on login for interactive shell sessions.
-#   To skip: export KODACHI_SKIP_WELCOME=1 before login
-#   To force DNSCrypt configuration: ./kodachi-autoshield-shell.sh --force-dns-setup
+# Usage (manual testing only):
+#   chmod +x kodachi-autoshield-shell.sh
+#   ./kodachi-autoshield-shell.sh
+#   ./kodachi-autoshield-shell.sh --force-dns-setup    # re-run DNSCrypt setup
 #
 # Features:
 #   - Binary deployment verification
@@ -67,8 +85,8 @@ done
 # Source: main-info.json (terminal section)
 # DO NOT EDIT MANUALLY - Run pack-kodachi.sh to update these values
 BUILD_VERSION="9.0.1"  # From: terminal.main_version
-BUILD_NUM="161"          # From: terminal.build_number (auto-incremented)
-BUILD_DATE="2026-05-20"  # From: terminal.last_build_date
+BUILD_NUM="166"          # From: terminal.build_number (auto-incremented)
+BUILD_DATE="2026-05-28"  # From: terminal.last_build_date
 SCRIPT_VERSION="${BUILD_VERSION}.${BUILD_NUM}"
 
 # Color codes for compact display (optimized for black terminal)
@@ -918,12 +936,14 @@ authenticate() {
 setup_dnscrypt() {
     # Check if this is first run - only force configuration on first boot
     # Detect hooks directory silently (function prints output, we just need the path)
+    # Use a function-local copy of HOOKS_DIR so we never accidentally clobber
+    # the global one set by detect_hooks_dir for the rest of the script.
     detect_hooks_dir >/dev/null 2>&1
-    local HOOKS_DIR="${HOOKS_DIR:-${KODACHI_HOOKS_DIR:-${KODACHI_HOME:-/opt/kodachi/dashboard/hooks}}}"
-    if ! verify_hooks_structure "$HOOKS_DIR"; then
-        HOOKS_DIR="$REAL_HOME/dashboard/hooks"
+    local _hooks_dir="${HOOKS_DIR:-${KODACHI_HOOKS_DIR:-${KODACHI_HOME:-/opt/kodachi/dashboard/hooks}}}"
+    if ! verify_hooks_structure "$_hooks_dir"; then
+        _hooks_dir="$REAL_HOME/dashboard/hooks"
     fi
-    local DNS_MARKER="$HOOKS_DIR/results/dns-configured"
+    local DNS_MARKER="$_hooks_dir/results/dns-configured"
     local IS_FIRST_RUN=false
 
     if [ ! -f "$DNS_MARKER" ] || [ "$FORCE_DNS_SETUP" = "true" ]; then
@@ -1647,8 +1667,20 @@ fetch_system_info() {
         ROUTING_JSON=$(run_command routing-switch 50 status --json 2>/dev/null)
         CONNECTED=$(parse_json "$ROUTING_JSON" ".data.connected" || echo "false")
         PROTOCOL=$(parse_json "$ROUTING_JSON" ".data.protocol" || echo "none")
+        # 2026-05-24: routing-switch status now also carries provider_name +
+        # connection_source (kodachi | provider:<id>) when raised via the
+        # providers panel. Surface it: "wireguard via Mullvad" beats bare
+        # "wireguard" when the user has multiple VPN paths.
+        VPN_SOURCE=$(parse_json "$ROUTING_JSON" ".data.connection_source" || echo "")
+        VPN_PROVIDER_NAME=$(parse_json "$ROUTING_JSON" ".data.provider_name" || echo "")
         if [ "$CONNECTED" = "true" ]; then
-            NET_STATUS="${GREEN}${PROTOCOL}${NC}"  # Bright green for VPN
+            if [ -n "$VPN_PROVIDER_NAME" ] && [ "$VPN_PROVIDER_NAME" != "null" ]; then
+                NET_STATUS="${GREEN}${PROTOCOL} via ${VPN_PROVIDER_NAME}${NC}"
+            elif [ "$VPN_SOURCE" = "kodachi" ]; then
+                NET_STATUS="${GREEN}${PROTOCOL} (Kodachi)${NC}"
+            else
+                NET_STATUS="${GREEN}${PROTOCOL}${NC}"  # Bright green for VPN
+            fi
         else
             NET_STATUS="${RED}No VPN${NC}"
         fi
@@ -2267,6 +2299,11 @@ execute_profile() {
             read -r refresh_choice
             ;;
         19)
+            # NOTE: reboot and shutdown intentionally bypass is_allowed_run_command
+            # and call sudo -n directly. The allowlist gates the Kodachi service
+            # binaries (health-control, dns-switch, etc); system power verbs are
+            # standard /sbin tools and are gated by the y/N confirmation above.
+            # Do not "fix" by adding them to is_allowed_run_command.
             echo -e "\n${YELLOW}Reboot System${NC}"
             echo -ne "${RED}Are you sure you want to reboot? [y/N]:${NC} "
             read -r confirm
@@ -2279,6 +2316,7 @@ execute_profile() {
             fi
             ;;
         20)
+            # See note on case 19: power verbs intentionally bypass the allowlist.
             echo -e "\n${YELLOW}Shutdown System${NC}"
             echo -ne "${RED}Are you sure you want to shutdown? [y/N]:${NC} "
             read -r confirm
@@ -2724,68 +2762,68 @@ main() {
         # Track if at least one sync succeeded
         any_sync_succeeded=false
 
-    # Method 1: ntpdig with time.cloudflare.com (PRIORITY - privacy-focused, most accurate)
-    if ! $any_sync_succeeded; then
-        if run_privileged_command ntpdig -S time.cloudflare.com >/dev/null 2>&1; then
-            any_sync_succeeded=true
-        fi
-    fi
-
-    # Method 2: ntpdig with pool.ntp.org (if Cloudflare fails)
-    if ! $any_sync_succeeded; then
-        if run_privileged_command ntpdig -S pool.ntp.org >/dev/null 2>&1; then
-            any_sync_succeeded=true
-        fi
-    fi
-
-    # Method 3: ntpdig with time.nist.gov (if both above fail)
-    if ! $any_sync_succeeded; then
-        if run_privileged_command ntpdig -S time.nist.gov >/dev/null 2>&1; then
-            any_sync_succeeded=true
-        fi
-    fi
-
-    # Method 4: timedatectl (if all ntpdig fail)
-    if ! $any_sync_succeeded; then
-        if run_privileged_command timedatectl set-ntp true 2>/dev/null; then
-            any_sync_succeeded=true
-        fi
-    fi
-
-    # Method 5: ntpdate with pool.ntp.org (legacy fallback)
-    if ! $any_sync_succeeded; then
-        if command -v ntpdate >/dev/null 2>&1; then
-            if run_privileged_command ntpdate pool.ntp.org >/dev/null 2>&1; then
-                any_sync_succeeded=true
-            fi
-        elif [ -x /usr/sbin/ntpdate ]; then
-            if run_privileged_command /usr/sbin/ntpdate pool.ntp.org >/dev/null 2>&1; then
+        # Method 1: ntpdig with time.cloudflare.com (PRIORITY - privacy-focused, most accurate)
+        if ! $any_sync_succeeded; then
+            if run_privileged_command ntpdig -S time.cloudflare.com >/dev/null 2>&1; then
                 any_sync_succeeded=true
             fi
         fi
-    fi
 
-    # Method 6: ntpdate with time.nist.gov (legacy fallback)
-    if ! $any_sync_succeeded; then
-        if command -v ntpdate >/dev/null 2>&1; then
-            if run_privileged_command ntpdate time.nist.gov >/dev/null 2>&1; then
-                any_sync_succeeded=true
-            fi
-        elif [ -x /usr/sbin/ntpdate ]; then
-            if run_privileged_command /usr/sbin/ntpdate time.nist.gov >/dev/null 2>&1; then
+        # Method 2: ntpdig with pool.ntp.org (if Cloudflare fails)
+        if ! $any_sync_succeeded; then
+            if run_privileged_command ntpdig -S pool.ntp.org >/dev/null 2>&1; then
                 any_sync_succeeded=true
             fi
         fi
-    fi
 
-    # Method 7: ntpd one-shot sync (final fallback)
-    if ! $any_sync_succeeded; then
-        if [ -x /usr/sbin/ntpd ]; then
-            if run_privileged_command /usr/sbin/ntpd -gq >/dev/null 2>&1; then
+        # Method 3: ntpdig with time.nist.gov (if both above fail)
+        if ! $any_sync_succeeded; then
+            if run_privileged_command ntpdig -S time.nist.gov >/dev/null 2>&1; then
                 any_sync_succeeded=true
             fi
         fi
-    fi
+
+        # Method 4: timedatectl (if all ntpdig fail)
+        if ! $any_sync_succeeded; then
+            if run_privileged_command timedatectl set-ntp true 2>/dev/null; then
+                any_sync_succeeded=true
+            fi
+        fi
+
+        # Method 5: ntpdate with pool.ntp.org (legacy fallback)
+        if ! $any_sync_succeeded; then
+            if command -v ntpdate >/dev/null 2>&1; then
+                if run_privileged_command ntpdate pool.ntp.org >/dev/null 2>&1; then
+                    any_sync_succeeded=true
+                fi
+            elif [ -x /usr/sbin/ntpdate ]; then
+                if run_privileged_command /usr/sbin/ntpdate pool.ntp.org >/dev/null 2>&1; then
+                    any_sync_succeeded=true
+                fi
+            fi
+        fi
+
+        # Method 6: ntpdate with time.nist.gov (legacy fallback)
+        if ! $any_sync_succeeded; then
+            if command -v ntpdate >/dev/null 2>&1; then
+                if run_privileged_command ntpdate time.nist.gov >/dev/null 2>&1; then
+                    any_sync_succeeded=true
+                fi
+            elif [ -x /usr/sbin/ntpdate ]; then
+                if run_privileged_command /usr/sbin/ntpdate time.nist.gov >/dev/null 2>&1; then
+                    any_sync_succeeded=true
+                fi
+            fi
+        fi
+
+        # Method 7: ntpd one-shot sync (final fallback)
+        if ! $any_sync_succeeded; then
+            if [ -x /usr/sbin/ntpd ]; then
+                if run_privileged_command /usr/sbin/ntpd -gq >/dev/null 2>&1; then
+                    any_sync_succeeded=true
+                fi
+            fi
+        fi
 
         # Report accurate status based on actual results
         end_timer
