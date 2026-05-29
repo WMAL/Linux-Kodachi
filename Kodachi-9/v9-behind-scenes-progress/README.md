@@ -38,7 +38,7 @@ We believe security tools should be as open in design as they are strong in defe
 ---
 
 ## ![Milestones](https://img.shields.io/badge/-Recent%20Milestones-brightgreen?style=flat-square&logo=check) Recent Milestones
-- ![Complete](https://img.shields.io/badge/-Complete-brightgreen?style=flat-square) **[Kodachi Claw](https://www.kodachi.cloud/wiki/bina/installation.html)** – Completed and integrated
+- ![Complete](https://img.shields.io/badge/-Complete-brightgreen?style=flat-square) **Kodachi 9 — Development Complete** – All components built, deployed, and fully functional
 - ![Complete](https://img.shields.io/badge/-Complete-brightgreen?style=flat-square) **[Kodachi Desktop (Debian XFCE)](https://www.kodachi.cloud/wiki/bina/desktop-debian.html)** – Full desktop edition completed
 
 ---
