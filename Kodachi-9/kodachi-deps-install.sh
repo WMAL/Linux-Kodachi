@@ -907,7 +907,8 @@ configure_kodachi_sudoers() {
         "conky-status"
         "oniux"
         "kodachi-dashboard"
-        "kodachi-autoshield"
+        # [AUTOSHIELD-RETIRED 2026-06-01] standalone GUI app merged into dashboard tab — no longer shipped
+        # "kodachi-autoshield"
         "global-launcher"
         "workflow-manager"
         "online-info-switch"
@@ -1023,6 +1024,15 @@ HEADER
     echo "Defaults!/usr/local/bin/health-control env_keep += \"KODACHI_SESSION_TOKEN\"" >> "$sudoers_file"
     echo "" >> "$sudoers_file"
 
+    # Privacy: never mail failed/blocked sudo attempts.
+    # Kodachi has no MTA, so sudo's default security-mail (sent on every
+    # blocked or password-required call) is dumped into ~/dead.letter,
+    # leaking command history + the spoofed hostname to a plaintext file.
+    # Disable all five mail triggers so sudo never invokes a mailer.
+    echo "# Privacy: do not mail failed/blocked sudo attempts (no MTA -> ~/dead.letter leak)" >> "$sudoers_file"
+    echo "Defaults !mail_no_user, !mail_no_perms, !mail_no_host, !mail_badpass, !mail_always" >> "$sudoers_file"
+    echo "" >> "$sudoers_file"
+
     # Add entries for each binary with BOTH paths
     for binary in "${binaries[@]}"; do
         if [[ -n "$dashboard_dir" ]]; then
@@ -1128,6 +1138,74 @@ HEADER
 %sudo ALL=(ALL) NOPASSWD: /bin/systemctl restart portmaster
 %sudo ALL=(ALL) NOPASSWD: /bin/systemctl enable portmaster
 %sudo ALL=(ALL) NOPASSWD: /bin/systemctl disable portmaster
+
+# ============================================================
+# Read-only diagnostics (dashboard startup + rofi menus)
+# Previously called via `sudo -n` with no matching NOPASSWD rule
+# -> "a password is required" -> ~/dead.letter leak + broken feature.
+# ============================================================
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/ss -tlnp
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/ss -tulnp
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/ss -tuln
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/journalctl
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/netstat -tulnp
+%sudo ALL=(ALL) NOPASSWD: /bin/netstat -tulnp
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/netstat -tulnp
+
+# ============================================================
+# Power control (Emergency rofi menu + killswitch/threat response)
+# Code calls `systemctl poweroff|reboot`; complements the existing
+# reboot/shutdown/poweroff sbin fallbacks.
+# ============================================================
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/systemctl poweroff
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/systemctl reboot
+%sudo ALL=(ALL) NOPASSWD: /bin/systemctl poweroff
+%sudo ALL=(ALL) NOPASSWD: /bin/systemctl reboot
+
+# ============================================================
+# Autostart manager (GUI enable/disable of system units)
+# SECURITY NOTE: intentionally broad (any unit name) — the dashboard
+# startup manager discovers units dynamically. Members of %sudo can
+# already run the signed Kodachi root binaries passwordlessly.
+# ============================================================
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/systemctl enable *
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/systemctl disable *
+%sudo ALL=(ALL) NOPASSWD: /bin/systemctl enable *
+%sudo ALL=(ALL) NOPASSWD: /bin/systemctl disable *
+
+# ============================================================
+# Binary (re)install drain — terminate root-owned holders
+# (kodachi-binary-install.sh; lsof already whitelisted above).
+# ============================================================
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/kill
+%sudo ALL=(ALL) NOPASSWD: /bin/kill
+
+# ============================================================
+# Port scans (rofi Network menu) — exact scan forms only.
+# SECURITY NOTE: nmap can run NSE scripts / write files, so we pin
+# the specific flag forms the menu issues rather than bare nmap.
+# ============================================================
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/nmap -F *
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/nmap -p- --open *
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/nmap -p *
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/traceroute -m 20 *
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/traceroute -m 20 *
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/traceroute.db -m 20 *
+
+# ============================================================
+# Docker read-only inspection (rofi Utilities — optional package)
+# ============================================================
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/docker ps
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/docker ps *
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/docker images
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/docker images *
+
+# ============================================================
+# Panic/Nuke fallback paths (commands_protection.rs / nuke_sequence.rs)
+# ============================================================
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/health-control
+%sudo ALL=(ALL) NOPASSWD: /usr/local/bin/kodachi-nuke-helper
+%sudo ALL=(ALL) NOPASSWD: /opt/kodachi/dashboard/hooks/kodachi-nuke-helper
 
 # End of Kodachi NOPASSWD rules
 EOF
@@ -1577,12 +1655,17 @@ Persistent=false
 AccuracySec=1s
 
 [Install]
-WantedBy=default.target
+WantedBy=graphical-session.target
 EOF
         fi
 
         chmod 644 "$snapshot_service_file" "$snapshot_timer_file"
-        ln -sfn "$snapshot_timer_file" "$wants_dir/conky-snapshot-refresh.timer"
+        # Want the timer from graphical-session.target, NOT default.target — the
+        # service is Requisite=graphical-session.target and a default.target want
+        # creates a shutdown ordering cycle. Clear any stale default.target want.
+        rm -f "$wants_dir/conky-snapshot-refresh.timer" 2>/dev/null || true
+        mkdir -p "$systemd_user_dir/graphical-session.target.wants"
+        ln -sfn "$snapshot_timer_file" "$systemd_user_dir/graphical-session.target.wants/conky-snapshot-refresh.timer"
         snapshot_timer_available=1
     fi
 
@@ -1743,10 +1826,13 @@ RestartSec=5
 TimeoutStopSec=5
 LimitCORE=0
 NoNewPrivileges=false
-ProtectSystem=strict
-ProtectHome=read-only
+# NO ProtectSystem/ProtectHome: they make /etc/sudo.conf appear owned by uid
+# 65534 inside the unit mount namespace (overlay AND ext4), breaking sudo -n
+# so health-control reports permanently unavailable. Daemon must run unsandboxed.
 PrivateTmp=false
-ReadWritePaths=/run/user/%U
+# NO ReadWritePaths: it creates a mount namespace that masks /etc/sudo.conf as
+# uid 65534 (overlay) -> sudo -n breaks -> health-control unavailable. The daemon
+# writes /run/user/%U fine without it; it must run fully unsandboxed.
 Environment=DISPLAY=:0
 Environment=XAUTHORITY=%h/.Xauthority
 Environment=XDG_RUNTIME_DIR=/run/user/%U
@@ -2167,87 +2253,16 @@ create_welcome_desktop_shortcut() {
         return 0
     fi
 
-    # Detect install path
-    local install_path=""
-    for path in "/opt/kodachi/dashboard/hooks" "$PROJECT_ROOT/dashboard/hooks" "$real_user_home/dashboard/hooks" "$real_user_home/Desktop/dashboard/hooks" "$real_user_home/k900/dashboard/hooks"; do
-        if [[ -x "$path/kodachi-autoshield" ]]; then
-            install_path="$path"
-            break
-        fi
-    done
-    if [[ -z "$install_path" ]]; then
-        print_warning "kodachi-autoshield binary not found. Skipping Welcome desktop shortcut."
-        return 0
-    fi
+    # AutoShield is RETIRED as a standalone app — it is now a tab on the
+    # dashboard startup screen (after Mobile). Remove any stale per-user launcher
+    # instead of creating one; continue to (re)create the dashboard menu entry.
+    rm -f "$desktop_dir/kodachi-autoshield.desktop" 2>/dev/null || true
 
-    local welcome_desktop="$desktop_dir/kodachi-autoshield.desktop"
-
-    # Idempotent: skip if already configured correctly
-    if [[ -f "$welcome_desktop" ]] && grep -q "Exec=$install_path/kodachi-autoshield" "$welcome_desktop" 2>/dev/null; then
-        print_info "Welcome desktop shortcut already configured: $welcome_desktop"
-        return 0
-    fi
-
-    # Icon fallback (white Kodachi icon)
-    local icon_path="$install_path/icons/kodachi-autoshield.png"
-    if [[ ! -f "$icon_path" ]]; then
-        icon_path="$install_path/config/icons/kodachi-autoshield.png"
-    fi
-    if [[ ! -f "$icon_path" ]]; then
-        icon_path="utilities-terminal"
-    fi
-
-    cat > "$welcome_desktop" << EOF
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=Kodachi AutoShield
-Comment=Kodachi Privacy Configuration Wizard
-Exec=$install_path/kodachi-autoshield
-TryExec=$install_path/kodachi-autoshield
-Path=$install_path
-Icon=$icon_path
-Terminal=false
-Categories=Security;System;
-StartupNotify=true
-StartupWMClass=kodachi-autoshield
-X-XFCE-TrustedApplication=true
-EOF
-    chmod +x "$welcome_desktop"
-    chown "$actual_user:$actual_user" "$welcome_desktop" 2>/dev/null || true
-
-    # Trust metadata (best-effort, same pattern as binary-install.sh)
-    if command -v gio &>/dev/null; then
-        gio set "$welcome_desktop" metadata::trusted true 2>/dev/null || true
-    fi
-    if command -v gvfs-set-attribute &>/dev/null; then
-        gvfs-set-attribute -t string "$welcome_desktop" metadata::trusted "true" 2>/dev/null || true
-    fi
-    if command -v setfattr &>/dev/null; then
-        setfattr -n user.xfce.executable -v true "$welcome_desktop" 2>/dev/null || true
-    fi
-
-    print_success "Welcome desktop shortcut created for $actual_user: $welcome_desktop"
-
-    # Also install/update system-wide Whisker menu entries in /usr/share/applications/
+    # Install/update system-wide Whisker menu entries in /usr/share/applications/
     local sys_apps="/usr/share/applications"
     if [[ -d "$sys_apps" ]]; then
-        cat > "$sys_apps/kodachi-autoshield.desktop" << SYSEOF
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=Kodachi AutoShield
-GenericName=Privacy Setup Wizard
-Comment=Kodachi AutoShield - privacy configuration wizard and system overview
-Exec=kodachi-autoshield
-Icon=/usr/share/icons/kodachi/Kodachi_White_big.png
-Terminal=false
-Categories=System;Security;
-Keywords=kodachi;welcome;wizard;setup;privacy;configuration;
-StartupNotify=true
-StartupWMClass=kodachi-autoshield
-SYSEOF
-        chmod 644 "$sys_apps/kodachi-autoshield.desktop"
+        # Drop any stale standalone AutoShield system menu entry.
+        rm -f "$sys_apps/kodachi-autoshield.desktop" 2>/dev/null || true
 
         cat > "$sys_apps/kodachi-dashboard.desktop" << SYSEOF
 [Desktop Entry]
@@ -2388,10 +2403,14 @@ setup_logging() {
 }
 
 # Version configuration
-MIERU_VERSION="3.27.0"
-HYSTERIA2_VERSION="2.7.0"
+# Fallbacks only — overridden at runtime by resolve_mieru_release_metadata /
+# resolve_latest_github_release_version (latest upstream). Kept current.
+MIERU_VERSION="3.33.0"
+HYSTERIA2_VERSION="2.9.2"
 V2RAY_PLUGIN_VERSION="1.3.2"
-DNSCRYPT_VERSION="2.1.15"
+# Fallback only — overridden at runtime by resolve_dnscrypt_release_metadata
+# (latest upstream). Kept current to match the ISO cache freshness system.
+DNSCRYPT_VERSION="2.1.16"
 QRENCODE_VERSION="4.1.1"
 KLOAK_VERSION="0.2"
 
@@ -2527,7 +2546,7 @@ resolve_latest_github_tag_version() {
 
 resolve_dnscrypt_release_metadata() {
     local dnscrypt_arch="${1:-}"
-    local fallback_version="${DNSCRYPT_VERSION:-2.1.15}"
+    local fallback_version="${DNSCRYPT_VERSION:-2.1.16}"
     local fallback_url="https://github.com/DNSCrypt/dnscrypt-proxy/releases/download/${fallback_version}/dnscrypt-proxy-linux_${dnscrypt_arch}-${fallback_version}.tar.gz"
     local release_json=""
     local asset_url=""
@@ -2585,7 +2604,7 @@ resolve_v2ray_plugin_release_metadata() {
 
 resolve_mieru_release_metadata() {
     local mieru_arch="${1:-}"
-    local fallback_version="${MIERU_VERSION:-3.27.0}"
+    local fallback_version="${MIERU_VERSION:-3.33.0}"
     local fallback_url="https://github.com/enfein/mieru/releases/download/v${fallback_version}/mieru_${fallback_version}_${mieru_arch}.deb"
     local release_json=""
     local asset_url=""
@@ -2721,7 +2740,7 @@ MONITORING_PACKAGES="btop iftop nethogs ncdu nload iperf3 speedtest-cli"
 
 # GUI-only packages - only installed on systems with desktop environments.
 # Includes the runtime packages required by Kodachi rofi menus on installed systems.
-GUI_PACKAGES="bleachbit kitty fontconfig fonts-dejavu fonts-noto-core fonts-noto-color-emoji fonts-liberation fonts-liberation2 ttf-mscorefonts-installer conky-all alsa-utils pipewire pipewire-pulse pipewire-alsa wireplumber pulseaudio-utils libnotify-bin xclip xsel mpv xterm network-manager rofi xfce4-screenshooter xdotool xfce4-clipman xfce4-clipman-plugin copyq qalculate-gtk maim translate-shell python3 bc iproute2 iputils-ping traceroute speedtest-cli wsdd2"
+GUI_PACKAGES="bleachbit kitty fontconfig fonts-dejavu fonts-noto-core fonts-noto-color-emoji fonts-liberation fonts-liberation2 ttf-mscorefonts-installer conky-all alsa-utils pipewire pipewire-pulse pipewire-alsa wireplumber pulseaudio-utils libnotify-bin xclip xsel mpv xterm network-manager rofi xfce4-screenshooter xdotool xfce4-clipman xfce4-clipman-plugin copyq qalculate-gtk maim translate-shell python3 bc iproute2 iputils-ping traceroute speedtest-cli"
 
 # Packages that require contrib/non-free repositories
 CONTRIB_PACKAGES="shadowsocks-v2ray-plugin v2ray"
@@ -3579,6 +3598,44 @@ if apt-get update 2>&1 | tail -5; then
 else
     print_warning "apt-get update had issues, continuing anyway..."
 fi
+
+# ---------------------------------------------------------------------------
+# Protect Kodachi runtime-critical packages from the apt-get autoremove steps
+# that run later in this script. `autoremove` only reaps packages marked
+# auto-installed; on some installed systems e2fsprogs (provides chattr/lsattr)
+# is auto-installed and gets reaped, which leaves the system unable to remove
+# the immutable flag from /etc/resolv.conf. The DNS-leak lock then can't be
+# lifted, so third-party VPN GUIs (Mullvad/ProtonVPN) fail with "internet
+# blocked" until the user reinstalls e2fsprogs by hand (field report 2026-06-01).
+# `apt-mark manual` writes to /var/lib/apt/extended_states (persistent), so this
+# single call protects every autoremove run below.
+print_step "Protecting Kodachi runtime-critical packages from autoremove..."
+if ! command -v chattr >/dev/null 2>&1 || ! dpkg -s e2fsprogs >/dev/null 2>&1; then
+    print_info "e2fsprogs (chattr/lsattr) missing — installing; required by the DNS-leak immutable lock"
+    apt-get install -y e2fsprogs 2>&1 | tail -3 || true
+fi
+# e2fsprogs is the proven-critical one (chattr/lsattr for the resolv.conf immutable lock).
+if apt-mark manual e2fsprogs >/dev/null 2>&1; then
+    print_success "Pinned e2fsprogs manual (protects chattr/lsattr from autoremove)"
+else
+    print_warning "Could not pin e2fsprogs manual (chattr-based DNS lock may be at risk)"
+fi
+# Best-effort: pin the rest of the Kodachi privacy/runtime stack manual, but only
+# packages actually installed (avoids false 'cannot mark' warnings for optional ones).
+# These are deliberately-chosen Kodachi components that autoremove must never reap.
+# tirdad-dkms in particular was confirmed reaped by autoremove in the past (TCP-timestamp
+# anonymization), and gnupg can be auto-installed. Rationale: anything Kodachi's privacy
+# stack relies on at runtime should survive an autoremove cleanup pass.
+KODACHI_PROTECT_PKGS="
+    iproute2 iptables nftables openresolv resolvconf dnscrypt-proxy ca-certificates
+    tor obfs4proxy macchanger tirdad-dkms wireguard-tools openvpn proxychains4
+    apparmor apparmor-utils secure-delete network-manager rfkill gnupg dnsutils
+    curl wget"
+for _kpkg in $KODACHI_PROTECT_PKGS; do
+    if dpkg -s "$_kpkg" >/dev/null 2>&1; then
+        apt-mark manual "$_kpkg" >/dev/null 2>&1 || true
+    fi
+done
 
 echo ""
 print_step "Upgrading installed packages..."
@@ -4906,14 +4963,29 @@ normalize_dnscrypt_config() {
         -e "/^fallback_resolvers = \\[/d" \
         "$config_file"
 
-    if ! grep -q "^bootstrap_resolvers = " "$config_file" 2>/dev/null; then
-        if grep -q "^netprobe_timeout = " "$config_file" 2>/dev/null; then
-            sed -i "/^netprobe_timeout = /a\\
-bootstrap_resolvers = ['9.9.9.9:53', '1.1.1.1:53']" "$config_file"
-        else
-            printf "\nbootstrap_resolvers = ['9.9.9.9:53', '1.1.1.1:53']\n" >> "$config_file"
-        fi
+    if grep -q "^bootstrap_resolvers = " "$config_file" 2>/dev/null; then
+        # Normalise UNCONDITIONALLY so the stock dnscrypt-proxy.toml's 8.8.8.8 (Google)
+        # bootstrap entry is stripped on installed systems too (privacy: no plaintext
+        # bootstrap query to Google).
+        sed -i "s|^bootstrap_resolvers = .*|bootstrap_resolvers = ['9.9.9.9:53', '1.1.1.1:53', '94.140.14.14:53']|" "$config_file"
+        print_success "Normalised bootstrap_resolvers in DNSCrypt config (Google-free)"
+    elif grep -q "^netprobe_timeout = " "$config_file" 2>/dev/null; then
+        sed -i "/^netprobe_timeout = /a\\
+bootstrap_resolvers = ['9.9.9.9:53', '1.1.1.1:53', '94.140.14.14:53']" "$config_file"
         print_success "Ensured bootstrap_resolvers is present in DNSCrypt config"
+    else
+        printf "\nbootstrap_resolvers = ['9.9.9.9:53', '1.1.1.1:53', '94.140.14.14:53']\n" >> "$config_file"
+        print_success "Ensured bootstrap_resolvers is present in DNSCrypt config"
+    fi
+
+    # Privacy: strip Google from server_names if present. The live-build hook ships a
+    # Google-free list on new ISOs, but an older ISO (or stock toml) may still list 'google'.
+    # Remove only the google entry, preserving any other configured resolvers.
+    if grep -qE "^server_names = .*'google'" "$config_file" 2>/dev/null; then
+        sed -i -e "/^server_names = /s/'google', //g" \
+               -e "/^server_names = /s/, 'google'//g" \
+               -e "/^server_names = /s/'google'//g" "$config_file"
+        print_success "Removed Google from DNSCrypt server_names"
     fi
 }
 
@@ -5103,6 +5175,42 @@ setup_dnscrypt_service() {
 
     print_info "Enabling DNSCrypt Proxy service..."
     systemctl enable dnscrypt-proxy 2>/dev/null || true
+
+    # Enable the DNSCrypt auto-recovery monitor so installed systems also climb back to
+    # encrypted DNS automatically after any temporary plaintext fallback (privacy). Matches
+    # the live-build 0006 hook; harmless if the units already exist.
+    cat > /etc/systemd/system/dnscrypt-monitor.service <<'MONSVC'
+[Unit]
+Description=DNSCrypt monitor check (dns-switch)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/dns-switch dnscrypt-monitor-check --json
+StandardOutput=journal
+StandardError=journal
+MONSVC
+    cat > /etc/systemd/system/dnscrypt-monitor.timer <<'MONTMR'
+[Unit]
+Description=Run dnscrypt-monitor.service every 15 seconds
+
+[Timer]
+OnBootSec=30sec
+OnUnitActiveSec=15sec
+AccuracySec=1sec
+Unit=dnscrypt-monitor.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+MONTMR
+    systemctl daemon-reload 2>/dev/null || true
+    if systemctl enable --now dnscrypt-monitor.timer 2>/dev/null; then
+        print_success "DNSCrypt auto-recovery monitor enabled and started"
+    else
+        print_warning "Could not enable dnscrypt-monitor.timer (will self-enable at runtime)"
+    fi
 
     # Safety: clear stuck systemd jobs before starting (boot race protection)
     systemctl stop dnscrypt-proxy.socket 2>/dev/null || true
@@ -6031,8 +6139,7 @@ elif [[ "$INSTALL_MODE" == "interactive" ]]; then
   • Desktop tools: bleachbit, notifications, screenshots
   • Clipboard: xclip, xsel, CopyQ, XFCE Clipman
   • Rofi: launcher, calculator, translation, screenshot helpers
-  • Network: NetworkManager (nmcli), iproute2, ping, traceroute, speedtest-cli
-  • Network share discovery: wsdd2"
+  • Network: NetworkManager (nmcli), iproute2, ping, traceroute, speedtest-cli"
 
         GUI_PACKAGES_TO_INSTALL="$(get_gui_packages_for_install)"
         if [[ "$GUI_PACKAGES_TO_INSTALL" != *"conky-all"* ]]; then
@@ -7613,22 +7720,9 @@ StartupWMClass=kodachi-dashboard
 MENUEOF
     chmod 644 "$WHISKER_APPS_DIR/kodachi-dashboard.desktop"
 
-    cat > "$WHISKER_APPS_DIR/kodachi-autoshield.desktop" << MENUEOF
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=Kodachi AutoShield
-GenericName=Privacy Setup Wizard
-Comment=Kodachi AutoShield - privacy configuration wizard and system overview
-Exec=kodachi-autoshield
-Icon=$WELCOME_ICON
-Terminal=false
-Categories=System;Security;
-Keywords=kodachi;welcome;wizard;setup;privacy;configuration;
-StartupNotify=true
-StartupWMClass=kodachi-autoshield
-MENUEOF
-    chmod 644 "$WHISKER_APPS_DIR/kodachi-autoshield.desktop"
+    # AutoShield retired as a standalone app (now a dashboard startup-screen tab):
+    # remove any stale menu entry instead of installing one.
+    rm -f "$WHISKER_APPS_DIR/kodachi-autoshield.desktop" 2>/dev/null || true
 
     cat > "$WHISKER_APPS_DIR/kodachi-rofi-actions.desktop" << MENUEOF
 [Desktop Entry]
@@ -7647,7 +7741,7 @@ StartupNotify=false
 MENUEOF
     chmod 644 "$WHISKER_APPS_DIR/kodachi-rofi-actions.desktop"
 
-    print_success "Whisker menu entries installed: kodachi-dashboard, kodachi-autoshield, kodachi-rofi-actions"
+    print_success "Whisker menu entries installed: kodachi-dashboard, kodachi-rofi-actions"
 else
     print_warning "Directory $WHISKER_APPS_DIR not found — skipping Whisker menu entries"
 fi
@@ -7744,6 +7838,13 @@ install_welcome_commands() {
     fi
 
     # Always verify/recreate wrapper and symlinks (idempotent)
+    # NOTE: /usr/local/bin/welcome may already be a SYMLINK (the 9999 ISO hook
+    # points welcome/shield at kodachi-dashboard-launcher now that AutoShield is
+    # retired). `cp`/`cat >` would FOLLOW that symlink and overwrite the real
+    # dashboard launcher with this terminal wrapper, breaking the GUI dashboard
+    # at boot and on every panel/menu launch. Delete it first so we always write
+    # a fresh regular file, never through a symlink.
+    rm -f /usr/local/bin/welcome
     if [[ -f "$WRAPPER_SCRIPT" ]]; then
         cp "$WRAPPER_SCRIPT" /usr/local/bin/welcome
         chmod 755 /usr/local/bin/welcome

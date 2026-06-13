@@ -130,6 +130,8 @@ safe_stop_conky() {
 
 # Configuration
 CDN_BASE="https://www.kodachi.cloud/apps/os/install"
+PACK_BASE="https://www.kodachi.cloud/downloads/installers/binaries"
+PACK_BASE_FALLBACK="$PACK_BASE"  # canonical single location (apps/os/install pack retired)
 SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"
 if [[ -n "$SCRIPT_SOURCE" ]] && [[ -e "$SCRIPT_SOURCE" ]]; then
     SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_SOURCE")" && pwd)"
@@ -605,6 +607,30 @@ download_with_retry() {
     return 1
 }
 
+# Wrapper for pack/sig/key/checksum downloads: try PACK_BASE first, fall back to
+# PACK_BASE_FALLBACK (the old apps/os/install location) if the primary fails.
+# Preserves all retry/resume behaviour of download_with_retry.
+download_pack_file() {
+    local url_path="$1"   # filename only, e.g. "kodachi-binaries-v9.0.1.tar.gz"
+    local output="$2"
+
+    local primary_url="${PACK_BASE}/${url_path}"
+    local fallback_url="${PACK_BASE_FALLBACK}/${url_path}"
+
+    if download_with_retry "$primary_url" "$output"; then
+        return 0
+    fi
+
+    print_warning "Primary download failed ($primary_url), trying fallback location..."
+    rm -f "$output"
+    if download_with_retry "$fallback_url" "$output"; then
+        print_warning "Used fallback download location for: $url_path"
+        return 0
+    fi
+
+    return 1
+}
+
 # Function to verify signature
 verify_signature() {
     local binary_path="$1"
@@ -863,7 +889,11 @@ collect_install_path_pids() {
         # Also inspect root-owned holders if non-interactive sudo is available
         if [[ "$have_sudo" == true ]]; then
             if [[ "$have_timeout" == true ]]; then
-                lsof_pids="$(sudo -n timeout --signal=TERM 8s lsof -t -- "${targets[@]}" 2>/dev/null || true)"
+                # timeout must wrap sudo (not the reverse): `sudo -n timeout ...`
+                # runs `timeout` under sudo, which is NOT whitelisted -> password
+                # required -> ~/dead.letter. Putting timeout OUTSIDE sudo runs the
+                # whitelisted lsof under sudo with the timeout still applied.
+                lsof_pids="$(timeout --signal=TERM 8s sudo -n lsof -t -- "${targets[@]}" 2>/dev/null || true)"
             else
                 lsof_pids="$(sudo -n lsof -t -- "${targets[@]}" 2>/dev/null || true)"
             fi
@@ -1067,11 +1097,10 @@ echo ""
 # Step 1: Download package
 print_step "Downloading Kodachi binaries package..."
 PACKAGE_NAME="kodachi-binaries-v${KODACHI_VERSION}"
-PACKAGE_URL="$CDN_BASE/${PACKAGE_NAME}.tar.gz"
 PACKAGE_FILE="$TEMP_DIR/${PACKAGE_NAME}.tar.gz"
 
-if ! download_with_retry "$PACKAGE_URL" "$PACKAGE_FILE"; then
-    print_error "Failed to download package from $PACKAGE_URL"
+if ! download_pack_file "${PACKAGE_NAME}.tar.gz" "$PACKAGE_FILE"; then
+    print_error "Failed to download package (tried $PACK_BASE and $PACK_BASE_FALLBACK)"
     exit 1
 fi
 file_size=$(du -h "$PACKAGE_FILE" | cut -f1)
@@ -1079,14 +1108,12 @@ print_success "Package downloaded successfully ($file_size)"
 
 # Step 2: Download and verify package signature
 print_step "Downloading package signature..."
-SIGNATURE_URL="${PACKAGE_URL}.sig"
 SIGNATURE_FILE="$TEMP_DIR/${PACKAGE_NAME}.tar.gz.sig"
-PUBLIC_KEY_URL="$CDN_BASE/public_key_v${KODACHI_VERSION}.pem"
 PUBLIC_KEY_FILE="$TEMP_DIR/public_key_v${KODACHI_VERSION}.pem"
 
 PACKAGE_VERIFIED=false
-if download_with_retry "$SIGNATURE_URL" "$SIGNATURE_FILE"; then
-    if download_with_retry "$PUBLIC_KEY_URL" "$PUBLIC_KEY_FILE"; then
+if download_pack_file "${PACKAGE_NAME}.tar.gz.sig" "$SIGNATURE_FILE"; then
+    if download_pack_file "public_key_v${KODACHI_VERSION}.pem" "$PUBLIC_KEY_FILE"; then
         print_step "Verifying package signature..."
         if openssl dgst -sha256 -verify "$PUBLIC_KEY_FILE" -signature "$SIGNATURE_FILE" "$PACKAGE_FILE" >/dev/null 2>&1; then
             print_success "Package signature verified successfully"
@@ -1110,10 +1137,9 @@ fi
 
 # Step 3: Verify checksum
 print_step "Verifying package checksum..."
-CHECKSUM_URL="${PACKAGE_URL}.sha256"
 CHECKSUM_FILE="$TEMP_DIR/${PACKAGE_NAME}.tar.gz.sha256"
 
-if download_with_retry "$CHECKSUM_URL" "$CHECKSUM_FILE"; then
+if download_pack_file "${PACKAGE_NAME}.tar.gz.sha256" "$CHECKSUM_FILE"; then
     cd "$TEMP_DIR"
     if sha256sum -c "$CHECKSUM_FILE" &>/dev/null; then
         print_success "Package checksum verified"
@@ -1832,12 +1858,17 @@ Persistent=false
 AccuracySec=1s
 
 [Install]
-WantedBy=default.target
+WantedBy=graphical-session.target
 EOF
     fi
 
     chmod 644 "$snapshot_service_file" "$snapshot_timer_file"
-    ln -sfn "$snapshot_timer_file" "$wants_dir/conky-snapshot-refresh.timer"
+    # Want the timer from graphical-session.target, NOT default.target — the
+    # service is Requisite=graphical-session.target and a default.target want
+    # creates a shutdown ordering cycle. Clear any stale default.target want.
+    rm -f "$wants_dir/conky-snapshot-refresh.timer" 2>/dev/null || true
+    mkdir -p "$systemd_user_dir/graphical-session.target.wants"
+    ln -sfn "$snapshot_timer_file" "$systemd_user_dir/graphical-session.target.wants/conky-snapshot-refresh.timer"
     snapshot_timer_available=1
 
     if [[ -f "$watchdog_service_source" ]]; then
@@ -2103,10 +2134,13 @@ RestartSec=5
 TimeoutStopSec=5
 LimitCORE=0
 NoNewPrivileges=false
-ProtectSystem=strict
-ProtectHome=read-only
+# NO ProtectSystem/ProtectHome: they make /etc/sudo.conf appear owned by uid
+# 65534 inside the unit mount namespace (overlay AND ext4), breaking sudo -n
+# so health-control reports permanently unavailable. Daemon must run unsandboxed.
 PrivateTmp=false
-ReadWritePaths=/run/user/%U
+# NO ReadWritePaths: it creates a mount namespace that masks /etc/sudo.conf as
+# uid 65534 (overlay) -> sudo -n breaks -> health-control unavailable. The daemon
+# writes /run/user/%U fine without it; it must run fully unsandboxed.
 Environment=DISPLAY=:0
 Environment=XAUTHORITY=%h/.Xauthority
 Environment=XDG_RUNTIME_DIR=/run/user/%U
@@ -2520,39 +2554,15 @@ EOF
     mark_desktop_file_trusted "$DESKTOP_DIR/kodachi-binaries.desktop"
     update_thunar_root_actions
 
-    # 3. Kodachi AutoShield shortcut (white Kodachi icon)
-    local WELCOME_ICON_PATH="$INSTALL_PATH/icons/kodachi-autoshield.png"
-    if [[ ! -f "$WELCOME_ICON_PATH" ]]; then
-        WELCOME_ICON_PATH="$INSTALL_PATH/config/icons/kodachi-autoshield.png"
-    fi
-    if [[ ! -f "$WELCOME_ICON_PATH" ]]; then
-        WELCOME_ICON_PATH="utilities-terminal"
-    fi
-
-    local welcome_desktop="$DESKTOP_DIR/kodachi-autoshield.desktop"
-    cat > "$welcome_desktop" << EOF
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=Kodachi AutoShield
-Comment=Kodachi Privacy Configuration Wizard
-Exec=$INSTALL_PATH/kodachi-autoshield
-TryExec=$INSTALL_PATH/kodachi-autoshield
-Path=$INSTALL_PATH
-Icon=$WELCOME_ICON_PATH
-Terminal=false
-Categories=Security;System;
-StartupNotify=true
-StartupWMClass=kodachi-autoshield
-X-XFCE-TrustedApplication=true
-EOF
-    chmod +x "$welcome_desktop"
-    mark_desktop_file_trusted "$welcome_desktop"
+    # 3. Kodachi AutoShield is RETIRED as a standalone app — it is now a tab on
+    #    the dashboard startup screen (after Mobile). Remove any stale standalone
+    #    launcher so no dead "AutoShield" shortcut points at the removed app.
+    rm -f "$DESKTOP_DIR/kodachi-autoshield.desktop" 2>/dev/null || true
 
     # Ensure legacy folder symlink is removed; desktop shortcuts only.
     rm -f "$DESKTOP_DIR/kodachi-binaries" 2>/dev/null || true
 
-    print_success "Desktop shortcuts created: kodachi-dashboard.desktop, kodachi-binaries.desktop, kodachi-autoshield.desktop"
+    print_success "Desktop shortcuts created: kodachi-dashboard.desktop, kodachi-binaries.desktop"
 
     # Also install/update system-wide Whisker menu entries in /usr/share/applications/
     # NOTE: This will only succeed when running as root or during ISO build.
@@ -2577,22 +2587,9 @@ StartupWMClass=kodachi-dashboard
 SYSEOF
         chmod 644 "$sys_apps/kodachi-dashboard.desktop"
 
-        cat > "$sys_apps/kodachi-autoshield.desktop" << SYSEOF
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=Kodachi AutoShield
-GenericName=Privacy Setup Wizard
-Comment=Kodachi AutoShield - privacy configuration wizard and system overview
-Exec=kodachi-autoshield
-Icon=/usr/share/icons/kodachi/Kodachi_White_big.png
-Terminal=false
-Categories=System;Security;
-Keywords=kodachi;welcome;wizard;setup;privacy;configuration;
-StartupNotify=true
-StartupWMClass=kodachi-autoshield
-SYSEOF
-        chmod 644 "$sys_apps/kodachi-autoshield.desktop"
+        # AutoShield retired as a standalone app (now a dashboard startup-screen
+        # tab). Remove any stale system-wide menu entry pointing at the old app.
+        rm -f "$sys_apps/kodachi-autoshield.desktop" 2>/dev/null || true
         print_success "System-wide Whisker menu entries updated in $sys_apps"
     fi
 }
@@ -2676,7 +2673,7 @@ if [[ $SKIPPED_COUNT -gt 0 ]]; then
     print_warning "Binaries skipped: $SKIPPED_COUNT"
 fi
 print_info "Signatures verified: $VERIFIED_COUNT"
-print_info "Desktop shortcuts: kodachi-dashboard, kodachi-binaries, kodachi-autoshield"
+print_info "Desktop shortcuts: kodachi-dashboard, kodachi-binaries"
 if [[ -x "$INSTALL_PATH/conky-status" ]]; then
     print_info "Conky Rust gateway: $INSTALL_PATH/conky-status"
 fi
