@@ -926,6 +926,7 @@ configure_kodachi_sudoers() {
         # "kodachi-claw"
         # "zeroclaw"
         # "zeroclaw-desktop"
+        "kodachi-soc"
         # Session helper
         "kodachi-session-helper"
     )
@@ -1029,8 +1030,18 @@ HEADER
     # blocked or password-required call) is dumped into ~/dead.letter,
     # leaking command history + the spoofed hostname to a plaintext file.
     # Disable all five mail triggers so sudo never invokes a mailer.
-    echo "# Privacy: do not mail failed/blocked sudo attempts (no MTA -> ~/dead.letter leak)" >> "$sudoers_file"
-    echo "Defaults !mail_no_user, !mail_no_perms, !mail_no_host, !mail_badpass, !mail_always" >> "$sudoers_file"
+    # The mail-suppression Defaults only exist in classic sudo. sudo-rs (the Rust
+    # reimplementation that is the DEFAULT sudo on Ubuntu 25.10+/26.04 and is
+    # coming to Debian) has NO mailer at all, so it rejects these as
+    # "unknown setting: 'mail_no_user'", which fails visudo and aborts the whole
+    # installer. sudo-rs never writes ~/dead.letter, so the privacy concern does
+    # not apply there. Emit the Defaults only when the active sudo is classic.
+    if sudo --version 2>/dev/null | grep -qi 'sudo-rs'; then
+        echo "# Privacy: mail-suppression Defaults skipped (sudo-rs has no mailer)" >> "$sudoers_file"
+    else
+        echo "# Privacy: do not mail failed/blocked sudo attempts (no MTA -> ~/dead.letter leak)" >> "$sudoers_file"
+        echo "Defaults !mail_no_user, !mail_no_perms, !mail_no_host, !mail_badpass, !mail_always" >> "$sudoers_file"
+    fi
     echo "" >> "$sudoers_file"
 
     # Add entries for each binary with BOTH paths
@@ -1078,10 +1089,18 @@ HEADER
 # ============================================================
 # Oniux Launcher - Kernel Namespace Configuration
 # ============================================================
-%sudo ALL=(ALL) NOPASSWD: /usr/sbin/sysctl -w kernel.unprivileged_userns_clone=*
-%sudo ALL=(ALL) NOPASSWD: /usr/sbin/sysctl -w kernel.apparmor_restrict_unprivileged_userns=*
-%sudo ALL=(ALL) NOPASSWD: /sbin/sysctl -w kernel.unprivileged_userns_clone=*
-%sudo ALL=(ALL) NOPASSWD: /sbin/sysctl -w kernel.apparmor_restrict_unprivileged_userns=*
+# NOTE: wildcards glued inside an argument (e.g. "key=*") are a hard syntax
+# error under sudo-rs ("wildcards are not allowed in command arguments"), so the
+# exact 0/1 values the code actually writes are enumerated instead. This also
+# parses on classic sudo and is strictly tighter than the old wildcard.
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/sysctl -w kernel.unprivileged_userns_clone=0
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/sysctl -w kernel.unprivileged_userns_clone=1
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/sysctl -w kernel.apparmor_restrict_unprivileged_userns=1
+%sudo ALL=(ALL) NOPASSWD: /sbin/sysctl -w kernel.unprivileged_userns_clone=0
+%sudo ALL=(ALL) NOPASSWD: /sbin/sysctl -w kernel.unprivileged_userns_clone=1
+%sudo ALL=(ALL) NOPASSWD: /sbin/sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+%sudo ALL=(ALL) NOPASSWD: /sbin/sysctl -w kernel.apparmor_restrict_unprivileged_userns=1
 
 # ============================================================
 # Dashboard Sudo Availability Probe
@@ -1098,15 +1117,39 @@ HEADER
 %sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables -L *
 %sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables -S
 %sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables -S *
-%sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t * -S
-%sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t * -S *
-%sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t * -L *
+# A wildcard in a NON-trailing argument ("-t * -S") is a hard syntax error under
+# sudo-rs, so the table name is enumerated over the only 5 tables iptables has.
+# Trailing wildcards (the final "*") are accepted by both sudo and sudo-rs.
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t filter -S
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t filter -S *
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t filter -L *
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t nat -S
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t nat -S *
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t nat -L *
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t mangle -S
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t mangle -S *
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t mangle -L *
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t raw -S
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t raw -S *
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t raw -L *
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t security -S
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t security -S *
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t security -L *
 %sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables-save
 %sudo ALL=(ALL) NOPASSWD: /usr/sbin/iptables-save -t *
 %sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables -S
 %sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables -S *
-%sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables -t * -S
-%sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables -t * -L *
+# sudo-rs: table name enumerated (non-trailing wildcard is rejected).
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables -t filter -S
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables -t filter -L *
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables -t nat -S
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables -t nat -L *
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables -t mangle -S
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables -t mangle -L *
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables -t raw -S
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables -t raw -L *
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables -t security -S
+%sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables -t security -L *
 %sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables-save
 %sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables-save -t *
 
@@ -2721,10 +2764,10 @@ needs_upgrade() {
 
 # Package categories - Reorganized for interactive installation
 # Essential - Core system requirements
-ESSENTIAL_PACKAGES="curl wget openssl ca-certificates coreutils findutils grep procps psmisc systemd sudo dmidecode lsof acl util-linux mount uuid-runtime inotify-tools ntpsec ntpsec-ntpdate isc-dhcp-client pass pwgen xkcdpass"
+ESSENTIAL_PACKAGES="curl wget openssl ca-certificates coreutils findutils grep procps psmisc systemd sudo dmidecode lsof acl util-linux util-linux-extra mount uuid-runtime inotify-tools ntpsec ntpsec-ntpdate isc-dhcp-client pass pwgen xkcdpass"
 
 # Networking - Network and VPN tools
-NETWORK_PACKAGES="tor torsocks obfs4proxy openvpn wireguard-tools iptables nftables arptables ebtables iproute2 iputils-ping net-tools nyx apt-transport-tor shadowsocks-libev redsocks microsocks haproxy"
+NETWORK_PACKAGES="tor tor-geoipdb torsocks obfs4proxy openvpn wireguard-tools iptables nftables arptables ebtables iproute2 iputils-ping net-tools nyx apt-transport-tor shadowsocks-libev redsocks microsocks haproxy"
 
 # Security - Protection and hardening tools
 SECURITY_PACKAGES="ufw macchanger firejail apparmor apparmor-utils apparmor-profiles aide lynis rkhunter chkrootkit usbguard ecryptfs-utils cryptsetup cryptsetup-initramfs cryptsetup-nuke-password fail2ban unattended-upgrades auditd libpam-pwquality libpam-google-authenticator secure-delete wipe nwipe"
@@ -2733,14 +2776,20 @@ SECURITY_PACKAGES="ufw macchanger firejail apparmor apparmor-utils apparmor-prof
 PRIVACY_PACKAGES="dnsutils bind9-dnsutils systemd-resolved"
 
 # Advanced - Specialized tools and utilities (non-GUI)
-ADVANCED_PACKAGES="jq git build-essential libxcb1-dev libxcb-xkb-dev rng-tools-debian haveged ccze yamllint smartmontools lm-sensors hdparm htop iotop vnstat efibootmgr rfkill ethtool lsb-release pciutils"
+ADVANCED_PACKAGES="jq git build-essential libxcb1-dev libxcb-xkb-dev rng-tools-debian haveged ccze yamllint smartmontools lm-sensors hdparm htop iotop vnstat efibootmgr rfkill ethtool lsb-release pciutils restic"
 
 # Monitoring - System and network monitoring tools for dashboard
 MONITORING_PACKAGES="btop iftop nethogs ncdu nload iperf3 speedtest-cli"
 
 # GUI-only packages - only installed on systems with desktop environments.
 # Includes the runtime packages required by Kodachi rofi menus on installed systems.
-GUI_PACKAGES="bleachbit kitty fontconfig fonts-dejavu fonts-noto-core fonts-noto-color-emoji fonts-liberation fonts-liberation2 ttf-mscorefonts-installer conky-all alsa-utils pipewire pipewire-pulse pipewire-alsa wireplumber pulseaudio-utils libnotify-bin xclip xsel mpv xterm network-manager rofi xfce4-screenshooter xdotool xfce4-clipman xfce4-clipman-plugin copyq qalculate-gtk maim translate-shell python3 bc iproute2 iputils-ping traceroute speedtest-cli"
+# WebKitGTK + GStreamer entries are the runtime the Kodachi GUI dashboard
+# (Tauri/WebKitGTK binary under /opt) dynamically links at load time. They have no
+# apt dependency edge to the /opt binary, so naming them here installs + manual-marks
+# them; without this they survive only transitively and `apt autoremove` can reap
+# libgstreamer-plugins-base1.0-0, breaking the dashboard with
+# "error while loading shared libraries: libgstvideo-1.0.so.0" (field report 2026-06-15).
+GUI_PACKAGES="bleachbit kitty fontconfig fonts-dejavu fonts-noto-core fonts-noto-color-emoji fonts-liberation fonts-liberation2 ttf-mscorefonts-installer conky-all alsa-utils pipewire pipewire-pulse pipewire-alsa wireplumber pulseaudio-utils libnotify-bin xclip xsel mpv xterm network-manager rofi xfce4-screenshooter xdotool xfce4-clipman xfce4-clipman-plugin copyq qalculate-gtk maim translate-shell python3 bc iproute2 iputils-ping traceroute speedtest-cli libwebkit2gtk-4.1-0 libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 libgstreamer-gl1.0-0 gstreamer1.0-plugins-base gstreamer1.0-gl"
 
 # Packages that require contrib/non-free repositories
 CONTRIB_PACKAGES="shadowsocks-v2ray-plugin v2ray"
@@ -3626,11 +3675,19 @@ fi
 # tirdad-dkms in particular was confirmed reaped by autoremove in the past (TCP-timestamp
 # anonymization), and gnupg can be auto-installed. Rationale: anything Kodachi's privacy
 # stack relies on at runtime should survive an autoremove cleanup pass.
+#
+# WebKitGTK + GStreamer entries protect the Kodachi GUI dashboard's runtime: it is a
+# Tauri/WebKitGTK binary under /opt with no apt dependency edge, so these libs are
+# normally only transitive/auto-installed. autoremove reaping libgstreamer-plugins-
+# base1.0-0 breaks the dashboard at startup ("cannot open shared object file:
+# libgstvideo-1.0.so.0") even though everything else works (field report 2026-06-15).
 KODACHI_PROTECT_PKGS="
     iproute2 iptables nftables openresolv resolvconf dnscrypt-proxy ca-certificates
     tor obfs4proxy macchanger tirdad-dkms wireguard-tools openvpn proxychains4
     apparmor apparmor-utils secure-delete network-manager rfkill gnupg dnsutils
-    curl wget"
+    curl wget
+    libwebkit2gtk-4.1-0 libgstreamer1.0-0 libgstreamer-plugins-base1.0-0
+    libgstreamer-gl1.0-0 gstreamer1.0-plugins-base gstreamer1.0-gl"
 for _kpkg in $KODACHI_PROTECT_PKGS; do
     if dpkg -s "$_kpkg" >/dev/null 2>&1; then
         apt-mark manual "$_kpkg" >/dev/null 2>&1 || true
@@ -3774,7 +3831,10 @@ echo ""
 # CONFIGURE SUDOERS EARLY - Before any package installation that might fail
 # ============================================================================
 print_step "Configuring sudoers for Kodachi binaries (early setup)..."
-configure_kodachi_sudoers
+# Non-fatal: a sudoers validation problem must never abort the whole dependency
+# install (under "set -e" a bare failing call would). At worst the dashboard
+# loses passwordless sudo; tor/VPN/dnscrypt and the rest must still install.
+configure_kodachi_sudoers || print_warning "Sudoers early setup incomplete - continuing with dependency install"
 echo ""
 
 configure_emergency_shortcut_input_access
@@ -6102,11 +6162,12 @@ elif [[ "$INSTALL_MODE" == "interactive" ]]; then
   • Development: git, build-essential
   • System monitoring: htop, iotop, sensors
   • Hardware tools: smartmontools, rfkill
+  • Backup: restic (powers kodachi-backup)
   • Utilities: jq, yamllint, haveged"
 
     ADVANCED_MANUAL="  sudo apt-get install jq git build-essential rng-tools-debian \\
     haveged ccze yamllint smartmontools lm-sensors hdparm \\
-    htop iotop vnstat efibootmgr rfkill"
+    htop iotop vnstat efibootmgr rfkill restic"
 
     install_category_interactive "$ADVANCED_PACKAGES" "Advanced" "$ADVANCED_DESC" "$ADVANCED_MANUAL"
     ensure_dpkg_healthy
@@ -8296,7 +8357,7 @@ ensure_sbin_in_path
 # (iftop, nethogs) were missing from the system and got skipped by command -v.
 # Now that all packages and sbin symlinks are in place, re-run to pick them up.
 print_step "Updating sudoers with newly installed tools..."
-configure_kodachi_sudoers
+configure_kodachi_sudoers || print_warning "Sudoers post-install update incomplete - dashboard passwordless sudo may be limited"
 
 # ============================================================================
 # CLEANUP TEMPORARY FILES

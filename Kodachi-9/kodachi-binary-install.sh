@@ -1371,6 +1371,20 @@ if [[ -d "$EXTRACT_DIR/binaries-update-scripts" ]]; then
     fi
 fi
 
+# Expose kodachi-backup (Backup & Restore CLI) on PATH. It runs as the invoking
+# user (backs up $HOME) so it deliberately gets NO sudoers entry. The dashboard
+# also resolves the wrapper through this symlink (PATH fallback).
+KODACHI_BACKUP_DEPLOYED="$INSTALL_PATH/binaries-update-scripts/kodachi-backup"
+if [[ -f "$KODACHI_BACKUP_DEPLOYED" ]]; then
+    chmod 755 "$KODACHI_BACKUP_DEPLOYED" 2>/dev/null || true
+    if ln -sfn "$KODACHI_BACKUP_DEPLOYED" /usr/local/bin/kodachi-backup 2>/dev/null \
+        || sudo ln -sfn "$KODACHI_BACKUP_DEPLOYED" /usr/local/bin/kodachi-backup 2>/dev/null; then
+        print_success "kodachi-backup linked to /usr/local/bin/kodachi-backup"
+    else
+        print_warning "Could not link kodachi-backup into /usr/local/bin"
+    fi
+fi
+
 if [[ -d "$EXTRACT_DIR/others" ]]; then
     cp -a "$EXTRACT_DIR/others/." "$INSTALL_PATH/others/" 2>/dev/null || true
     other_count=$(find "$INSTALL_PATH/others" -type f | wc -l)

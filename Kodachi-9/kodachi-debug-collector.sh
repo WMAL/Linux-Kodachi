@@ -1408,6 +1408,7 @@ KODACHI_BINARIES_REQUIRED=(
     "deps-checker"
     "workflow-manager"
     "global-launcher"
+    "kodachi-soc"
 )
 KODACHI_BINARIES_OPTIONAL=(
     "kodachi-ai"
@@ -1493,6 +1494,11 @@ fi
 # Routing-switch state
 if command -v routing-switch &> /dev/null; then
     safe_exec "$COLLECTION_DIR/06-kodachi/routing-switch-status.txt" "routing-switch status --json 2>/dev/null || echo 'routing-switch unavailable'"
+fi
+
+# Kodachi SOC host-security telemetry snapshot (read-only collector)
+if command -v kodachi-soc &> /dev/null; then
+    safe_exec "$COLLECTION_DIR/06-kodachi/kodachi-soc-snapshot.json" "kodachi-soc snapshot --json 2>/dev/null || echo 'kodachi-soc unavailable'"
 fi
 
 fi # end CATEGORY 6
