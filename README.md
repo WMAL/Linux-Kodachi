@@ -52,6 +52,7 @@
 > - **[API Documentation Portal](https://www.kodachi.cloud/api-docs.html)** - New API docs for IP geolocation, platform stats, and binary service endpoints
 > - **[Infrastructure Status Dashboard](https://www.kodachi.cloud/apps/status.php)** - Live monitoring of servers and services across multiple regions
 > - **[File Verification Tool](https://www.kodachi.cloud/wiki/bina/security/file-verify.html)** - Browser-based file integrity verification with hash computation and automatic checksum comparison against official Kodachi releases
+> - **[Redesigned Landing Page](https://www.kodachi.cloud/wiki/bina/index.html)** - The Kodachi 9 home page has a new marketing-style layout: an editions row, a side-by-side comparison against Tails / Whonix / Parrot / Qubes, live download and country counters, a curated tools grid, and a "Verify ISO" button on every edition card
 > - **[Kodachi Cloud](https://www.kodachi.cloud/)** - Fresh redesigned interface
 > - **[Kodachi Homepage](https://www.digi77.com/linux-kodachi/)** - New modern look
 
