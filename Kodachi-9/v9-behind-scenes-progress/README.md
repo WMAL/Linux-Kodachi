@@ -28,6 +28,7 @@ We believe security tools should be as open in design as they are strong in defe
 
 | Type         | Title / Description                                                                 | Link                                                                                                           |
 |--------------|--------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------|
+| ![Whitepaper](https://img.shields.io/badge/-Whitepaper-9cf?style=flat-square&logo=readthedocs) | **Linux Kodachi 9 Technical Whitepaper**: Full architecture, threat model, routing, hardening, VPS fleet, and the end-to-end signing chain (RSA-4096 + BLAKE3) | [Read Whitepaper](https://www.kodachi.cloud/wiki/bina/whitepaper.html) |
 | ![Article](https://img.shields.io/badge/-Article-blue?style=flat-square&logo=document) | **Securing Digital Identity** – Challenge-Response Authentication System Design     | [Read Article](https://github.com/WMAL/Linux-Kodachi/blob/main/Kodachi-9/v9-behind-scenes-progress/Securing%20Digital%20Identity.md) |
 | ![Video](https://img.shields.io/badge/-Video-red?style=flat-square&logo=film) | **Authentication Flow Demo** – Kodachi v9 Challenge-Response Walkthrough            | [Watch Video](https://github.com/WMAL/Linux-Kodachi/raw/refs/heads/main/Kodachi-9/v9-behind-scenes-progress/Kodachi9-auth-demo.mp4) |
 | ![Article](https://img.shields.io/badge/-Article-blue?style=flat-square&logo=document) | **IP-Fetch Utility Overview** – Enhancing Anonymity with Dynamic Network Controls   | [Read Article](https://github.com/WMAL/Linux-Kodachi/blob/main/Kodachi-9/v9-behind-scenes-progress/ip-fetch.md)          |
@@ -38,6 +39,8 @@ We believe security tools should be as open in design as they are strong in defe
 ---
 
 ## ![Milestones](https://img.shields.io/badge/-Recent%20Milestones-brightgreen?style=flat-square&logo=check) Recent Milestones
+- ![Complete](https://img.shields.io/badge/-Complete-brightgreen?style=flat-square) **[Linux Kodachi 9 Technical Whitepaper](https://www.kodachi.cloud/wiki/bina/whitepaper.html)**: Published, the full engineering breakdown so users can verify, not just trust
+- ![Complete](https://img.shields.io/badge/-Complete-brightgreen?style=flat-square) **[Kodachi Downloads Center](https://www.kodachi.cloud/downloads/)**: Single download hub with live trends and by-OS / by-country stats
 - ![Complete](https://img.shields.io/badge/-Complete-brightgreen?style=flat-square) **Kodachi 9 — Development Complete** – All components built, deployed, and fully functional
 - ![Complete](https://img.shields.io/badge/-Complete-brightgreen?style=flat-square) **[Kodachi Desktop (Debian XFCE)](https://www.kodachi.cloud/wiki/bina/desktop-debian.html)** – Full desktop edition completed
 

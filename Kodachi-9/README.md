@@ -10,6 +10,14 @@ This roadmap provides an overview of the current status of key components in the
 > The **Kodachi Desktop Edition** is now complete — a full desktop experience built on Debian XFCE with the Gambas GUI dashboard, all Kodachi security binaries pre-integrated, and a polished user interface for privacy-first computing.
 > [Download & Guide](https://www.kodachi.cloud/wiki/bina/desktop-debian.html)
 
+> ### ![New](https://img.shields.io/badge/-NEW-red?style=flat-square) Linux Kodachi 9 Technical Whitepaper
+> A full, code-verified breakdown of how the platform works: the OS, Rust services, dashboard, routing, Tor, DNS, hardening stack, VPS fleet, and the end-to-end signing chain (RSA-4096 + BLAKE3), plus the honest threat model including what Kodachi does not protect against. Most privacy tools ask you to trust them; this shows the engineering so you can verify it.
+> [Read the Whitepaper](https://www.kodachi.cloud/wiki/bina/whitepaper.html)
+
+> ### ![New](https://img.shields.io/badge/-NEW-red?style=flat-square) Kodachi Downloads Center
+> One hub for the Desktop ISO, Terminal Server ISO, and standalone binaries, with live download trends and by-OS / by-country statistics.
+> [Open Downloads](https://www.kodachi.cloud/downloads/)
+
 | Component                                                                                        | Status                                                                                     | Completion                                                                          |
 | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
 | **Kodachi Workers VPS**                                                                          | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
@@ -20,9 +28,13 @@ This roadmap provides an overview of the current status of key components in the
 | **[Kodachi Terminal Server Version](https://www.kodachi.cloud/wiki/bina/terminal-version.html)** | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **[Kodachi Payment Gateway](https://www.kodachi.cloud/wiki/bina/support.html)**                  | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **Kodachi Admin Dashboard**                                                                      | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **[Kodachi License Portal (Customer Self-Service)](https://www.kodachi.cloud/wiki/bina/whitepaper.html#13-the-customer-license-portal)** | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **Kodachi Dashboard GUI** ([Installation](https://www.kodachi.cloud/wiki/bina/installation.html) · [Desktop](https://www.kodachi.cloud/wiki/bina/desktop-debian.html)) | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **[Kodachi AI Capabilities](https://www.kodachi.cloud/wiki/bina/ai/index.html)**                 | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 | **[Kodachi Desktop (Debian XFCE)](https://www.kodachi.cloud/wiki/bina/desktop-debian.html)**     | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **[File Verification Tool](https://www.kodachi.cloud/wiki/bina/security/file-verify.html)**      | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **[Technical Whitepaper](https://www.kodachi.cloud/wiki/bina/whitepaper.html)**                  | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
+| **[Kodachi Downloads Center](https://www.kodachi.cloud/downloads/)**                             | ![Complete](https://img.shields.io/badge/Status-Complete-brightgreen?style=flat-square)    | ![100%](https://img.shields.io/badge/Progress-100%25-brightgreen?style=flat-square) |
 
 ---
 
