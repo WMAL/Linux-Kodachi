@@ -53,8 +53,6 @@
 > - **[Infrastructure Status Dashboard](https://www.kodachi.cloud/apps/status.php)** - Live monitoring of servers and services across multiple regions
 > - **[File Verification Tool](https://www.kodachi.cloud/docs/security/file-verify.html)** - Browser-based file integrity verification with hash computation and automatic checksum comparison against official Kodachi releases
 > - **[Redesigned Landing Page](https://www.kodachi.cloud/)** - The Kodachi 9 home page has a new marketing-style layout: an editions row, a side-by-side comparison against Tails / Whonix / Parrot / Qubes, live download and country counters, a curated tools grid, and a "Verify ISO" button on every edition card
-> - **[Kodachi Cloud](https://www.kodachi.cloud/)** - Fresh redesigned interface
-> - **[Kodachi Homepage](https://www.kodachi.cloud/)** - New modern look
 
 ---
 
@@ -295,8 +293,7 @@ Special thanks to all the contributors and the open-source community for their i
 
 For any queries or support, please contact:
 
-- **Kodachi Website:** [Kodachi page](https://www.kodachi.cloud/)
-- **Kodachi Anonymity Verifier:** [https://www.kodachi.cloud](https://www.kodachi.cloud)
+- **Kodachi Website:** [https://www.kodachi.cloud](https://www.kodachi.cloud/)
 - **Discord Support:** [Kodachi support](https://discord.gg/KEFErEx)
 - **Contact:** [Contact page](https://www.digi77.com/contact/)
 
