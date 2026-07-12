@@ -23,7 +23,7 @@
 | ![Binaries](https://img.shields.io/badge/-Standalone%20Binaries-blue?style=for-the-badge&logo=package&logoColor=white) | **Kodachi Standalone Binaries** — Individual privacy and security tools that work on any Debian-based Linux distribution. Ships with the full Dashboard GUI. | [![Install](https://img.shields.io/badge/Installation-green?style=flat-square&logo=rocket&logoColor=white)](https://www.kodachi.cloud/docs/installation.html) |
 | ![Dashboard](https://img.shields.io/badge/-Dashboard%20GUI-teal?style=for-the-badge&logo=desktop&logoColor=white) | **Kodachi Dashboard GUI** — Modern Tauri + Svelte desktop application providing centralized control over all security services. Ships with all editions. | [![Install](https://img.shields.io/badge/Installation-green?style=flat-square&logo=rocket&logoColor=white)](https://www.kodachi.cloud/docs/installation.html) [![Desktop](https://img.shields.io/badge/Desktop-blue?style=flat-square&logo=debian&logoColor=white)](https://www.kodachi.cloud/docs/desktop-debian.html) |
 | ![Changelog](https://img.shields.io/badge/-Changelog-gray?style=for-the-badge&logo=clock&logoColor=white) | **Kodachi Changelog** — Full history of changes, improvements, and fixes across all Kodachi releases and components. | [![Changelog](https://img.shields.io/badge/Changelog-blue?style=flat-square&logo=clock&logoColor=white)](https://www.kodachi.cloud/docs/changelog.html) [![Raw](https://img.shields.io/badge/Raw-gray?style=flat-square&logo=markdown&logoColor=white)](https://www.kodachi.cloud/apps/os/CHANGELOG.md) |
-| ![Whitepaper](https://img.shields.io/badge/-Technical%20Whitepaper-9cf?style=for-the-badge&logo=readthedocs&logoColor=white) | **Linux Kodachi 9 Technical Whitepaper:** A full, honest breakdown of how the platform works: the OS, Rust services, dashboard, routing, Tor, DNS, hardening stack, VPS fleet, end-to-end signing chain (RSA-4096 + BLAKE3), and the real threat model (including what Kodachi does not protect against). No black boxes. | [![Read](https://img.shields.io/badge/Read-blue?style=flat-square&logo=readthedocs&logoColor=white)](https://www.kodachi.cloud/tools/whitepaper.html) |
+| ![Whitepaper](https://img.shields.io/badge/-Technical%20Whitepaper-9cf?style=for-the-badge&logo=readthedocs&logoColor=white) | **Kodachi OS 9 Technical Whitepaper:** A full, honest breakdown of how the platform works: the OS, Rust services, dashboard, routing, Tor, DNS, hardening stack, VPS fleet, end-to-end signing chain (RSA-4096 + BLAKE3), and the real threat model (including what Kodachi does not protect against). No black boxes. | [![Read](https://img.shields.io/badge/Read-blue?style=flat-square&logo=readthedocs&logoColor=white)](https://www.kodachi.cloud/tools/whitepaper.html) |
 | ![Downloads](https://img.shields.io/badge/-Downloads%20Center-blueviolet?style=for-the-badge&logo=cloudsmith&logoColor=white) | **Kodachi Downloads Center:** One place to grab the Desktop ISO, Terminal Server ISO, and standalone binaries, with live download trends and by-OS / by-country stats. | [![Open](https://img.shields.io/badge/Open-green?style=flat-square&logo=cloudsmith&logoColor=white)](https://www.kodachi.cloud/downloads/) |
 
 ---
@@ -38,7 +38,8 @@
 
 > **Recent Platform Updates:**
 >
-> - **[Linux Kodachi 9 Technical Whitepaper](https://www.kodachi.cloud/tools/whitepaper.html)** - Newly published! A full, code-verified breakdown of the architecture, Rust services, routing, hardening, VPS fleet, signing chain (RSA-4096 + BLAKE3), and the honest threat model, so you can verify the engineering instead of taking privacy claims on trust
+> - **[Kodachi OS 9 Technical Whitepaper](https://www.kodachi.cloud/tools/whitepaper.html)** - Newly published! A full, code-verified breakdown of the architecture, Rust services, routing, hardening, VPS fleet, signing chain (RSA-4096 + BLAKE3), and the honest threat model, so you can verify the engineering instead of taking privacy claims on trust
+> - **[Community Contributors: Roll of Honor](https://kodachi.cloud/community/contributors.html)** - A new recognition page thanking the people who help make Kodachi OS successful: contributors, developers, auditors, feature proposers, moderators, and the wider community who leave Kodachi better than they found it
 > - **[Kodachi Downloads Center](https://www.kodachi.cloud/downloads/)** - A single hub for the Desktop ISO, Terminal Server ISO, and standalone binaries, with live download trends and by-OS / by-country statistics
 > - **[Customer License Portal](https://www.kodachi.cloud/tools/whitepaper.html#13-the-customer-license-portal)** - A new self-service online dashboard for customers, separate from the admin command center: paste your license key (no account, no sign-up) to see each license's tier, seat usage, expiry, registered devices, download links, and transaction history, release a device seat remotely, and use the new **Your Nodes** panel listing the VPN nodes your license can use with live per-service status. The portal link is revealed on your purchase-confirmation page and in the support FAQ
 > - **AutoShield Auto-VPN** - AutoShield now auto-connects your saved external VPN (e.g. ProtonVPN) at boot, before the kill-switch and Tor, instead of silently skipping it
@@ -56,9 +57,9 @@
 
 ---
 
-# Linux Kodachi - Kodachi 9
+# Kodachi OS - Kodachi 9
 
-**Linux Kodachi** is a **privacy-focused Linux distribution built on Debian**. It provides a hardened, privacy-preserving desktop designed to balance security with usability, delivering a pre-wired anonymity stack (failover VPN, Tor routing, DNSCrypt, and anti-forensic tooling) that most operating systems leave you to assemble yourself. **Kodachi 9** features a modular architecture that breaks traditional barriers, enabling deployment across any Debian-based Linux distribution through **standalone binaries**, a **command-line terminal version**, or the upcoming **complete desktop experience**. Each deployment option provides the same robust security and privacy protection that Kodachi is known for.
+**Kodachi OS** (formerly Linux Kodachi) is a **privacy-focused Linux distribution built on Debian**. It provides a hardened, privacy-preserving desktop designed to balance security with usability, delivering a pre-wired anonymity stack (failover VPN, Tor routing, DNSCrypt, and anti-forensic tooling) that most operating systems leave you to assemble yourself. **Kodachi 9** features a modular architecture that breaks traditional barriers, enabling deployment across any Debian-based Linux distribution through **standalone binaries**, a **command-line terminal version**, or the upcoming **complete desktop experience**. Each deployment option provides the same robust security and privacy protection that Kodachi is known for.
 
 ### Deployment Options - Built on the Same Foundation
 
@@ -98,7 +99,7 @@ This roadmap provides an overview of the current status of key components in the
 
 Every component listed above is finished, deployed, and production-ready. **Kodachi 9** is based on **<span style="color:blue;">Debian</span>** and is now **<span style="color:green;">fully released</span>** (February 26, 2026). Every script has been rewritten from scratch to enhance performance and functionality. Available as standalone binaries, terminal server version, and the complete desktop edition (Debian XFCE).
 
-Explore everything on the **[Kodachi Landing Page](https://www.kodachi.cloud/)**, check out the [R&D progress](https://github.com/WMAL/Linux-Kodachi/tree/main/Kodachi-9/v9-behind-scenes-progress) for development history, and see the [Changelog](https://www.kodachi.cloud/docs/changelog.html) for a detailed list of all changes ([raw](https://www.kodachi.cloud/apps/os/CHANGELOG.md)).
+Explore everything on the **[Kodachi Landing Page](https://www.kodachi.cloud/)**, check out the [R&D progress](https://github.com/WMAL/kodachios/tree/main/Kodachi-9/v9-behind-scenes-progress) for development history, and see the [Changelog](https://www.kodachi.cloud/docs/changelog.html) for a detailed list of all changes ([raw](https://www.kodachi.cloud/apps/os/CHANGELOG.md)).
 
 ---
 
@@ -114,14 +115,14 @@ Explore everything on the **[Kodachi Landing Page](https://www.kodachi.cloud/)**
 
 <div align="center">
 
-# ![Security](https://img.shields.io/badge/-Linux%20Kodachi%209-blue?style=for-the-badge&logo=shield) Linux Kodachi 9
+# ![Security](https://img.shields.io/badge/-Kodachi%20OS%209-blue?style=for-the-badge&logo=shield) Kodachi OS 9
 
 <img src="https://www.digi77.com/wp-content/uploads/2024/07/kodachi-green-128.png" alt="Kodachi Logo" width="200">
 
-[![Version](https://img.shields.io/badge/Version-9.0-brightgreen?style=for-the-badge)](https://github.com/WMAL/Linux-Kodachi)
+[![Version](https://img.shields.io/badge/Version-9.0-brightgreen?style=for-the-badge)](https://github.com/WMAL/kodachios)
 [![Based on](https://img.shields.io/badge/Based%20on-Debian-red?style=for-the-badge&logo=debian)](https://www.debian.org)
 [![Privacy](https://img.shields.io/badge/Privacy-Focused-blue?style=for-the-badge&logo=tor)](https://www.kodachi.cloud)
-[![License](https://img.shields.io/badge/License-Proprietary-yellow?style=for-the-badge)](https://github.com/WMAL/Linux-Kodachi/blob/main/Kodachi-8.27-legacy-EOL/LICENSE)
+[![License](https://img.shields.io/badge/License-Proprietary-yellow?style=for-the-badge)](https://github.com/WMAL/kodachios/blob/main/Kodachi-8.27-legacy-EOL/LICENSE)
 
 **![Privacy](https://img.shields.io/badge/-A%20New%20Era%20of%20Privacy--Focused%20Computing-red?style=for-the-badge&logo=shield)**
 
@@ -218,7 +219,7 @@ Test the Terminal Server Version in a virtual environment before full installati
 To learn how to use Kodachi, explore the following resources:
 
 - **YouTube Tutorials:**
-  - Search for **Linux Kodachi** on YouTube or visit [this link](https://www.youtube.com/results?search_query=linux+kodachi) for a collection of video tutorials.
+  - Search for **Kodachi OS** on YouTube or visit [this link](https://www.youtube.com/results?search_query=linux+kodachi) for a collection of video tutorials.
 - **Official Documentation:** Visit the [Kodachi Documentation](https://www.kodachi.cloud/docs/) for detailed guides.
 - **Community Support:** Join the **[Kodachi support](https://discord.gg/KEFErEx)** to ask questions and share insights.
 
@@ -226,7 +227,7 @@ To learn how to use Kodachi, explore the following resources:
 
 ## Support and Donations
 
-Linux Kodachi is free, but maintaining a project of this magnitude takes time and resources. If you find Kodachi valuable and want to support its future development, consider making a donation.
+Kodachi OS is free, but maintaining a project of this magnitude takes time and resources. If you find Kodachi valuable and want to support its future development, consider making a donation.
 
 For all donation options including cryptocurrency (BTC, ETH, XMR, SOL, USDT, DOGE, LTC, and more), QR codes, PayPal, and recurring support options, please visit the [Donations and Support](https://www.kodachi.cloud/docs/support.html) section.
 
@@ -236,7 +237,7 @@ Your donations will be used to fund future development, improve user support, an
 
 ## Conclusion
 
-Linux Kodachi is more than just a privacy tool—it's a **comprehensive solution** for those who need **advanced security and anonymity**. Whether you're a **journalist**, **activist**, or an **everyday user** who values privacy, Kodachi is tailored to protect you in the most hostile digital environments.
+Kodachi OS is more than just a privacy tool, it's a **comprehensive solution** for those who need **advanced security and anonymity**. Whether you're a **journalist**, **activist**, or an **everyday user** who values privacy, Kodachi is tailored to protect you in the most hostile digital environments.
 
 **Download it today and experience privacy without compromise!**
 
@@ -261,17 +262,17 @@ Follow Kodachi on social media to stay updated on the latest developments.
 
 ---
 
-# Linux Kodachi OS/Software/Code License Agreement
+# Kodachi OS Software/Code License Agreement
 
-This is a legal agreement between you and Warith AL Maawali regarding the use of Linux Kodachi (the "OS/Software/Code").
+This is a legal agreement between you and Warith AL Maawali regarding the use of Kodachi OS (the "OS/Software/Code").
 
-- **Private Use**: Linux Kodachi is freeware for private, non-commercial use only.
+- **Private Use**: Kodachi OS is freeware for private, non-commercial use only.
 - **Commercial Use**: Government, companies, and organizations require a user/device license. Contact for pricing.
 - **License**: A purchased license grants a perpetual, worldwide, non-exclusive license for internal business use.
 - **Prohibited**: You may not distribute, modify, decompile, or reverse-engineer the software.
-- **Warranty**: Linux Kodachi is provided "as is" without any warranty. Use at your own risk.
+- **Warranty**: Kodachi OS is provided "as is" without any warranty. Use at your own risk.
 
-For the full version, visit: [Full License](https://github.com/WMAL/Linux-Kodachi/blob/main/LICENSE.md)
+For the full version, visit: [Full License](https://github.com/WMAL/kodachios/blob/main/LICENSE.md)
 
 ## Warrant Canary
 
@@ -285,7 +286,9 @@ As of September 23, 2025:
 
 ## Acknowledgements
 
-Special thanks to all the contributors and the open-source community for their invaluable support and contributions to the project.
+Special thanks to all the contributors and the open-source community for their invaluable support and contributions to the project. Kodachi was built by one and strengthened by many.
+
+The people who help make Kodachi OS successful are recognized on the community **[Roll of Honor](https://kodachi.cloud/community/contributors.html)**: contributors, developers, auditors, feature proposers, moderators, and the wider community. If someone was missed, the page includes a way to let us know.
 
 ---
 

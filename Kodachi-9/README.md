@@ -10,7 +10,7 @@ This roadmap provides an overview of the current status of key components in the
 > The **Kodachi Desktop Edition** is now complete — a full desktop experience built on Debian XFCE with the Gambas GUI dashboard, all Kodachi security binaries pre-integrated, and a polished user interface for privacy-first computing.
 > [Download & Guide](https://www.kodachi.cloud/docs/desktop-debian.html)
 
-> ### ![New](https://img.shields.io/badge/-NEW-red?style=flat-square) Linux Kodachi 9 Technical Whitepaper
+> ### ![New](https://img.shields.io/badge/-NEW-red?style=flat-square) Kodachi OS 9 Technical Whitepaper
 > A full, code-verified breakdown of how the platform works: the OS, Rust services, dashboard, routing, Tor, DNS, hardening stack, VPS fleet, and the end-to-end signing chain (RSA-4096 + BLAKE3), plus the honest threat model including what Kodachi does not protect against. Most privacy tools ask you to trust them; this shows the engineering so you can verify it.
 > [Read the Whitepaper](https://www.kodachi.cloud/tools/whitepaper.html)
 

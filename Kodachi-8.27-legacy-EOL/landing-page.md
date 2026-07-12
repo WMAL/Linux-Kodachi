@@ -14,7 +14,7 @@ Kodachi is a live operating system, meaning it can be launched on virtually any 
 
 Built on the robust foundations of Linux Xubuntu/Debian and customized with XFCE, Kodachi presents a stable, secure, and uniquely personalized operating system.
 
-Linux Kodachi 9 is currently under development and will be based on Debian. The project is approximately 88% complete, with all scripts rewritten for improved performance. The release timeline is subject to change, but I am working diligently to bring this enhanced version to users as soon as possible. 🚀<br>For those interested in tracking the development progress and roadmap, visit: <a href="https://github.com/WMAL/Linux-Kodachi" target="_blank" rel="noopener" title="">GitHub - Linux Kodachi 9 Development</a>.
+Linux Kodachi 9 is currently under development and will be based on Debian. The project is approximately 88% complete, with all scripts rewritten for improved performance. The release timeline is subject to change, but I am working diligently to bring this enhanced version to users as soon as possible. 🚀<br>For those interested in tracking the development progress and roadmap, visit: <a href="https://github.com/WMAL/kodachios" target="_blank" rel="noopener" title="">GitHub - Linux Kodachi 9 Development</a>.
 
 ---
 

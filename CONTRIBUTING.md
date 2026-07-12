@@ -1,6 +1,6 @@
-# Contributing to Kodachi Linux
+# Contributing to Kodachi OS
 
-Thank you for your interest in contributing to Kodachi Linux! This document provides guidelines and best practices for contributing to the project.
+Thank you for your interest in contributing to Kodachi OS! This document provides guidelines and best practices for contributing to the project.
 
 ## Table of Contents
 - [Code of Conduct](#code-of-conduct)
@@ -32,7 +32,7 @@ Thank you for your interest in contributing to Kodachi Linux! This document prov
    ```
 3. Add the upstream repository:
    ```bash
-   git remote add upstream https://github.com/WMAL/Linux-Kodachi.git
+   git remote add upstream https://github.com/WMAL/kodachios.git
    ```
 4. Keep your fork synchronized:
    ```bash
@@ -291,8 +291,9 @@ cd gambas/app-name
 ## Recognition
 
 Contributors are recognized in:
+- The public [Kodachi OS Roll of Honor](https://kodachi.cloud/community/contributors.html) community recognition page
 - CONTRIBUTORS.md file
 - Release notes
 - Project documentation
 
-Thank you for contributing to making Kodachi Linux better and more secure!
+Thank you for contributing to making Kodachi OS better and more secure!

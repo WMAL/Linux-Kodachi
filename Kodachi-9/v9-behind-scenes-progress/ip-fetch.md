@@ -4,7 +4,7 @@ The IP-Fetch utility in Kodachi v9 provides comprehensive network monitoring and
 
 ## ![Video](https://img.shields.io/badge/-Demo%20Video-red?style=flat-square&logo=youtube) Watch the IP-Fetch Demo Video
 
-[Watch the IP-Fetch Demo Video](https://github.com/WMAL/Linux-Kodachi/raw/refs/heads/main/Kodachi-9/v9-behind-scenes-progress/ip-fetch-c.mp4)
+[Watch the IP-Fetch Demo Video](https://github.com/WMAL/kodachios/raw/refs/heads/main/Kodachi-9/v9-behind-scenes-progress/ip-fetch-c.mp4)
 
 ---
 
