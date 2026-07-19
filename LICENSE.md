@@ -1,28 +1,42 @@
 # Kodachi OS License
 
-**SPDX-License-Identifier:** `LicenseRef-Kodachi-SAN-1.0`
-**Copyright:** © 2013-2025 Warith Al Maawali
+**SPDX-License-Identifier:** `LicenseRef-Kodachi-SAN-1.1`
+**Copyright:** © 2013-2026 Warith Al Maawali
 
 ---
 
-## Kodachi 9 NOTICE
+## Software License
 
-**Copyright © 2013-2025 Warith Al Maawali**
+Kodachi OS is source-available, noncommercial software. It is not open source and is not released under the GPL, MIT, Apache, BSD, or any other open source software license. Kodachi Materials are governed by the Kodachi Source-Available Noncommercial License v1.1 (KSAN-1.1).
 
-This distribution contains **"Kodachi Materials"** authored by the Licensor that are covered by the **Kodachi Source-Available Noncommercial License v1.0 (KSAN-1.0)**.
+Except for the rights expressly granted under KSAN-1.1, all Kodachi Materials authored by Warith Al Maawali, including source code, binaries, scripts, artwork, documentation, branding, and related materials, are © 2013-2026 Warith Al Maawali. All Rights Reserved.
+
+The terms below govern the use, modification, redistribution, commercial licensing, subscriptions, and infrastructure access associated with Kodachi OS.
+
+## Third-Party Software
+
+Kodachi OS includes third-party software distributed under separate licenses. Those components remain licensed by their respective authors and copyright holders, and their applicable licenses take precedence for those components.
+
+---
+
+## Kodachi OS NOTICE
+
+**Copyright © 2013-2026 Warith Al Maawali**
+
+This distribution contains **"Kodachi Materials"** authored by the Licensor that are covered by the **Kodachi Source-Available Noncommercial License v1.1 (KSAN-1.1)**.
 
 **Commercial or organizational use requires a written commercial license from the Licensor.**
 **Contact:** warith@digi77.com
 
-This distribution also contains third-party software subject to their own licenses, including Debian packages and other open source projects. See [Third-Party Licenses section](#third-party-licenses-and-attributions) below for full texts and attributions.
+This distribution also contains third-party software subject to their own licenses, including Debian packages and other open source projects. See [Third-Party Licenses section](#third-party-licenses-and-attributions) below for the applicable third-party license references.
 
 **Trademarks:** "Kodachi" and related marks are trademarks of Warith Al Maawali. No trademark rights are granted by the license above.
 
 ---
 
-## Kodachi Source-Available Noncommercial License v1.0 (KSAN-1.0)
+## Kodachi Source-Available Noncommercial License v1.1 (KSAN-1.1)
 
-**SPDX-Identifier:** `LicenseRef-Kodachi-SAN-1.0`
+**SPDX-Identifier:** `LicenseRef-Kodachi-SAN-1.1`
 **Contact:** warith@digi77.com
 
 ### 1. Purpose
@@ -44,7 +58,7 @@ The Licensor makes Kodachi Materials available for learning, research, and Home 
 
 ### 4. Definitions
 
-**4.1 "Kodachi Materials"** means only the elements authored by the Licensor for Kodachi 9 and related projects, including source code, scripts, artwork, documentation, and binaries that the Licensor identifies in the NOTICE. It excludes third-party software.
+**4.1 "Kodachi Materials"** means only the elements authored by the Licensor for Kodachi OS and related projects, including source code, scripts, artwork, documentation, and binaries that the Licensor identifies in the NOTICE. It excludes third-party software.
 
 **4.2 "Home Use"** means personal, noncommercial use by a private individual on devices the individual owns or controls.
 
@@ -76,9 +90,49 @@ c) integrate Kodachi Materials into a product, appliance, or image intended for 
 d) sell, rent, license, or monetize Kodachi Materials or derived works;
 e) remove or alter attribution, trademarks, LICENSE, or NOTICE.
 
-### 8. Premium and Support
+### 8. Premium, Dedicated Plans and Support
 
-A paid premium offering and support may be available under separate terms. Purchasing premium does not by itself grant Commercial Use unless expressly stated in the premium terms.
+Paid Premium and Dedicated plans provide access to enhanced infrastructure and support under separate terms.
+
+Purchase of a Premium or Dedicated plan grants Commercial Use rights only as expressly stated in this License and only for the duration of the paid annual license term (12 months from activation), per licensed device and within the scope of the purchased plan.
+
+---
+
+## 8A. Relationship Between Licensing and Paid Plans
+
+Use of Kodachi Materials is governed by this License and the current Kodachi pricing plans published by the Licensor.
+
+Personal, Home, and other Noncommercial Use is permitted without charge under the Free Plan and remains subject to usage limits and policies defined by the Licensor.
+
+Purchase of a Premium or Dedicated plan constitutes an annual commercial license granting the right to use Kodachi Materials for Commercial Use for a term of 12 months from activation, including all updates released during that term regardless of version number, and only within the scope of the purchased plan.
+
+Upon expiration of the 12-month license term, the commercial license granted under that plan immediately ends unless renewed. Continued Commercial Use after expiration requires a new or renewed annual license.
+
+Donations do not constitute a commercial license and do not grant Commercial Use rights.
+
+---
+
+## 8B. Infrastructure and Services
+
+Paid plans may include access to shared, low-density, or dedicated infrastructure operated by or on behalf of the Licensor.
+
+Infrastructure access is provided on a best-effort basis and does not modify, replace, or extend the disclaimers, limitations of liability, or absence of warranties defined in this License.
+
+No uptime guarantees, performance guarantees, or service level agreements are provided unless explicitly agreed in writing.
+
+---
+
+## 8C. Free Plan Usage Limits
+
+The Free Plan is intended solely for Home and other Noncommercial Use and may be subject to reasonable usage limits, including daily time limits, resource allocation policies, or fair-use controls.
+
+Such limits do not restrict features or functionality of the Kodachi Materials but apply only to access conditions and infrastructure usage.
+
+---
+
+## 8D. Order of Precedence
+
+In the event of any inconsistency between this License and pricing descriptions, plan summaries, or marketing materials, this License shall control with respect to software usage rights, while the pricing terms shall control with respect to billing and infrastructure access.
 
 ### 9. Third-Party Software
 
@@ -133,6 +187,7 @@ Kodachi OS includes third-party software components subject to their own license
 ### Debian Base System
 
 Kodachi is built on Debian GNU/Linux. Debian packages and components are governed by their respective licenses, primarily:
+
 - **GPL-2.0** and **GPL-3.0** for many core utilities
 - **LGPL** for libraries
 - Various other open source licenses
@@ -143,11 +198,12 @@ For detailed Debian licensing information, see: https://www.debian.org/legal/lic
 
 **The following third-party software is included:**
 
-*To be populated with specific package information, licenses, and attributions.*
+Kodachi bundles standard Debian packages plus additional open source components. The complete, authoritative per-package copyright notices and license texts for every installed component are provided on the running system under `/usr/share/doc/<package>/copyright` and via each package's own metadata. These upstream licenses remain in full force and prevail over this License for their respective components.
 
 ### Common Open Source Licenses
 
 Full license texts can be found at:
+
 - **GPL-2.0:** https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
 - **GPL-3.0:** https://www.gnu.org/licenses/gpl-3.0.html
 - **MIT License:** https://opensource.org/licenses/MIT

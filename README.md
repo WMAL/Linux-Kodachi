@@ -101,6 +101,12 @@ Every component listed above is finished, deployed, and production-ready. **Koda
 
 Explore everything on the **[Kodachi Landing Page](https://www.kodachi.cloud/)**, check out the [R&D progress](https://github.com/WMAL/kodachios/tree/main/Kodachi-9/v9-behind-scenes-progress) for development history, and see the [Changelog](https://www.kodachi.cloud/docs/changelog.html) for a detailed list of all changes ([raw](https://www.kodachi.cloud/apps/os/CHANGELOG.md)).
 
+### ![In Development](https://img.shields.io/badge/-IN%20DEVELOPMENT-orange?style=for-the-badge&logo=git&logoColor=white) Kodachi 10: Next Major Release
+
+Work on **Kodachi 10**, the next major release, is already underway. It builds on the Kodachi 9 foundation with new additions, expanded features, and performance and security improvements across the whole stack: standalone binaries, the terminal server version, the desktop edition (Debian XFCE), the AI capabilities, and the cloud platform.
+
+Kodachi 10 is in active development and has no fixed release date yet. Roadmap items, previews, and changelogs will be published here and on the [Kodachi Landing Page](https://www.kodachi.cloud/) as they land. Feature requests and feedback from the community are welcome and help shape what ships.
+
 ---
 
 ## Features at a Glance
@@ -122,7 +128,7 @@ Explore everything on the **[Kodachi Landing Page](https://www.kodachi.cloud/)**
 [![Version](https://img.shields.io/badge/Version-9.0-brightgreen?style=for-the-badge)](https://github.com/WMAL/kodachios)
 [![Based on](https://img.shields.io/badge/Based%20on-Debian-red?style=for-the-badge&logo=debian)](https://www.debian.org)
 [![Privacy](https://img.shields.io/badge/Privacy-Focused-blue?style=for-the-badge&logo=tor)](https://www.kodachi.cloud)
-[![License](https://img.shields.io/badge/License-Proprietary-yellow?style=for-the-badge)](https://github.com/WMAL/kodachios/blob/main/Kodachi-8.27-legacy-EOL/LICENSE)
+[![License](https://img.shields.io/badge/License-KSAN--1.1%20Source--Available-green?style=for-the-badge)](https://github.com/WMAL/kodachios/blob/main/LICENSE.md)
 
 **![Privacy](https://img.shields.io/badge/-A%20New%20Era%20of%20Privacy--Focused%20Computing-red?style=for-the-badge&logo=shield)**
 
@@ -262,17 +268,19 @@ Follow Kodachi on social media to stay updated on the latest developments.
 
 ---
 
-# Kodachi OS Software/Code License Agreement
+## Software License
 
-This is a legal agreement between you and Warith AL Maawali regarding the use of Kodachi OS (the "OS/Software/Code").
+Kodachi OS is source-available, noncommercial software. It is not open source and is not released under the GPL, MIT, Apache, BSD, or any other open source software license. Kodachi Materials are governed by the Kodachi Source-Available Noncommercial License v1.1 (KSAN-1.1).
 
-- **Private Use**: Kodachi OS is freeware for private, non-commercial use only.
-- **Commercial Use**: Government, companies, and organizations require a user/device license. Contact for pricing.
-- **License**: A purchased license grants a perpetual, worldwide, non-exclusive license for internal business use.
-- **Prohibited**: You may not distribute, modify, decompile, or reverse-engineer the software.
-- **Warranty**: Kodachi OS is provided "as is" without any warranty. Use at your own risk.
+Except for the rights expressly granted under KSAN-1.1, all Kodachi Materials authored by Warith Al Maawali, including source code, binaries, scripts, artwork, documentation, branding, and related materials, are © 2013-2026 Warith Al Maawali. All Rights Reserved.
 
-For the full version, visit: [Full License](https://github.com/WMAL/kodachios/blob/main/LICENSE.md)
+The full license terms govern the use, modification, redistribution, commercial licensing, subscriptions, and infrastructure access associated with Kodachi OS.
+
+### Third-Party Software
+
+Kodachi OS includes third-party software distributed under separate licenses. Those components remain licensed by their respective authors and copyright holders, and their applicable licenses take precedence for those components.
+
+Full license: [KSAN-1.1 (LICENSE.md)](https://github.com/WMAL/kodachios/blob/main/LICENSE.md) | [Online version](https://www.kodachi.cloud/docs/license.html)
 
 ## Warrant Canary
 
@@ -302,6 +310,6 @@ For any queries or support, please contact:
 
 ---
 
-© 2026 by Warith AL Maawali, Sultanate of Oman, Muscat. All rights reserved.
+© 2013-2026 by Warith AL Maawali, Sultanate of Oman, Muscat. All rights reserved.
 
 [⬆ Back to Overview](#overview)
