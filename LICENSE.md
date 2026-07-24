@@ -178,6 +178,16 @@ To obtain Commercial Use rights, contact: **warith@digi77.com**
 
 This License is the complete agreement for Kodachi Materials authored by the Licensor. If there is a conflict between this License and third-party open source licenses bundled with Kodachi distributions, the third-party licenses control for their respective components only.
 
+## Separate Screenshot and Promotional Media License Grant
+
+Notwithstanding any conflicting term of KSAN-1.1, the Licensor licenses under the Creative Commons Attribution-ShareAlike 4.0 International License (CC BY-SA 4.0) all Kodachi-authored visual content as displayed in screenshots of unmodified Kodachi OS interfaces, and official Kodachi OS promotional images published by the Licensor on kodachi.cloud.
+
+This grant applies only to those complete screenshots and promotional images. It does not relicense Kodachi OS software, source code, executable binaries, interface implementation, or standalone assets extracted and distributed separately.
+
+Third-party content remains governed by its own license. No patent or trademark rights are granted, and use must not imply sponsorship, endorsement, affiliation, or authorization by the Kodachi OS project.
+
+This is a separate additional license grant and does not otherwise modify KSAN-1.1.
+
 ---
 
 ## Third-Party Licenses and Attributions
