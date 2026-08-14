@@ -18,7 +18,7 @@ Linux Kodachi 9 is currently under development and will be based on Debian. The 
 
 ---
 
-![Kodachi Logo](https://www.digi77.com/wp-content/uploads/2024/07/kodachi-green-128.png)
+![Kodachi Logo](../assets/kodachi-logo.png)
 
 ## Journey of Innovation: The Birth and Rise of Kodachi OS
 
