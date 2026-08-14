@@ -3,12 +3,12 @@
 # Kodachi Dependencies Installation Script (REQUIRES SUDO/ROOT)
 # ==============================================================
 #
-# SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.0
+# SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.1
 # Copyright (c) 2013-2026 Warith Al Maawali
 #
 # This file is part of Kodachi OS.
 # For full license terms, see LICENSE.md or visit:
-# http://kodachi.cloud/wiki/bina/license.html
+# https://kodachi.cloud/docs/license.html
 #
 # Commercial or organizational use requires a written license.
 # Contact: warith@digi77.com
@@ -835,6 +835,152 @@ wait_for_dns() {
     recover_dns_with_fallback_then_random
 }
 
+# Gate on executing an UNPINNED upstream install script as root.
+#
+# Two paths in this installer used to fetch a shell script over the network and
+# run it as root with no integrity check that could actually fail:
+#   * xray:    https://github.com/XTLS/Xray-install/raw/main/install-release.sh
+#              `raw/main` is a MOVING branch, not a tag or a release asset.
+#   * Pi-hole: https://install.pi-hole.net
+# Both were introduced under a comment reading "SECURITY FIX: Download script to
+# temp file and verify before execution". What they actually did was download,
+# check the first line was a shebang, PRINT a SHA256, and then execute. Printing
+# a hash that nothing compares against is not verification: there is no value the
+# script will refuse to run. In a privacy OS this was the weakest link in an
+# otherwise strong, signed supply chain.
+#
+# The fix is not to pin a hash for these. Kodachi ALREADY publishes both as
+# signed packages in its own apt repo (kodachi-xray, kodachi-pihole), so the
+# packaged path is both safer and more current than any hash we could hardcode.
+# Those are now tried first. This gate governs only the last-resort upstream
+# path, which is off by default and must be opted into explicitly:
+#
+#   KODACHI_ALLOW_UNPINNED_UPSTREAM=1 ./kodachi-deps-install.sh
+#
+# An escape hatch is kept deliberately, because a user installing on a system
+# that cannot reach the Kodachi repo should be able to proceed knowingly rather
+# than be stuck. What changed is the default and the disclosure.
+kodachi_upstream_unpinned_allowed() {
+    [[ "${KODACHI_ALLOW_UNPINNED_UPSTREAM:-0}" == "1" ]]
+}
+
+# Try to install a component from Kodachi's own signed apt repository.
+# Returns 0 only when the package is installed AND the named command exists.
+kodachi_try_packaged_install() {
+    local pkg="$1" verify_cmd="$2"
+
+    command -v apt-get >/dev/null 2>&1 || return 1
+
+    if timeout 120 apt-get install -y -o DPkg::Use-Pty=0 \
+            -o Dpkg::Options::="--force-confdef" \
+            -o Dpkg::Options::="--force-confold" \
+            < /dev/null "$pkg" >/dev/null 2>&1; then
+        if [[ -z "$verify_cmd" ]] || command -v "$verify_cmd" >/dev/null 2>&1; then
+            print_success "  Installed $pkg from the Kodachi signed apt repository"
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# Install the fixed-argv port-scan helper granted by /etc/sudoers.d/kodachi-binaries.
+#
+# This exists because sudoers cannot express the rule we actually want. The old
+# grants were `nmap -F *`, `nmap -p- --open *` and `nmap -p *`, and a trailing
+# sudoers wildcard matches every remaining argument INCLUDING further options.
+# So `sudo nmap -p 80 --script=/tmp/x.nse t` and `sudo nmap -p 80 -oN
+# /etc/cron.d/pwn t` both matched, giving any %sudo member root code execution
+# and root file writes through nmap's NSE engine and output flags. The rule's own
+# comment said it was pinning flag forms to prevent exactly that; it was not.
+#
+# The target and port are runtime input from the rofi menu, so they cannot be
+# enumerated in sudoers. The only way to pin the flag set is to move the decision
+# into a program. sudo now grants THIS script (with a wildcard, which is fine
+# because it validates everything), and this script builds nmap's argv from
+# constants so no caller-supplied flag ever reaches nmap.
+install_kodachi_portscan_helper() {
+    local helper_dir="/usr/local/libexec/kodachi"
+    local helper="${helper_dir}/kodachi-portscan"
+
+    if ! mkdir -p "$helper_dir" 2>/dev/null; then
+        print_warning "Could not create $helper_dir - port-scan helper not installed"
+        return 0
+    fi
+
+    # Write via a temp file + atomic rename so a partially written helper can
+    # never be executed, and set the mode before it is linked into place.
+    local tmp
+    tmp="$(mktemp "${helper}.XXXXXX" 2>/dev/null)" || {
+        print_warning "Could not stage $helper - port-scan helper not installed"
+        return 0
+    }
+
+    cat > "$tmp" << 'PORTSCAN_HELPER_EOF'
+#!/bin/bash
+# kodachi-portscan - fixed-argv privileged wrapper for the rofi Network menu.
+#
+# Installed by kodachi-deps-install.sh / kodachi-system-setup.sh. Do not add a
+# passthrough mode and do not forward caller flags to nmap: the whole point of
+# this file is that nmap's argv is built from constants here. See the sudoers
+# block "Port scans (rofi Network menu)" in /etc/sudoers.d/kodachi-binaries.
+set -euo pipefail
+
+readonly NMAP_BIN=/usr/bin/nmap
+
+die() { printf 'kodachi-portscan: %s\n' "$1" >&2; exit 2; }
+
+usage() {
+    cat >&2 <<'USAGE'
+usage: kodachi-portscan fast <target>
+       kodachi-portscan full <target>
+       kodachi-portscan port <target> <port>
+Flags are not accepted from the caller and are never forwarded to nmap.
+USAGE
+    exit 2
+}
+
+# Stricter than the menu's is_safe_net_input(), which permits a leading '-' and
+# would let a "target" be parsed by nmap as an option. Must start alphanumeric.
+valid_target() { [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._:-]*$ ]]; }
+
+# One bare decimal port. No ranges, no lists: the menu only ever asks for one.
+valid_port() { [[ "$1" =~ ^[0-9]{1,5}$ ]] && (( 10#$1 >= 1 && 10#$1 <= 65535 )); }
+
+[[ -x "$NMAP_BIN" ]] || die "nmap is not installed at $NMAP_BIN"
+
+case "${1:-}" in
+    fast)
+        [[ $# -eq 2 ]] || usage
+        valid_target "$2" || die "invalid target"
+        exec "$NMAP_BIN" -F -- "$2"
+        ;;
+    full)
+        [[ $# -eq 2 ]] || usage
+        valid_target "$2" || die "invalid target"
+        exec "$NMAP_BIN" -p- --open -- "$2"
+        ;;
+    port)
+        [[ $# -eq 3 ]] || usage
+        valid_target "$2" || die "invalid target"
+        valid_port "$3"   || die "invalid port"
+        exec "$NMAP_BIN" -p "$3" -- "$2"
+        ;;
+    *)
+        usage
+        ;;
+esac
+PORTSCAN_HELPER_EOF
+
+    chown root:root "$tmp" 2>/dev/null || true
+    chmod 0755 "$tmp" 2>/dev/null || true
+    if mv -f "$tmp" "$helper" 2>/dev/null; then
+        print_success "  Installed port-scan helper: $helper"
+    else
+        rm -f "$tmp" 2>/dev/null || true
+        print_warning "Could not install $helper - rofi port scans will fall back to unprivileged"
+    fi
+}
+
 # Function to configure sudoers for Kodachi binaries (NOPASSWD access)
 configure_kodachi_sudoers() {
     print_step "Configuring sudoers for Kodachi binaries..."
@@ -878,6 +1024,31 @@ configure_kodachi_sudoers() {
         print_warning "Dashboard hooks directory not found, using /usr/local/bin only"
     fi
 
+    # Binaries that must NEVER receive a blanket `NOPASSWD: <path>/<binary>`
+    # grant, because a specific exact-argv block is emitted for them later.
+    #
+    # THIS LIST IS LOAD-BEARING AND ITS ABSENCE WAS A LIVE ROOT HOLE.
+    # Removing a name from `common_binaries` below is NOT enough. The array is
+    # ALSO populated by DISCOVERY: the find loop under this comment adds every
+    # executable ELF in the hooks directory. So a binary excluded from the
+    # static list is silently re-added the moment it exists on disk, which on a
+    # real installation is always. Commit 9eb6b417 removed kodachi-soc from the
+    # static list and emitted exact-argv rules, and that hardening never took
+    # effect on any machine that actually had kodachi-soc installed: the
+    # discovery loop re-granted the blanket rule on the very next line.
+    #
+    # Measured on a virgin Debian 13 box, 2026-08-05: with /opt/kodachi absent
+    # the generated file had ZERO blanket kodachi-soc grants and the hardening
+    # looked correct. After installing the published kodachi-hooks-core deb so
+    # that /opt/kodachi/dashboard/hooks/kodachi-soc existed, regenerating with
+    # the SAME script produced the blanket grants again at lines 65-66, and
+    # `sudo -n kodachi-soc --version` was passwordless root. The bug is only
+    # visible when the binary is present, which is why a fixture or an empty
+    # box cannot catch it.
+    local blanket_grant_denied=(
+        "kodachi-soc"
+    )
+
     # Get list of all executable binaries in hooks folder
     local binaries=()
     if [[ -n "$dashboard_dir" && -d "$dashboard_dir" ]]; then
@@ -886,6 +1057,17 @@ configure_kodachi_sudoers() {
             local binary_name=$(basename "$binary")
             # Include ELF binaries
             if [[ -x "$binary" ]] && file "$binary" 2>/dev/null | grep -q "ELF"; then
+                local _denied=false
+                for _d in "${blanket_grant_denied[@]}"; do
+                    if [[ "$binary_name" == "$_d" ]]; then
+                        _denied=true
+                        break
+                    fi
+                done
+                if [[ "$_denied" == "true" ]]; then
+                    print_info "  skipping blanket grant for $binary_name (exact-argv rules only)"
+                    continue
+                fi
                 binaries+=("$binary_name")
             fi
         done < <(find "$dashboard_dir" -maxdepth 1 -type f -executable -print0 2>/dev/null)
@@ -926,7 +1108,44 @@ configure_kodachi_sudoers() {
         # "kodachi-claw"
         # "zeroclaw"
         # "zeroclaw-desktop"
-        "kodachi-soc"
+        # kodachi-soc is DELIBERATELY NOT in this list. See the exact-argv block
+        # emitted after this loop.
+        #
+        # A blanket `%sudo ALL=(ALL) NOPASSWD: <path>/kodachi-soc` grants root for
+        # ANY subcommand and ANY arguments, and /usr/local/bin/kodachi-soc is a
+        # symlink to the PROTECTED watcher binary at
+        # /usr/local/libexec/kodachi/host-exposure/kodachi-soc. So the blanket
+        # grant handed every %sudo member root on `kodachi-soc exposure policy
+        # approve ...`, which is exactly what the deliberately narrow, wildcard-free
+        # /etc/sudoers.d/kodachi-host-exposure rules exist to withhold. Those narrow
+        # rules bought nothing while this line stood.
+        #
+        # WHY THIS IS SAFE, stated accurately. An earlier version of this comment
+        # claimed kodachi-soc "is not reachable through the generic command
+        # dispatcher by design" and cited commandsLibrary.ts. Do not restore that
+        # wording: the codebase itself records it as false. commands_services.rs
+        # has a live `"kodachi-soc" =>` dispatcher arm that forwards arbitrary
+        # full_args, needs_sudo and output_format, and the comment directly above
+        # it says the arm "did expose it, with no check at all. The frontend claim
+        # was true only because no shipped frontend code happened to use that
+        # selector." Security reasoning must not rest on a claim the code denies.
+        #
+        # The real reasons the blanket grant can go, all three independently true:
+        #   1. The dispatcher arm is capability-gated on `mode.soc`, so it is not
+        #      reachable at all without that entitlement.
+        #   2. No shipped frontend code drives kodachi-soc through it. The only
+        #      privileged call is soc_snapshot -> `kodachi-soc snapshot [--json*]`
+        #      in commands_soc.rs, and islands/soc/index.ts pins outputFormat.
+        #   3. commandsLibrary.ts blocks kodachi-soc in the command-library UI, so
+        #      the operator cannot hand-run it from there either.
+        # Point 2 is the load-bearing one and it is a statement about SHIPPED
+        # CALLERS, not about the dispatcher being incapable. If a future lane adds
+        # a kodachi-soc caller with a new subcommand, it needs its own exact-argv
+        # line below or it will fail with "a password is required".
+        #
+        # `kodachi-soc refresh` needs no rule: snapshot.rs spawns it via
+        # `flock --nonblock <lock> [nice ionice] <current_exe> refresh` as a CHILD
+        # of the already-root snapshot process, with no sudo of its own.
         # Session helper
         "kodachi-session-helper"
     )
@@ -970,11 +1189,22 @@ configure_kodachi_sudoers() {
     # AUDIT 2026-05-27: during live-build chroot the previous sudoers file
     # has no value (it is the just-shipped baseline), and the backup file
     # ends up shipped INSIDE the ISO at /etc/sudoers.d/kodachi-binaries.backup.<epoch>
-    # — sudo loads every file in that dir regardless of name, so the
-    # baseline rules are loaded twice on every fresh boot. Skip the backup
+    # which is dead weight in the image. Skip the backup
     # when running inside the build chroot (detected via env vars set by
     # live-build / offline-package shim hook OR absence of a real package
     # manager state file). Always prune stale backups regardless.
+    # CORRECTION, measured 2026-08-05 on Debian 13. An earlier version of the
+    # comment above claimed "sudo loads every file in that dir regardless of
+    # name", and used that to argue the backup doubles the ruleset. That is
+    # FALSE and the reasoning should not be reused. sudo's #includedir SKIPS any
+    # filename containing a dot or ending in '~', exactly like run-parts, so
+    # kodachi-binaries.backup.<epoch> is never parsed. Proven two ways on a live
+    # box: `visudo -c` listed only the 5 undotted files and not the backup, and
+    # an identical `%sudo ... NOPASSWD: /usr/bin/uptime` grant was IGNORED when
+    # the file was named zz-probe.dotted.test and HONOURED the moment it was
+    # renamed to zzprobeundotted. Pruning the backups is still worth doing to
+    # keep the image clean, but it is NOT a privilege fix, and a backup left
+    # behind is not a live grant.
     local sudoers_file="/etc/sudoers.d/kodachi-binaries"
     find /etc/sudoers.d -maxdepth 1 -type f -name 'kodachi-binaries.backup.*' \
         -delete 2>/dev/null || true
@@ -1053,6 +1283,44 @@ HEADER
         # Add /usr/local/bin path entry
         echo "%sudo ALL=(ALL) NOPASSWD: /usr/local/bin/$binary" >> "$sudoers_file"
     done
+
+    # kodachi-soc: EXACT ARGV ONLY, never a blanket grant on the binary.
+    # The SOC snapshot genuinely needs root (it reads /proc, runs getcap -r /,
+    # debsums, dpkg --verify and journalctl), but it needs exactly ONE subcommand.
+    # Enumerate ALL FOUR forms the dashboard can produce -- bare, --json,
+    # --json-pretty and --json-human, per services.rs's output-format mapping --
+    # so nothing else about this binary is reachable as root without a password.
+    # --json-human was missed on the first pass and is not hypothetical: it is a
+    # first-class output choice in islands/favorites and islands/command-builder.
+    # Omitting it does not fail safe, it fails CONFUSING: sudo -n matches no rule,
+    # exits 1 with "a password is required", and the SOC panel shows a snapshot
+    # error that looks nothing like a permissions problem.
+    {
+        echo ""
+        echo "# ============================================================"
+        echo "# kodachi-soc: SOC snapshot only, exact argv, no wildcards."
+        echo "# A blanket grant here would also cover 'exposure policy approve'"
+        echo "# through the /usr/local/bin symlink to the protected watcher."
+        echo "# ============================================================"
+        if [[ -n "$dashboard_dir" ]]; then
+            echo "%sudo ALL=(ALL) NOPASSWD: $dashboard_dir/kodachi-soc snapshot"
+            echo "%sudo ALL=(ALL) NOPASSWD: $dashboard_dir/kodachi-soc snapshot --json"
+            echo "%sudo ALL=(ALL) NOPASSWD: $dashboard_dir/kodachi-soc snapshot --json-pretty"
+            echo "%sudo ALL=(ALL) NOPASSWD: $dashboard_dir/kodachi-soc snapshot --json-human"
+        fi
+        echo "%sudo ALL=(ALL) NOPASSWD: /usr/local/bin/kodachi-soc snapshot"
+        echo "%sudo ALL=(ALL) NOPASSWD: /usr/local/bin/kodachi-soc snapshot --json"
+        echo "%sudo ALL=(ALL) NOPASSWD: /usr/local/bin/kodachi-soc snapshot --json-pretty"
+        echo "%sudo ALL=(ALL) NOPASSWD: /usr/local/bin/kodachi-soc snapshot --json-human"
+    } >> "$sudoers_file"
+
+    # Install the fixed-argv port-scan helper that the sudoers rule below grants.
+    # Written here rather than shipped as a separate asset so that it always
+    # exists wherever the rule exists: ISO chroot, `curl | sudo bash`, and deb
+    # postinst all run this same function. A sudoers rule pointing at a missing
+    # binary is harmless (it simply never matches), but a MISSING helper with a
+    # PRESENT rule would silently break the rofi scan menu, so install it first.
+    install_kodachi_portscan_helper
 
     # Add system management commands
     cat >> "$sudoers_file" << 'EOF'
@@ -1224,13 +1492,34 @@ HEADER
 %sudo ALL=(ALL) NOPASSWD: /bin/kill
 
 # ============================================================
-# Port scans (rofi Network menu) — exact scan forms only.
-# SECURITY NOTE: nmap can run NSE scripts / write files, so we pin
-# the specific flag forms the menu issues rather than bare nmap.
+# Port scans (rofi Network menu) — via a fixed-argv helper, never bare nmap.
+#
+# WHAT WAS HERE BEFORE, and why it did not do what its comment claimed:
+#   %sudo ALL=(ALL) NOPASSWD: /usr/bin/nmap -F *
+#   %sudo ALL=(ALL) NOPASSWD: /usr/bin/nmap -p- --open *
+#   %sudo ALL=(ALL) NOPASSWD: /usr/bin/nmap -p *
+# with the note "nmap can run NSE scripts / write files, so we pin the specific
+# flag forms the menu issues rather than bare nmap." The intent was right. The
+# rules did not achieve it. A trailing sudoers wildcard matches ALL remaining
+# argv, including further OPTIONS, so every one of those lines also matched:
+#   sudo nmap -p 80 --script=/tmp/x.nse target    -> root NSE execution
+#   sudo nmap -p 80 -oN /etc/cron.d/pwn target    -> root file write
+# Any member of %sudo could run that straight from a shell. The rofi menu's own
+# is_safe_net_input() did not help: it guards the menu, not the sudoers rule.
+#
+# Sudoers cannot express the constraint, because the target and port are runtime
+# input and cannot be enumerated. So the decision moves into a program instead.
+# The wildcard below is on the HELPER, which is safe in the way the nmap
+# wildcard was not: it validates every argument and builds nmap's argv from
+# constants, so no caller-supplied flag ever reaches nmap.
 # ============================================================
-%sudo ALL=(ALL) NOPASSWD: /usr/bin/nmap -F *
-%sudo ALL=(ALL) NOPASSWD: /usr/bin/nmap -p- --open *
-%sudo ALL=(ALL) NOPASSWD: /usr/bin/nmap -p *
+%sudo ALL=(ALL) NOPASSWD: /usr/local/libexec/kodachi/kodachi-portscan *
+
+# traceroute keeps its trailing wildcard, deliberately and after review, not by
+# oversight. It is the same SHAPE as the nmap rules above but not the same risk:
+# Debian traceroute has no script engine and no option that writes an arbitrary
+# file, so extra argv buys a caller nothing beyond a traceroute. Revisit if the
+# menu ever needs a traceroute variant that takes a file or command argument.
 %sudo ALL=(ALL) NOPASSWD: /usr/bin/traceroute -m 20 *
 %sudo ALL=(ALL) NOPASSWD: /usr/sbin/traceroute -m 20 *
 %sudo ALL=(ALL) NOPASSWD: /usr/bin/traceroute.db -m 20 *
@@ -1853,7 +2142,7 @@ write_session_helper_service_file() {
     cat > "$service_file" << EOF
 [Unit]
 Description=Kodachi Session Helper - Global Emergency Shortcut Daemon
-Documentation=https://kodachi.cloud/wiki/bina/binaries/kodachi-session-helper/
+Documentation=https://kodachi.cloud/docs/binaries/kodachi-session-helper.html
 After=graphical-session.target
 PartOf=graphical-session.target
 StartLimitIntervalSec=120
@@ -2416,6 +2705,28 @@ retry_download() {
     return 1
 }
 
+# Kodachi-first download (design D7): try a path-preserving mirror of the upstream URL on
+# kodachi.cloud, then fall back to the EXACT upstream URL. Behavior is unchanged when the
+# mirror is absent (a mirror miss falls straight through to upstream), so this never breaks
+# an install; it only prefers Kodachi's signed mirror when reachable. Kill-switch: set
+# KODACHI_NO_MIRROR=1 to force upstream-only.
+kodachi_download_first() {
+    local upstream="$1" dest="$2"
+    if [ -z "${KODACHI_NO_MIRROR:-}" ]; then
+        case "$upstream" in
+          https://github.com/*)
+            local mirror="https://kodachi.cloud/tools/mirror/${upstream#https://github.com/}"
+            if retry_download "$mirror" "$dest" 2>/dev/null; then
+                print_verbose "fetched from Kodachi mirror: $mirror"
+                return 0
+            fi
+            print_verbose "Kodachi mirror miss, falling back to upstream: $upstream"
+            ;;
+        esac
+    fi
+    retry_download "$upstream" "$dest"
+}
+
 # Logging (file + console)
 LOG_DIR="/var/log/kodachi"
 LOG_FILE=""
@@ -2692,16 +3003,18 @@ get_installed_version() {
     local version=""
 
     # Method 1: Direct version command
-    version=$("$binary" "$version_flag" 2>&1 | grep -oP '([0-9]+\.)+[0-9]+' | head -1)
+    # `|| true`: under `set -eo pipefail` a non-matching grep aborts the whole
+    # installer, which would make the Method 2/3 fallbacks below unreachable.
+    version=$("$binary" "$version_flag" 2>&1 | grep -oP '([0-9]+\.)+[0-9]+' | head -1 || true)
 
     # Method 2: For binaries that don't follow standard patterns
     if [[ -z "$version" ]]; then
-        version=$("$binary" version 2>&1 | grep -oP '([0-9]+\.)+[0-9]+' | head -1)
+        version=$("$binary" version 2>&1 | grep -oP '([0-9]+\.)+[0-9]+' | head -1 || true)
     fi
 
     # Method 3: For dpkg packages
     if [[ -z "$version" ]] && dpkg -l "$binary" 2>/dev/null | grep -q "^ii"; then
-        version=$(dpkg -l "$binary" | grep "^ii" | awk '{print $3}' | grep -oP '([0-9]+\.)+[0-9]+' | head -1)
+        version=$(dpkg -l "$binary" | grep "^ii" | awk '{print $3}' | grep -oP '([0-9]+\.)+[0-9]+' | head -1 || true)
     fi
 
     echo "$version"
@@ -2770,7 +3083,7 @@ ESSENTIAL_PACKAGES="curl wget openssl ca-certificates coreutils findutils grep p
 NETWORK_PACKAGES="tor tor-geoipdb torsocks obfs4proxy openvpn wireguard-tools iptables nftables arptables ebtables iproute2 iputils-ping net-tools nyx apt-transport-tor shadowsocks-libev redsocks microsocks haproxy"
 
 # Security - Protection and hardening tools
-SECURITY_PACKAGES="ufw macchanger firejail apparmor apparmor-utils apparmor-profiles aide lynis rkhunter chkrootkit usbguard ecryptfs-utils cryptsetup cryptsetup-initramfs cryptsetup-nuke-password fail2ban unattended-upgrades auditd libpam-pwquality libpam-google-authenticator secure-delete wipe nwipe"
+SECURITY_PACKAGES="ufw macchanger firejail apparmor apparmor-utils apparmor-profiles aide lynis rkhunter chkrootkit usbguard ecryptfs-utils cryptsetup cryptsetup-initramfs cryptsetup-nuke-password fail2ban unattended-upgrades auditd libpam-pwquality libpam-google-authenticator secure-delete wipe nwipe libcap2-bin debsums cron"
 
 # Privacy - DNS and anonymity tools
 PRIVACY_PACKAGES="dnsutils bind9-dnsutils systemd-resolved"
@@ -2789,7 +3102,7 @@ MONITORING_PACKAGES="btop iftop nethogs ncdu nload iperf3 speedtest-cli"
 # them; without this they survive only transitively and `apt autoremove` can reap
 # libgstreamer-plugins-base1.0-0, breaking the dashboard with
 # "error while loading shared libraries: libgstvideo-1.0.so.0" (field report 2026-06-15).
-GUI_PACKAGES="bleachbit kitty fontconfig fonts-dejavu fonts-noto-core fonts-noto-color-emoji fonts-liberation fonts-liberation2 ttf-mscorefonts-installer conky-all alsa-utils pipewire pipewire-pulse pipewire-alsa wireplumber pulseaudio-utils libnotify-bin xclip xsel mpv xterm network-manager rofi xfce4-screenshooter xdotool xfce4-clipman xfce4-clipman-plugin copyq qalculate-gtk maim translate-shell python3 bc iproute2 iputils-ping traceroute speedtest-cli libwebkit2gtk-4.1-0 libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 libgstreamer-gl1.0-0 gstreamer1.0-plugins-base gstreamer1.0-gl"
+GUI_PACKAGES="bleachbit kitty fontconfig fonts-dejavu fonts-noto-core fonts-noto-color-emoji fonts-liberation fonts-liberation2 ttf-mscorefonts-installer conky-all alsa-utils pipewire pipewire-pulse pipewire-alsa wireplumber pulseaudio-utils libnotify-bin xclip xsel mpv xterm network-manager rofi xfce4-screenshooter xdotool xfce4-clipman xfce4-clipman-plugin copyq qalculate-gtk maim translate-shell python3 bc iproute2 iputils-ping traceroute speedtest-cli libwebkit2gtk-4.1-0 libayatana-appindicator3-1 xdg-utils libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 libgstreamer-gl1.0-0 gstreamer1.0-plugins-base gstreamer1.0-gl"
 
 # Packages that require contrib/non-free repositories
 CONTRIB_PACKAGES="shadowsocks-v2ray-plugin v2ray"
@@ -3362,7 +3675,7 @@ install_dnscrypt_github() {
     echo "Downloading DNSCrypt Proxy v${DNSCRYPT_VERSION}..."
     mkdir -p "$temp_dir"
 
-    if retry_download "$resolved_dnscrypt_url" "$temp_dir/dnscrypt-proxy.tar.gz"; then
+    if kodachi_download_first "$resolved_dnscrypt_url" "$temp_dir/dnscrypt-proxy.tar.gz"; then
         echo "Extracting DNSCrypt Proxy..."
         tar -xzf "$temp_dir/dnscrypt-proxy.tar.gz" -C "$temp_dir"
 
@@ -3560,7 +3873,7 @@ install_v2ray_plugin_github() {
     echo "Downloading v2ray-plugin v${V2RAY_PLUGIN_VERSION}..."
     mkdir -p "$temp_dir"
 
-    if retry_download "$resolved_v2ray_plugin_url" "$temp_dir/v2ray-plugin.tar.gz"; then
+    if kodachi_download_first "$resolved_v2ray_plugin_url" "$temp_dir/v2ray-plugin.tar.gz"; then
         echo "Extracting v2ray-plugin..."
         tar -xzf "$temp_dir/v2ray-plugin.tar.gz" -C "$temp_dir"
 
@@ -3725,27 +4038,176 @@ else
     REAL_USER_HOME="$HOME"
 fi
 
-# Ensure /opt/kodachi/ exists for canonical install location
+# BEGIN KODACHI_AUTH_TRUST_OWNERSHIP
+# Keep executable/authentication inputs root-controlled while granting the
+# desktop user ownership only of the directories that hold runtime state.
+kodachi_require_real_directory_chain() {
+    local candidate="$1"
+    local resolved=""
+    local current=""
+    local remaining=""
+    local component=""
+
+    [[ "$candidate" == /* ]] || return 1
+    resolved="$(readlink -f -- "$candidate" 2>/dev/null)" || return 1
+    [[ "$resolved" == "$candidate" && -d "$candidate" && ! -L "$candidate" ]] ||
+        return 1
+
+    remaining="${candidate#/}"
+    while [[ -n "$remaining" ]]; do
+        component="${remaining%%/*}"
+        [[ -n "$component" ]] || return 1
+        current="$current/$component"
+        [[ -d "$current" && ! -L "$current" ]] || return 1
+        if [[ "$remaining" == "$component" ]]; then
+            remaining=""
+        else
+            remaining="${remaining#*/}"
+        fi
+    done
+}
+
+kodachi_require_safe_planned_directory_chain() {
+    local candidate="$1"
+    local resolved=""
+    local current=""
+    local remaining=""
+    local component=""
+
+    [[ "$candidate" == /* ]] || return 1
+    resolved="$(readlink -m -- "$candidate" 2>/dev/null)" || return 1
+    [[ "$resolved" == "$candidate" ]] || return 1
+
+    remaining="${candidate#/}"
+    while [[ -n "$remaining" ]]; do
+        component="${remaining%%/*}"
+        [[ -n "$component" ]] || return 1
+        current="$current/$component"
+        [[ ! -L "$current" ]] || return 1
+        if [[ -e "$current" && ! -d "$current" ]]; then
+            return 1
+        fi
+        if [[ "$remaining" == "$component" ]]; then
+            remaining=""
+        else
+            remaining="${remaining#*/}"
+        fi
+    done
+}
+
+kodachi_preflight_auth_trust_ownership() {
+    local opt_root="${1:-/opt}"
+    local hooks_root="$opt_root/kodachi/dashboard/hooks"
+    local planned_path=""
+    local protected_dir runtime_dir
+
+    # This pass is intentionally read-only. Validate every existing component
+    # of every path the producer can create or mutate before the first write.
+    kodachi_require_safe_planned_directory_chain "$hooks_root" || return 1
+    for protected_dir in auth-trust rust others binaries-update-scripts; do
+        planned_path="$hooks_root/$protected_dir"
+        kodachi_require_safe_planned_directory_chain "$planned_path" || return 1
+    done
+    for runtime_dir in config data cache results logs tmp; do
+        planned_path="$hooks_root/$runtime_dir"
+        kodachi_require_safe_planned_directory_chain "$planned_path" || return 1
+    done
+    kodachi_require_safe_planned_directory_chain "$hooks_root/cache/ip-fetch" ||
+        return 1
+    kodachi_require_safe_planned_directory_chain "$hooks_root/cache/ip-fetch/ips" ||
+        return 1
+}
+
+kodachi_apply_auth_trust_ownership() {
+    local opt_root="${1:-/opt}"
+    local runtime_owner="${2:-}"
+    local runtime_group="${3:-}"
+    local hooks_root="$opt_root/kodachi/dashboard/hooks"
+    local protected_path=""
+    local runtime_path=""
+    local runtime_parent=""
+    local path protected_dir runtime_dir
+
+    kodachi_preflight_auth_trust_ownership "$opt_root" || return 1
+    kodachi_require_real_directory_chain "$hooks_root" || return 1
+
+    for path in \
+        "$opt_root" \
+        "$opt_root/kodachi" \
+        "$opt_root/kodachi/dashboard" \
+        "$hooks_root"; do
+        [[ -e "$path" ]] || continue
+        chown -h root:root "$path"
+        chmod go-w "$path"
+    done
+
+    if [[ -d "$hooks_root" ]]; then
+        find -P "$hooks_root" -maxdepth 1 -type f -exec chown -h -- root:root {} +
+        find -P "$hooks_root" -maxdepth 1 -type f -exec chmod go-w -- {} +
+    fi
+
+    for protected_dir in auth-trust rust others binaries-update-scripts; do
+        protected_path="$hooks_root/$protected_dir"
+        [[ -e "$protected_path" ]] || continue
+        kodachi_require_real_directory_chain "$protected_path" || return 1
+        chown -hR -P -- root:root "$protected_path"
+        find -P "$protected_path" ! -type l -exec chmod go-w -- {} +
+    done
+
+    [[ -n "$runtime_owner" && -n "$runtime_group" ]] || return 0
+    for runtime_dir in config data cache results logs tmp; do
+        runtime_path="$hooks_root/$runtime_dir"
+        if [[ -e "$runtime_path" ]]; then
+            kodachi_require_real_directory_chain "$runtime_path" || return 1
+        else
+            mkdir -- "$runtime_path" || return 1
+            kodachi_require_real_directory_chain "$runtime_path" || return 1
+        fi
+        runtime_parent="$(readlink -f -- "$runtime_path/.." 2>/dev/null)" ||
+            return 1
+        [[ "$runtime_parent" == "$hooks_root" ]] || return 1
+        chown -hR -P -- "$runtime_owner:$runtime_group" "$runtime_path"
+        chmod 0755 -- "$runtime_path"
+    done
+}
+# END KODACHI_AUTH_TRUST_OWNERSHIP
+
+# Reject every pre-existing redirected/non-directory target before mkdir can
+# alter the canonical tree. Missing components are safe to create only after
+# this complete read-only preflight succeeds.
+kodachi_preflight_auth_trust_ownership /opt || {
+    print_error "Unsafe /opt/kodachi ownership path; refusing to mutate it"
+    exit 1
+}
+
+# Ensure /opt/kodachi/ exists for canonical install location.
 if [[ ! -d "/opt/kodachi/dashboard/hooks" ]]; then
     print_step "Creating /opt/kodachi/dashboard/hooks/ for canonical binary location..."
     mkdir -p /opt/kodachi/dashboard/hooks
 fi
 mkdir -p /opt/kodachi/dashboard/hooks/others
 # Pre-create runtime data tree so first-boot tools (conky-status → ip-fetch,
-# health-control, etc.) don't race the chown below. ip-fetch in particular
+# health-control, etc.) don't race the ownership normalization below. ip-fetch in particular
 # was caught failing with "Failed to create cache directory" / "Failed to
 # create IPs cache directory" on early-boot debug-collector runs because
 # its create_dir_all call landed before /opt/kodachi/dashboard/hooks was
-# writable by the desktop user. Creating these here lets the single chown
-# below cover them in one walk. Permissions tighten to 0700 at runtime via
+# writable by the desktop user. Creating these here lets the runtime allowlist
+# cover them in one pass. Permissions tighten to 0700 at runtime via
 # ip-fetch's set_permissions call (see dashboard/hooks/rust/ip-fetch/src/cache/mod.rs).
 mkdir -p /opt/kodachi/dashboard/hooks/cache/ip-fetch/ips
 mkdir -p /opt/kodachi/dashboard/hooks/logs
 mkdir -p /opt/kodachi/dashboard/hooks/results
 mkdir -p /opt/kodachi/dashboard/hooks/tmp
-if [[ -n "$SUDO_USER" ]]; then
-    chown -R "$(id -u "$SUDO_USER"):$(id -g "$SUDO_USER")" /opt/kodachi
+
+# BEGIN KODACHI_RUNTIME_OWNER_DERIVATION
+runtime_uid=""
+runtime_gid=""
+if [[ -n "$SUDO_USER" && "$SUDO_USER" != "root" ]] && id "$SUDO_USER" >/dev/null 2>&1; then
+    runtime_uid="$(id -u "$SUDO_USER")"
+    runtime_gid="$(id -g "$SUDO_USER")"
 fi
+# END KODACHI_RUNTIME_OWNER_DERIVATION
+kodachi_apply_auth_trust_ownership /opt "$runtime_uid" "$runtime_gid"
 
 # Check for binaries in standard locations
 BINARIES_FOUND=false
@@ -4281,7 +4743,7 @@ install_packages() {
         local unavailable_packages=""
         for pkg in $to_install; do
             local candidate
-            candidate=$(apt-cache policy "$pkg" 2>/dev/null | grep 'Candidate:' | awk '{print $2}')
+            candidate=$(apt-cache policy "$pkg" 2>/dev/null | grep 'Candidate:' | awk '{print $2}' || true)
             if [[ -n "$candidate" ]] && [[ "$candidate" != "(none)" ]]; then
                 available_packages="$available_packages $pkg"
             else
@@ -4554,17 +5016,57 @@ install_v2ray() {
         echo -e "${YELLOW}[WARN]${NC} v2ray cache install failed, falling back to apt/GitHub"
     fi
 
-    # 2026-05-26 fix: pull latest v2ray-linux-64.zip directly from GitHub
-    # releases/latest. Previous path used fhs-install-v2ray which pins to a
-    # specific version (5.40.0 as of testing — 9 minor versions behind
-    # upstream 5.49.0). The apt path is even older. Match what install_xray
-    # already does for XTLS/Xray-core: always fetch latest at install time
-    # so a clean ISO build is never months behind upstream.
+    # Kodachi's own signed package first, exactly like install_xray does: it is verified by
+    # the repo GPG key, so it beats every unverified upstream path below.
+    #
+    # Accuracy note, corrected 2026-08-06: this comment used to say the package "tracks a
+    # vendored upstream version from a PINNED tag". It does not. `installers/
+    # vendor-thirdparty.sh:60` resolves it with `latest_tag v2fly/v2ray-core`, so the
+    # package tracks whatever was latest WHEN THE PACKAGE WAS BUILT. The real guarantee
+    # here is the GPG signature and a version frozen at package build time, not a pinned
+    # upstream tag, and overstating it is how the ungated path below survived review.
+    if kodachi_try_packaged_install "kodachi-v2ray" "v2ray"; then
+        return 0
+    fi
+
+    # GATE, added 2026-08-06 after an external review caught this.
+    #
+    # The remediation earlier the same day gated the fhs-install-v2ray FALLBACK below and
+    # left THIS path open, which was the wrong one of the two: this is the path that
+    # actually runs. `releases/latest` is a MOVING target fetched over the network with no
+    # hash, no signature and no pinned tag, unzipped, and installed to /usr/local/bin as
+    # root. That is the same exposure install_xray refuses by default, so it gets the same
+    # refusal and the same named escape hatch.
+    # SKIP-AND-CONTINUE, not `return 1`.
+    #
+    # The first version of this gate copied install_xray's `return 1`. That is correct THERE,
+    # because nothing follows xray's gate, and wrong HERE: install_v2ray has 68 more lines
+    # after this point, including the Debian-signed `apt-get install v2ray` near the end. A
+    # bare return amputated a working, verified install path, so a default machine with no
+    # packaged install and no cache went from "installs v2ray from apt" to "exits 1". An
+    # external inspection caught it. The unverified download is skipped; the verified paths
+    # below still run, which is exactly what the second gate in this same function does.
+    local v2ray_upstream_zip_allowed=1
+    if ! kodachi_upstream_unpinned_allowed; then
+        v2ray_upstream_zip_allowed=0
+        print_warning "Skipping the UNPINNED upstream v2ray release zip: github.com/v2fly/v2ray-core/"
+        print_info "releases/latest is a MOVING target with no hash or signature, unzipped and"
+        print_info "installed to /usr/local/bin as root. Continuing to the signed apt path below."
+        print_info "To use it anyway, re-run with: KODACHI_ALLOW_UNPINNED_UPSTREAM=1"
+    fi
+
+    if [ "$v2ray_upstream_zip_allowed" -eq 1 ]; then
+    print_warning "Falling back to the UNPINNED upstream v2ray release (KODACHI_ALLOW_UNPINNED_UPSTREAM=1)"
+
+    # 2026-05-26: pull v2ray-linux-64.zip from GitHub releases/latest. The older path used
+    # fhs-install-v2ray, which lags upstream badly (5.40.0 against 5.49.0 when measured),
+    # and the apt path is older still. Latest-at-install-time is deliberate so a clean ISO
+    # build is not months behind, and it is exactly why the gate above exists.
     echo "Installing v2ray from GitHub releases/latest..."
     local v2ray_url="https://github.com/v2fly/v2ray-core/releases/latest/download/v2ray-linux-64.zip"
     local tmpd
     tmpd="$(mktemp -d /tmp/v2ray-install-XXXXXX)"
-    if retry_download "$v2ray_url" "$tmpd/v2ray-linux-64.zip"; then
+    if kodachi_download_first "$v2ray_url" "$tmpd/v2ray-linux-64.zip"; then
         if unzip -q "$tmpd/v2ray-linux-64.zip" -d "$tmpd" 2>/dev/null; then
             install -d -m 0755 /usr/local/bin /usr/local/share/v2ray /etc/v2ray 2>/dev/null
             install -m 0755 -o root -g root "$tmpd/v2ray" /usr/local/bin/v2ray 2>/dev/null || cp "$tmpd/v2ray" /usr/local/bin/v2ray
@@ -4579,20 +5081,44 @@ install_v2ray() {
         fi
     fi
     rm -rf "$tmpd"
+    fi
 
-    # Last-resort fallbacks: pinned fhs-install-v2ray script, then apt.
-    # These are deliberately ordered AFTER the upstream-latest path so a
-    # build that has network reaches GitHub directly first.
-    echo -e "${YELLOW}[WARN]${NC} upstream-latest install failed; trying fhs-install-v2ray (may be older)"
-    if retry_download "https://github.com/v2fly/fhs-install-v2ray/raw/master/install-release.sh" "/tmp/v2ray-install.sh"; then
-        if timeout 120 bash /tmp/v2ray-install.sh; then
-            rm -f /tmp/v2ray-install.sh
-            if command -v v2ray &>/dev/null; then
-                print_success "v2ray installed from fhs-install-v2ray (pinned version)"
-                return 0
+    # Last-resort fallbacks: the fhs-install-v2ray script, then apt. These are
+    # deliberately ordered AFTER the upstream-latest path so a build that has
+    # network reaches GitHub directly first.
+    #
+    # This path is NOT pinned, whatever the old comment here claimed. The URL is
+    # `fhs-install-v2ray/raw/master/install-release.sh`, a MOVING branch, and the
+    # script is executed as root with nothing comparing a hash: whoever controls
+    # that branch controls root on the installing machine. It is gated the same
+    # way install_xray and the pi-hole path are, off by default, opt-in with
+    # KODACHI_ALLOW_UNPINNED_UPSTREAM=1, because the signed kodachi-v2ray package
+    # and the release zip above are both better sources.
+    if ! kodachi_upstream_unpinned_allowed; then
+        print_warning "Skipping the fhs-install-v2ray fallback: it executes a script from a MOVING branch"
+        print_info "(github.com/v2fly/fhs-install-v2ray/raw/master) as root with no integrity check."
+        print_info "To use it anyway, re-run with: KODACHI_ALLOW_UNPINNED_UPSTREAM=1"
+    else
+        print_warning "Falling back to the UNPINNED upstream fhs-install-v2ray script (KODACHI_ALLOW_UNPINNED_UPSTREAM=1)"
+        if retry_download "https://github.com/v2fly/fhs-install-v2ray/raw/master/install-release.sh" "/tmp/v2ray-install.sh"; then
+            # Same sanity + disclosure as install_xray: refuse anything that is
+            # not a bash script, and print the SHA256 so an admin can compare it
+            # against a known-good value in the build log.
+            if head -1 /tmp/v2ray-install.sh | grep -q "^#!.*bash"; then
+                echo -e "${BLUE}[INFO]${NC} v2ray installer script SHA256: ${CYAN}$(sha256sum /tmp/v2ray-install.sh | cut -d' ' -f1)${NC}"
+                if timeout 120 bash /tmp/v2ray-install.sh; then
+                    rm -f /tmp/v2ray-install.sh
+                    if command -v v2ray &>/dev/null; then
+                        print_success "v2ray installed from fhs-install-v2ray (unpinned upstream)"
+                        return 0
+                    fi
+                else
+                    rm -f /tmp/v2ray-install.sh
+                fi
+            else
+                print_error "Downloaded v2ray installer is not a valid bash script"
+                rm -f /tmp/v2ray-install.sh
             fi
-        else
-            rm -f /tmp/v2ray-install.sh
         fi
     fi
 
@@ -4652,9 +5178,23 @@ install_xray() {
         echo -e "${YELLOW}[WARN]${NC} cache install failed, falling back to upstream"
     fi
 
+    # Kodachi's own signed package first: it is verified by the repo GPG key and
+    # tracks a pinned upstream version, so it beats both the cache and upstream.
+    if kodachi_try_packaged_install "kodachi-xray" "xray"; then
+        return 0
+    fi
+
+    if ! kodachi_upstream_unpinned_allowed; then
+        print_error "xray not installed: the packaged path (kodachi-xray) and the offline cache both failed."
+        print_info "The upstream installer at github.com/XTLS/Xray-install/raw/main is a MOVING branch"
+        print_info "and is executed as root with no verifiable integrity check, so it is disabled by default."
+        print_info "To use it anyway, re-run with: KODACHI_ALLOW_UNPINNED_UPSTREAM=1"
+        return 1
+    fi
+
+    print_warning "Falling back to the UNPINNED upstream xray installer (KODACHI_ALLOW_UNPINNED_UPSTREAM=1)"
     echo "Downloading and installing xray (cache absent or stale)..."
 
-    # SECURITY FIX: Download script to temp file and verify before execution
     local xray_script="/tmp/xray-install-$$.sh"
     if retry_download "https://github.com/XTLS/Xray-install/raw/main/install-release.sh" "$xray_script"; then
         # Basic sanity check: verify it's a bash script
@@ -4727,7 +5267,7 @@ install_mieru() {
     local temp_file="/tmp/mieru_${MIERU_VERSION}_${arch}.deb"
 
     echo "Downloading mieru client..."
-    if retry_download "$resolved_mieru_url" "$temp_file"; then
+    if kodachi_download_first "$resolved_mieru_url" "$temp_file"; then
         echo "Installing mieru client package..."
 
         # Make sure no apt is running
@@ -4800,7 +5340,7 @@ install_hysteria2() {
     local url="https://github.com/apernet/hysteria/releases/download/app/v${version}/hysteria-linux-${arch}"
 
     echo "Downloading hysteria2..."
-    if retry_download "$url" "/tmp/hysteria"; then
+    if kodachi_download_first "$url" "/tmp/hysteria"; then
         mv /tmp/hysteria /usr/local/bin/hysteria
         chmod 755 /usr/local/bin/hysteria
         print_success "hysteria2 installed successfully"
@@ -5012,7 +5552,7 @@ normalize_dnscrypt_config() {
     [[ -f "$config_file" ]] || return 1
 
     sed -i \
-        -e "s/^# user_name = 'nobody'/# user_name = 'nobody'  # disabled: systemd User= handles privilege drop/" \
+        -e "s/^# user_name = 'nobody'\(  # disabled: systemd User= handles privilege drop\)*$/# user_name = 'nobody'  # disabled: systemd User= handles privilege drop/" \
         -e "s/^user_name = 'nobody'/# user_name = 'nobody'  # disabled: systemd User= handles privilege drop/" \
         -e "s/^user_name = '_dnscrypt-proxy'/# user_name = '_dnscrypt-proxy'  # disabled: systemd User= handles privilege drop/" \
         -e "s#^[[:space:]]*cache_file = 'public-resolvers.md'#    cache_file = '/var/cache/dnscrypt-proxy/public-resolvers.md'#" \
@@ -5224,7 +5764,10 @@ setup_dnscrypt_service() {
 
     print_step "Setting up DNSCrypt Proxy service..."
 
-    setup_dnscrypt_config
+    if ! setup_dnscrypt_config; then
+        print_error "DNSCrypt configuration is unavailable; refusing to create or enable its service"
+        return 1
+    fi
 
     if systemctl list-unit-files dnscrypt-proxy.service &>/dev/null; then
         print_info "Refreshing DNSCrypt Proxy systemd service file..."
@@ -5372,9 +5915,11 @@ generate_pihole_setupvars() {
     local ipv4_address=""
 
     # Method 1: Try default route (most reliable when available)
-    interface=$(ip route | grep '^default' | head -1 | awk '{print $5}')
+    # `|| true`: no default route (offline/odd network) would otherwise abort the
+    # installer here under `set -eo pipefail`, before Method 2 could ever run.
+    interface=$(ip route | grep '^default' | head -1 | awk '{print $5}' || true)
     if [[ -n "$interface" ]]; then
-        ipv4_address=$(ip -4 addr show "$interface" 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1)
+        ipv4_address=$(ip -4 addr show "$interface" 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1 || true)
     fi
 
     # Method 2: Try interface with active IPv4 (if Method 1 failed)
@@ -5388,9 +5933,9 @@ generate_pihole_setupvars() {
 
     # Method 3: Try first UP interface (last resort)
     if [[ -z "$interface" ]] || [[ -z "$ipv4_address" ]]; then
-        interface=$(ip -o link show | grep "state UP" | grep -v "lo" | head -1 | awk '{print $2}' | sed 's/:$//')
+        interface=$(ip -o link show | grep "state UP" | grep -v "lo" | head -1 | awk '{print $2}' | sed 's/:$//' || true)
         if [[ -n "$interface" ]]; then
-            ipv4_address=$(ip -4 addr show "$interface" 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1)
+            ipv4_address=$(ip -4 addr show "$interface" 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1 || true)
         fi
     fi
 
@@ -5656,13 +6201,41 @@ check_dns_services() {
     return 0
 }
 
+# A directory, setupVars.conf, or a stale unit can remain after a failed install.
+# Only an executable Pi-hole producer proves that a retry is unnecessary.
+pihole_runtime_installed() {
+    command -v pihole >/dev/null 2>&1 && command -v pihole-FTL >/dev/null 2>&1
+}
+
+# Shared nonfatal optional-component runner used by the package dispatch. A failed
+# first attempt remains retryable because residue is never treated as installed.
+run_optional_pihole_setup() {
+    local install_log="${KODACHI_PIHOLE_INSTALL_LOG:-/var/log/kodachi-pihole-install.log}"
+
+    if pihole_runtime_installed; then
+        print_info "Pi-hole executable already present; skipping reinstall (optional component)"
+    else
+        print_step "kodachi-system-setup: installing Pi-hole (optional component; disabled by default)"
+        if KODACHI_PIHOLE_PACKAGE_CONTEXT=1 install_pihole >"$install_log" 2>&1; then
+            print_success "Pi-hole installed (disabled by default)"
+        else
+            print_info "Pi-hole optional component skipped (its installer did not complete on this system; log: $install_log). Pi-hole is disabled by default - continuing."
+        fi
+    fi
+
+    declare -f ensure_pihole_disabled >/dev/null 2>&1 && {
+        ensure_pihole_disabled || print_warning "pihole disable incomplete"
+    }
+    return 0
+}
+
 # Function to install Pi-hole
 # To uninstall Pi-hole, run: echo -e "yes\nno\nno\nno\nno\nno\nno\nno\nno\nno" | sudo pihole uninstall
 install_pihole() {
     print_step "Installing Pi-hole..."
 
     # Check if Pi-hole is already installed
-    if systemctl status pihole-FTL &>/dev/null || command -v pihole &>/dev/null; then
+    if pihole_runtime_installed; then
         print_success "Pi-hole is already installed"
 
         # Try to get Pi-hole status
@@ -5680,12 +6253,37 @@ install_pihole() {
     echo "Pi-hole is not installed. Installing now..."
     echo ""
 
+    # Kodachi's own signed package first. kodachi-pihole is published in the
+    # Kodachi apt repo and verified by the repo GPG key, so it does not require
+    # executing an unverifiable remote script as root the way install.pi-hole.net
+    # does. There is also an offline copy inside the ISO at
+    # /opt/kodachi-offline-packages/pihole/pihole-installer.sh for the no-network
+    # case; both are preferred over upstream.
+    if [[ "${KODACHI_PIHOLE_PACKAGE_CONTEXT:-0}" != "1" ]] && \
+       kodachi_try_packaged_install "kodachi-pihole" "pihole"; then
+        configure_pihole_port
+        ensure_dns_stable_after_change "Pi-hole availability" || return 1
+        return 0
+    fi
+
+    if ! kodachi_upstream_unpinned_allowed; then
+        print_error "Pi-hole not installed: the packaged path (kodachi-pihole) failed."
+        print_info "https://install.pi-hole.net serves an unversioned script that would be executed"
+        print_info "as root with no verifiable integrity check, so it is disabled by default."
+        print_info "To use it anyway, re-run with: KODACHI_ALLOW_UNPINNED_UPSTREAM=1"
+        return 1
+    fi
+
+    print_warning "Falling back to the UNPINNED upstream Pi-hole installer (KODACHI_ALLOW_UNPINNED_UPSTREAM=1)"
+
     if [[ "$AUTO_YES" == "true" ]]; then
         print_info "Auto mode: Installing Pi-hole with default settings (Quad9 Unfiltered DNS)..."
 
         # Generate setupVars.conf for unattended installation
         if generate_pihole_setupvars; then
-            # SECURITY FIX: Download Pi-hole installer to temp file and verify before execution
+            # NOTE: the SHA256 printed below is DISCLOSURE, not verification -
+            # nothing compares it, so it cannot refuse to run. Real protection
+            # is the packaged path above; this branch is opt-in only.
             local pihole_script="/tmp/pihole-install-$$.sh"
             if curl -sSL -o "$pihole_script" https://install.pi-hole.net 2>/tmp/pihole-install.err; then
                 # Basic sanity check: verify it's a bash script
@@ -5760,7 +6358,7 @@ install_pihole() {
     fi
 
     # Check installation result
-    if command -v pihole &>/dev/null || systemctl is-active --quiet pihole-FTL 2>/dev/null; then
+    if pihole_runtime_installed; then
         print_success "Pi-hole installed successfully"
 
         # Configure Pi-hole to use port 5353 (avoid conflict with DNSCrypt)
@@ -6769,7 +7367,7 @@ for tool in ufw macchanger firejail apparmor; do
     elif [[ "$tool" == "ufw" ]]; then
         # Check UFW installation and status
         if command -v ufw &>/dev/null; then
-            ufw_status=$(ufw status 2>/dev/null | grep -i "^Status:" | awk '{print $2}')
+            ufw_status=$(ufw status 2>/dev/null | grep -i "^Status:" | awk '{print $2}' || true)
             if [[ "$ufw_status" == "inactive" ]]; then
                 echo -e "  ${GREEN}✓${NC} $tool - installed (disabled - correct for Kodachi)"
             elif [[ "$ufw_status" == "active" ]]; then
@@ -6949,6 +7547,59 @@ is_chroot_environment() {
 }
 
 # Function to stop, disable service and kill processes (chroot-aware)
+apt_parity_system_cleanup() {
+    # Consolidated system cleanup + hardening so the apt/deb postinst runs the SAME
+    # neutralization the bash installer does at top-level (parity by construction).
+    # Each step no-ops if its target is absent; safe to re-run.
+    print_step "Disabling conflicting services (Kodachi manages routing/tor/dns; print/mDNS off)..."
+    if declare -f stop_and_disable_service >/dev/null 2>&1; then
+        stop_and_disable_service "cups.socket" "CUPS Socket" ""
+        stop_and_disable_service "cups.path" "CUPS Path" ""
+        stop_and_disable_service "cups.service" "CUPS Printing Service" "cupsd"
+        stop_and_disable_service "cups-browsed.service" "CUPS Browser Service" "cups-browsed"
+        stop_and_disable_service "avahi-daemon.service" "Avahi Daemon" "avahi-daemon"
+        stop_and_disable_service "avahi-daemon.socket" "Avahi Daemon Socket" ""
+        stop_and_disable_service "shadowsocks-libev.service" "Shadowsocks Server" "ss-server"
+        stop_and_disable_service "shadowsocks-libev-local.service" "Shadowsocks Local" "ss-local"
+        stop_and_disable_service "shadowsocks-libev-redir.service" "Shadowsocks Redir" "ss-redir"
+        stop_and_disable_service "shadowsocks-libev-server.service" "Shadowsocks Server Instance" ""
+        stop_and_disable_service "redsocks.service" "Redsocks Transparent Proxy" "redsocks"
+        stop_and_disable_service "microsocks.service" "Microsocks SOCKS5 Proxy" "microsocks"
+        stop_and_disable_service "v2ray.service" "V2Ray Proxy" "v2ray"
+        stop_and_disable_service "xray.service" "Xray Proxy" "xray"
+        stop_and_disable_service "haproxy.service" "HAProxy Load Balancer" "haproxy"
+        stop_and_disable_service "tor.service" "Tor Service" "tor"
+        stop_and_disable_service "tor@default.service" "Tor Default Instance" ""
+        stop_and_disable_service "kloak.service" "Kloak Keystroke Anonymization" "kloak"
+        stop_and_disable_service "ram-wipe-kexec-prepare.service" "RAM Wipe Kexec Prepare" ""
+    fi
+    declare -f disable_ufw >/dev/null 2>&1 && disable_ufw || true
+
+    # Remove Kicksecure ram-wipe/dracut + restore initramfs-tools (bash does this at
+    # top-level; no-op if kicksecure ram-wipe packages are not present).
+    declare -f remove_kicksecure_ramwipe_and_restore_initramfs >/dev/null 2>&1 && \
+        remove_kicksecure_ramwipe_and_restore_initramfs || true
+
+    print_step "Protecting Kodachi runtime-critical packages from autoremove..."
+    apt-mark manual e2fsprogs >/dev/null 2>&1 || true
+    local _kpkg
+    local _protect="iproute2 iptables nftables openresolv resolvconf dnscrypt-proxy ca-certificates tor obfs4proxy macchanger tirdad-dkms wireguard-tools openvpn proxychains4 apparmor apparmor-utils secure-delete network-manager rfkill gnupg dnsutils curl wget libwebkit2gtk-4.1-0 libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 libgstreamer-gl1.0-0 gstreamer1.0-plugins-base gstreamer1.0-gl"
+    for _kpkg in $_protect; do
+        dpkg -s "$_kpkg" >/dev/null 2>&1 && apt-mark manual "$_kpkg" >/dev/null 2>&1 || true
+    done
+
+    if dpkg -l 2>/dev/null | grep -q "^ii.*exim4"; then
+        print_step "Removing exim4 (unused MTA with a listening service)..."
+        systemctl stop exim4 2>/dev/null || true
+        systemctl disable exim4 2>/dev/null || true
+        DEBIAN_FRONTEND=noninteractive apt-get purge -y exim4 exim4-base exim4-config exim4-daemon-light >/dev/null 2>&1 || true
+    fi
+
+    command -v timedatectl >/dev/null 2>&1 && timedatectl set-ntp true 2>/dev/null || true
+    declare -f configure_emergency_shortcut_input_access >/dev/null 2>&1 && configure_emergency_shortcut_input_access || true
+    return 0
+}
+
 stop_and_disable_service() {
     local service_name="$1"
     local service_display="$2"
@@ -7264,6 +7915,23 @@ echo ""
 print_step "Processing Microsocks (routing-switch control)..."
 echo -e "  ${CYAN}Note:${NC} Microsocks will be managed by routing-switch"
 stop_and_disable_service "microsocks.service" "Microsocks SOCKS5 Proxy" "microsocks"
+
+# Stop and disable V2Ray - will be managed by routing-switch
+# The Debian v2ray package auto-enables and starts v2ray.service with a stock
+# example inbound on 0.0.0.0:10086; leaving it running exposes an open proxy
+# port on all interfaces. Kodachi drives V2Ray through routing-switch instead.
+echo ""
+print_step "Processing V2Ray (routing-switch control)..."
+echo -e "  ${CYAN}Note:${NC} V2Ray will be managed by routing-switch"
+stop_and_disable_service "v2ray.service" "V2Ray Proxy" "v2ray"
+
+# Stop and disable Xray - will be managed by routing-switch
+# The Xray installer likewise enables and starts xray.service on install;
+# neutralize it so no proxy inbound is left listening after setup.
+echo ""
+print_step "Processing Xray (routing-switch control)..."
+echo -e "  ${CYAN}Note:${NC} Xray will be managed by routing-switch"
+stop_and_disable_service "xray.service" "Xray Proxy" "xray"
 
 # Stop and disable HAProxy - will be managed by tor-switch
 echo ""
@@ -7914,6 +8582,17 @@ install_welcome_commands() {
         cat > /usr/local/bin/welcome << 'EOF'
 #!/bin/bash
 # Kodachi AutoShield Command Wrapper
+if [ "$#" -ne 0 ]; then
+    echo "Error: $(basename "$0") takes no arguments ($# given)" >&2
+    echo "Usage: $(basename "$0")" >&2
+    echo "This is the Kodachi welcome/AutoShield launcher, not a command-line interface." >&2
+    exit 2
+fi
+
+if [ ! -t 0 ]; then
+    exit 0
+fi
+
 export KODACHI_SKIP_WELCOME=0
 
 if [[ -f /etc/profile.d/kodachi-autoshield.sh ]]; then
@@ -8015,12 +8694,12 @@ install_oniux_launcher() {
 # Oniux Launcher - Safe Oniux Wrapper with Namespace Enablement
 # ==============================================================
 #
-# SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.0
+# SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.1
 # Copyright (c) 2013-2026 Warith Al Maawali
 #
 # This file is part of Kodachi OS.
 # For full license terms, see LICENSE.md or visit:
-# http://kodachi.cloud/wiki/bina/license.html
+# https://kodachi.cloud/docs/license.html
 #
 # Version: 9.0.1
 
@@ -8093,7 +8772,12 @@ echo ""
 print_step "Checking open ports after cleanup..."
 echo ""
 if command -v ss &>/dev/null; then
-    PORT_COUNT=$(ss -tlnp 2>/dev/null | grep LISTEN 2>/dev/null | wc -l)
+    # `|| true` is load-bearing: under `set -eo pipefail`, a system with zero
+    # listening ports makes grep exit 1, pipefail propagates it to the
+    # assignment, and set -e kills the installer HERE -- after everything has
+    # already succeeded -- with no error message. It also made the
+    # "No listening ports" branch below unreachable.
+    PORT_COUNT=$(ss -tlnp 2>/dev/null | grep LISTEN 2>/dev/null | wc -l || true)
     PORT_COUNT=${PORT_COUNT:-0}
     if [[ "$PORT_COUNT" -eq 0 ]]; then
         echo -e "  ${GREEN}✓${NC} No listening ports found - system is secure!"
@@ -8349,6 +9033,45 @@ BASHRC_PATH_EOF
 }
 
 ensure_sbin_in_path
+
+# ============================================================================
+# ENABLE VTE SHELL INTEGRATION FOR NON-LOGIN BASH SHELLS
+# ============================================================================
+# Tilix starts Bash as an interactive non-login shell, so /etc/profile.d is not
+# processed and VTE's prompt hook is otherwise missing. Login shells already
+# load the VTE script from /etc/profile; skip them to avoid duplicate hooks.
+
+ensure_vte_shell_integration() {
+    local bashrc_file="/etc/bash.bashrc"
+
+    if [[ ! -f "$bashrc_file" ]]; then
+        print_warning "Cannot enable VTE shell integration: $bashrc_file not found"
+        return 0
+    fi
+
+    if grep -q "kodachi-vte-shell-integration" "$bashrc_file" 2>/dev/null; then
+        print_info "VTE shell integration already enabled for non-login Bash shells"
+        return 0
+    fi
+
+    cat >> "$bashrc_file" << 'BASHRC_VTE_EOF'
+
+# kodachi-vte-shell-integration: Enable Tilix/VTE features in non-login Bash.
+if ! shopt -q login_shell && [[ -n "${VTE_VERSION:-}" ]]; then
+    for vte_script in /etc/profile.d/vte-2.91.sh /etc/profile.d/vte.sh; do
+        if [[ -r "$vte_script" ]]; then
+            . "$vte_script"
+            break
+        fi
+    done
+    unset vte_script
+fi
+BASHRC_VTE_EOF
+
+    print_success "Enabled VTE shell integration in $bashrc_file"
+}
+
+ensure_vte_shell_integration
 
 # ============================================================================
 # RE-RUN SUDOERS SETUP (post-install pass)

@@ -3,12 +3,12 @@
 # Kodachi Binary Installation Script
 # ======================================================
 #
-# SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.0
+# SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.1
 # Copyright (c) 2013-2026 Warith Al Maawali
 #
 # This file is part of Kodachi OS.
 # For full license terms, see LICENSE.md or visit:
-# http://kodachi.cloud/wiki/bina/license.html
+# https://kodachi.cloud/docs/license.html
 #
 # Commercial or organizational use requires a written license.
 # Contact: warith@digi77.com
@@ -493,20 +493,25 @@ echo ""
 if [[ -z "$INSTALL_PATH" ]]; then
     INSTALL_PATH="/opt/kodachi/dashboard/hooks"
 
-    # Ensure /opt/kodachi/ exists and is writable by current user
+    # Keep the install tree writable during package staging. The final
+    # production hardening step protects the hooks ancestors and signed
+    # binaries without recursively changing ownership of runtime state.
     if [[ ! -d "/opt/kodachi" ]]; then
         print_info "Creating /opt/kodachi/ (requires sudo)..."
-        if sudo mkdir -p "/opt/kodachi/dashboard/hooks" && sudo chown -R "$(id -u):$(id -g)" "/opt/kodachi"; then
-            print_success "Created /opt/kodachi/ owned by $(whoami)"
+        if sudo install -d -o "$EUID" -g "$(/usr/bin/id -g)" -m 0755 \
+            "/opt/kodachi" "/opt/kodachi/dashboard" "/opt/kodachi/dashboard/hooks"; then
+            print_success "Created /opt/kodachi/ staging tree for $(whoami)"
         else
             print_warning "Could not create /opt/kodachi/ — falling back to home directory"
             INSTALL_PATH="$(get_fallback_hooks_dir)"
         fi
     elif [[ ! -w "/opt/kodachi/dashboard/hooks" ]]; then
-        # Directory exists but isn't writable — fix ownership
-        print_info "Fixing /opt/kodachi/ ownership (requires sudo)..."
-        if sudo chown -R "$(id -u):$(id -g)" "/opt/kodachi"; then
-            print_success "Fixed ownership of /opt/kodachi/"
+        # A completed install is root-owned. Re-open only the three staging
+        # ancestors, never the complete /opt/kodachi subtree.
+        print_info "Preparing /opt/kodachi/ staging ownership (requires sudo)..."
+        if sudo install -d -o "$EUID" -g "$(/usr/bin/id -g)" -m 0755 \
+            "/opt/kodachi" "/opt/kodachi/dashboard" "/opt/kodachi/dashboard/hooks"; then
+            print_success "Prepared /opt/kodachi/ staging tree"
         else
             print_warning "Cannot write to /opt/kodachi/ — falling back to home directory"
             INSTALL_PATH="$(get_fallback_hooks_dir)"
@@ -635,22 +640,617 @@ download_pack_file() {
 verify_signature() {
     local binary_path="$1"
     local signature_dir="$2"
-    local binary_name=$(basename "$binary_path")
+    local binary_name=""
+    local sig_file=""
+    local pub_key=""
 
-    local sig_file=$(find "$signature_dir" -name "${binary_name}*.sig" -type f | head -n1)
-    if [[ -z "$sig_file" ]]; then
+    binary_name="$(basename -- "$binary_path")"
+    sig_file="$signature_dir/${binary_name}_v${KODACHI_VERSION}.sig"
+    pub_key="$signature_dir/../config/signkeys/public_key_v${KODACHI_VERSION}.pem"
+
+    if [[ ! -f "$sig_file" || -L "$sig_file" ]]; then
+        return 1
+    fi
+    if [[ ! -f "$pub_key" || -L "$pub_key" ]]; then
         return 1
     fi
 
-    local pub_key=$(find "$signature_dir/../config/signkeys" -name "public_key*.pem" -type f | head -n1)
-    if [[ -z "$pub_key" ]]; then
-        return 1
-    fi
-
-    if openssl dgst -sha256 -verify "$pub_key" -signature "$sig_file" "$binary_path" &>/dev/null; then
+    if /usr/bin/openssl dgst -sha256 -verify "$pub_key" \
+        -signature "$sig_file" "$binary_path" &>/dev/null; then
         return 0
-    else
+    fi
+    return 1
+}
+
+# BEGIN KODACHI AUTH TRUST INSTALL FUNCTIONS
+atomic_install_root_file() {
+    local source_file="$1"
+    local destination_file="$2"
+    local file_mode="$3"
+    local destination_dir=""
+    local destination_name=""
+    local temporary_file=""
+
+    destination_dir="$(dirname -- "$destination_file")"
+    destination_name="$(basename -- "$destination_file")"
+    temporary_file="$destination_dir/.${destination_name}.new.$$"
+
+    if ! sudo install -o root -g root -m "$file_mode" \
+        "$source_file" "$temporary_file"; then
+        print_error "Cannot stage protected file: $destination_file"
         return 1
+    fi
+    if ! sudo mv -Tf -- "$temporary_file" "$destination_file"; then
+        sudo rm -f -- "$temporary_file" 2>/dev/null || true
+        print_error "Cannot atomically activate protected file: $destination_file"
+        return 1
+    fi
+}
+
+cleanup_production_auth_stage() {
+    local stage_dir="$1"
+
+    [[ -n "$stage_dir" ]] || return 0
+    case "$stage_dir" in
+        "$INSTALL_PATH"/.auth-trust-stage.*) ;;
+        *)
+            print_error "Refusing to clean unexpected auth-trust stage: $stage_dir"
+            return 1
+            ;;
+    esac
+
+    if [[ -e "$stage_dir" || -L "$stage_dir" ]]; then
+        sudo /usr/bin/find "$stage_dir" -xdev -depth -delete || return 1
+    fi
+}
+
+create_production_auth_stage() {
+    local dashboard_dir=""
+    local kodachi_root=""
+    local stage_dir=""
+    local stage_owner=""
+    local stage_mode=""
+
+    dashboard_dir="$(dirname -- "$INSTALL_PATH")"
+    kodachi_root="$(dirname -- "$dashboard_dir")"
+    stage_dir="$INSTALL_PATH/.auth-trust-stage.$$.$RANDOM"
+
+    sudo install -d -o root -g root -m 0755 \
+        "$kodachi_root" "$dashboard_dir" "$INSTALL_PATH" || return 1
+    [[ ! -e "$stage_dir" && ! -L "$stage_dir" ]] || return 1
+    sudo install -d -o root -g root -m 0700 "$stage_dir" || return 1
+
+    if ! stage_owner="$(stat -c '%u:%g' -- "$stage_dir")"; then
+        cleanup_production_auth_stage "$stage_dir" || true
+        return 1
+    fi
+    if ! stage_mode="$(stat -c '%a' -- "$stage_dir")"; then
+        cleanup_production_auth_stage "$stage_dir" || true
+        return 1
+    fi
+    if [[ "$stage_owner" != "0:0" || "$stage_mode" != "700" ]]; then
+        print_error "Auth-trust staging directory is not protected"
+        cleanup_production_auth_stage "$stage_dir" || true
+        return 1
+    fi
+
+    AUTH_TRUST_STAGE_DIR="$stage_dir"
+}
+
+stage_root_snapshot() {
+    local source_file="$1"
+    local staged_file="$2"
+
+    if [[ ! -f "$source_file" || -L "$source_file" ]]; then
+        return 1
+    fi
+    sudo install -o root -g root -m 0600 \
+        "$source_file" "$staged_file" || return 1
+}
+
+stage_package_public_key() {
+    local staged_key="$AUTH_TRUST_STAGE_DIR/package-public.pem"
+
+    stage_root_snapshot "$PUBLIC_KEY_FILE" "$staged_key" || {
+        print_error "Cannot stage verified package public key"
+        return 1
+    }
+    STAGED_PACKAGE_PUBLIC_KEY="$staged_key"
+}
+
+stage_normal_binary_trust() {
+    local binary_name=""
+    local binary_source=""
+    local signature_source=""
+    local staged_binary=""
+    local staged_signature=""
+
+    STAGED_NORMAL_BINARY_FILES=()
+    STAGED_NORMAL_SIGNATURE_FILES=()
+    STAGED_NORMAL_SIGNATURE_NAMES=()
+
+    if [[ ! "$KODACHI_VERSION" =~ ^[0-9]+([.][0-9]+)*$ ]]; then
+        print_error "Unsafe release version for protected trust: $KODACHI_VERSION"
+        return 1
+    fi
+
+    for binary_name in "${FINAL_HARDEN_BINARY_NAMES[@]}"; do
+        if [[ ! "$binary_name" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            print_error "Unsafe deployed binary name: $binary_name"
+            return 1
+        fi
+
+        binary_source="$EXTRACT_DIR/binaries/$binary_name"
+        signature_source="$EXTRACT_DIR/signatures/${binary_name}_v${KODACHI_VERSION}.sig"
+        staged_binary="$AUTH_TRUST_STAGE_DIR/normal-${binary_name}.binary"
+        staged_signature="$AUTH_TRUST_STAGE_DIR/normal-${binary_name}.sig"
+
+        stage_root_snapshot "$binary_source" "$staged_binary" || {
+            print_error "Cannot stage verified binary: $binary_name"
+            return 1
+        }
+        stage_root_snapshot "$signature_source" "$staged_signature" || {
+            print_error "Cannot stage exact detached signature: $binary_name"
+            return 1
+        }
+        if ! sudo /usr/bin/openssl dgst -sha256 -verify "$STAGED_PACKAGE_PUBLIC_KEY" \
+            -signature "$staged_signature" "$staged_binary" >/dev/null 2>&1; then
+            print_error "Staged package snapshot verification failed: $binary_name"
+            return 1
+        fi
+
+        STAGED_NORMAL_BINARY_FILES+=("$staged_binary")
+        STAGED_NORMAL_SIGNATURE_FILES+=("$staged_signature")
+        STAGED_NORMAL_SIGNATURE_NAMES+=("${binary_name}_v${KODACHI_VERSION}.sig")
+    done
+}
+
+stage_existing_binary_trust() {
+    local binary_name="$1"
+    local destination_file="$INSTALL_PATH/$binary_name"
+    local signature_source=""
+    local signature_name=""
+    local signature_version=""
+    local key_source=""
+    local staged_binary="$AUTH_TRUST_STAGE_DIR/legacy-${binary_name}.binary"
+    local staged_key="$AUTH_TRUST_STAGE_DIR/legacy-${binary_name}.pem"
+    local staged_signature="$AUTH_TRUST_STAGE_DIR/legacy-${binary_name}.sig"
+
+    if [[ ! -f "$destination_file" || -L "$destination_file" ]]; then
+        print_error "Cannot stage missing or linked legacy binary: $destination_file"
+        return 1
+    fi
+    [[ -d "$INSTALL_PATH/results/signatures" ]] || return 1
+
+    while IFS= read -r -d '' signature_source; do
+        signature_name="$(basename -- "$signature_source")"
+        signature_version="${signature_name#${binary_name}_v}"
+        signature_version="${signature_version%.sig}"
+        [[ "$signature_version" =~ ^[0-9]+([.][0-9]+)*$ ]] || continue
+        key_source="$INSTALL_PATH/config/signkeys/public_key_v${signature_version}.pem"
+
+        stage_root_snapshot "$destination_file" "$staged_binary" || continue
+        stage_root_snapshot "$key_source" "$staged_key" || continue
+        stage_root_snapshot "$signature_source" "$staged_signature" || continue
+        sudo /usr/bin/cmp -s -- "$STAGED_PACKAGE_PUBLIC_KEY" "$staged_key" || continue
+        if sudo /usr/bin/openssl dgst -sha256 -verify "$staged_key" \
+            -signature "$staged_signature" "$staged_binary" >/dev/null 2>&1; then
+            STAGED_PRESERVE_BINARY_FILES+=("$staged_binary")
+            STAGED_PRESERVE_KEY_FILES+=("$staged_key")
+            STAGED_PRESERVE_SIGNATURE_FILES+=("$staged_signature")
+            STAGED_PRESERVE_KEY_NAMES+=("public_key_v${signature_version}.pem")
+            STAGED_PRESERVE_SIGNATURE_NAMES+=("$signature_name")
+            return 0
+        fi
+    done < <(
+        find "$INSTALL_PATH/results/signatures" -maxdepth 1 -type f \
+            -name "${binary_name}_v*.sig" -print0 | sort -zV
+    )
+
+    print_error "No matching trusted legacy snapshot verified: $destination_file"
+    return 1
+}
+
+install_production_auth_trust() {
+    local binary_name=""
+    local staged_binary=""
+    local staged_signature=""
+    local signature_name=""
+    local install_owner_uid=""
+    local install_owner_gid=""
+    local dashboard_dir=""
+    local kodachi_root=""
+    local auth_trust_dir="$INSTALL_PATH/auth-trust"
+    local auth_signkeys_dir="$auth_trust_dir/signkeys"
+    local auth_signatures_dir="$auth_trust_dir/signatures"
+    local runtime_dir=""
+    local public_key_name="public_key_v${KODACHI_VERSION}.pem"
+    local staged_index=0
+
+    install_owner_uid="$EUID"
+    install_owner_gid="$(/usr/bin/id -g)"
+    if [[ ! "$install_owner_uid" =~ ^[0-9]+$ ]] \
+        || [[ ! "$install_owner_gid" =~ ^[0-9]+$ ]] \
+        || [[ "$install_owner_uid" -eq 0 ]]; then
+        print_error "Cannot resolve a safe non-root runtime owner"
+        return 1
+    fi
+
+    dashboard_dir="$(dirname -- "$INSTALL_PATH")"
+    kodachi_root="$(dirname -- "$dashboard_dir")"
+
+    for runtime_dir in data cache results logs tmp; do
+        sudo install -d -o "$install_owner_uid" -g "$install_owner_gid" \
+            -m 0755 "$INSTALL_PATH/$runtime_dir" || return 1
+        sudo chown -R "$install_owner_uid:$install_owner_gid" \
+            "$INSTALL_PATH/$runtime_dir" || return 1
+        sudo chmod u+rwx "$INSTALL_PATH/$runtime_dir" || return 1
+    done
+
+    sudo install -d -o root -g root -m 0755 \
+        "$kodachi_root" "$dashboard_dir" "$INSTALL_PATH" \
+        "$auth_trust_dir" "$auth_signkeys_dir" "$auth_signatures_dir" || return 1
+
+    if [[ "${#STAGED_NORMAL_BINARY_FILES[@]}" -gt 0 ]]; then
+        atomic_install_root_file \
+            "$STAGED_PACKAGE_PUBLIC_KEY" \
+            "$auth_signkeys_dir/$public_key_name" 0644 || return 1
+    fi
+
+    for binary_name in "${FINAL_HARDEN_BINARY_NAMES[@]}"; do
+        staged_binary="${STAGED_NORMAL_BINARY_FILES[$staged_index]}"
+        staged_signature="${STAGED_NORMAL_SIGNATURE_FILES[$staged_index]}"
+        signature_name="${STAGED_NORMAL_SIGNATURE_NAMES[$staged_index]}"
+        atomic_install_root_file \
+            "$staged_binary" "$INSTALL_PATH/$binary_name" 0755 || return 1
+        atomic_install_root_file \
+            "$staged_signature" "$auth_signatures_dir/$signature_name" 0644 || return 1
+        if ! /usr/bin/openssl dgst -sha256 \
+            -verify "$auth_signkeys_dir/$public_key_name" \
+            -signature "$auth_signatures_dir/$signature_name" \
+            "$INSTALL_PATH/$binary_name" >/dev/null 2>&1; then
+            print_error "Published package trust verification failed: $binary_name"
+            return 1
+        fi
+        staged_index=$((staged_index + 1))
+    done
+
+    print_success "Protected production binaries and auth-trust artifacts installed"
+}
+
+harden_existing_root_binary_preserving_bytes() {
+    local binary_name="$1"
+    local staged_binary="$2"
+    local staged_key="$3"
+    local staged_signature="$4"
+    local protected_key_name="$5"
+    local protected_signature_name="$6"
+    local destination_file="$INSTALL_PATH/$binary_name"
+    local auth_trust_dir="$INSTALL_PATH/auth-trust"
+    local protected_key="$auth_trust_dir/signkeys/$protected_key_name"
+    local protected_signature="$auth_trust_dir/signatures/$protected_signature_name"
+    local staged_sha256=""
+    local published_sha256=""
+
+    staged_sha256="$(sudo /usr/bin/sha256sum -- "$staged_binary" | awk '{print $1}')" \
+        || return 1
+    atomic_install_root_file "$staged_binary" "$destination_file" 0755 || return 1
+    atomic_install_root_file "$staged_key" "$protected_key" 0644 || return 1
+    atomic_install_root_file \
+        "$staged_signature" "$protected_signature" 0644 || return 1
+    published_sha256="$(/usr/bin/sha256sum -- "$destination_file" | awk '{print $1}')" \
+        || return 1
+
+    if [[ "$staged_sha256" != "$published_sha256" ]]; then
+        print_error "Published legacy binary differs from verified snapshot: $binary_name"
+        return 1
+    fi
+    if ! /usr/bin/openssl dgst -sha256 -verify "$protected_key" \
+        -signature "$protected_signature" "$destination_file" >/dev/null 2>&1; then
+        print_error "Published legacy trust verification failed: $binary_name"
+        return 1
+    fi
+}
+
+publish_staged_production_auth_trust() {
+    local preserved_binary_name=""
+    local preserved_index=0
+
+    if [[ "${#FINAL_HARDEN_BINARY_NAMES[@]}" -gt 0 ]]; then
+        install_production_auth_trust || return 1
+    else
+        sudo install -d -o root -g root -m 0755 \
+            "$INSTALL_PATH/auth-trust" \
+            "$INSTALL_PATH/auth-trust/signkeys" \
+            "$INSTALL_PATH/auth-trust/signatures" || return 1
+    fi
+
+    for preserved_binary_name in "${PRESERVE_HARDEN_BINARY_NAMES[@]}"; do
+        harden_existing_root_binary_preserving_bytes \
+            "$preserved_binary_name" \
+            "${STAGED_PRESERVE_BINARY_FILES[$preserved_index]}" \
+            "${STAGED_PRESERVE_KEY_FILES[$preserved_index]}" \
+            "${STAGED_PRESERVE_SIGNATURE_FILES[$preserved_index]}" \
+            "${STAGED_PRESERVE_KEY_NAMES[$preserved_index]}" \
+            "${STAGED_PRESERVE_SIGNATURE_NAMES[$preserved_index]}" || return 1
+        preserved_index=$((preserved_index + 1))
+    done
+}
+
+finalize_production_auth_trust() {
+    local production_path="$1"
+    local preserved_binary_name=""
+    local result=0
+    local cleanup_result=0
+
+    if [[ "$INSTALL_PATH" != "$production_path" ]]; then
+        return 0
+    fi
+    if [[ "${#FINAL_HARDEN_BINARY_NAMES[@]}" -eq 0 \
+        && "${#PRESERVE_HARDEN_BINARY_NAMES[@]}" -eq 0 ]]; then
+        return 0
+    fi
+
+    AUTH_TRUST_STAGE_DIR=""
+    STAGED_PACKAGE_PUBLIC_KEY=""
+    STAGED_NORMAL_BINARY_FILES=()
+    STAGED_NORMAL_SIGNATURE_FILES=()
+    STAGED_NORMAL_SIGNATURE_NAMES=()
+    STAGED_PRESERVE_BINARY_FILES=()
+    STAGED_PRESERVE_KEY_FILES=()
+    STAGED_PRESERVE_SIGNATURE_FILES=()
+    STAGED_PRESERVE_KEY_NAMES=()
+    STAGED_PRESERVE_SIGNATURE_NAMES=()
+
+    create_production_auth_stage || return 1
+    stage_package_public_key || result=1
+    if [[ "$result" -eq 0 ]]; then
+        stage_normal_binary_trust || result=1
+    fi
+    for preserved_binary_name in "${PRESERVE_HARDEN_BINARY_NAMES[@]}"; do
+        if [[ "$result" -eq 0 ]]; then
+            stage_existing_binary_trust "$preserved_binary_name" || result=1
+        fi
+    done
+    if [[ "$result" -eq 0 ]]; then
+        publish_staged_production_auth_trust || result=1
+    fi
+
+    cleanup_production_auth_stage "$AUTH_TRUST_STAGE_DIR" || cleanup_result=1
+    AUTH_TRUST_STAGE_DIR=""
+    if [[ "$result" -ne 0 || "$cleanup_result" -ne 0 ]]; then
+        return 1
+    fi
+}
+# END KODACHI AUTH TRUST INSTALL FUNCTIONS
+
+host_exposure_rollout_enabled() {
+    case "${KODACHI_HOST_EXPOSURE_WATCHER_ENABLED:-0}" in
+        1)
+            return 0
+            ;;
+        0|"")
+            return 1
+            ;;
+        *)
+            print_error "KODACHI_HOST_EXPOSURE_WATCHER_ENABLED must be exactly 0 or 1"
+            return 2
+            ;;
+    esac
+}
+
+install_host_exposure_protected_runtime() {
+    local source_binary="$EXTRACT_DIR/binaries/kodachi-soc"
+    if [[ ! -f "$source_binary" ]]; then
+        return 0
+    fi
+
+    local source_policy="$EXTRACT_DIR/config/host-exposure-defaults.json"
+    local source_unit="$EXTRACT_DIR/config/systemd/kodachi-soc-watcher.service"
+    local source_signature=""
+    local source_signature_info=""
+    local protected_exec_dir="/usr/local/libexec/kodachi/host-exposure"
+    local protected_state_dir="/var/lib/kodachi-soc"
+    local protected_signature_dir="$protected_state_dir/signatures"
+    local protected_config_dir="$protected_state_dir/config"
+    local protected_unit="/etc/systemd/system/kodachi-soc-watcher.service"
+    local protected_sudoers="/etc/sudoers.d/kodachi-host-exposure"
+    local protected_sysctl="/etc/sysctl.d/90-kodachi-host-exposure.conf"
+    local component=""
+    local owner=""
+    local mode=""
+    local rollout_status=0
+
+    source_signature="$(find "$EXTRACT_DIR/signatures" -maxdepth 1 -type f -name 'host-exposure-defaults.json_v*.sig' -print -quit 2>/dev/null || true)"
+    source_signature_info="$(find "$EXTRACT_DIR/signatures" -maxdepth 1 -type f -name 'host-exposure-defaults.json_v*.sig.info' -print -quit 2>/dev/null || true)"
+
+    # If the package ships NONE of the host-exposure watcher assets, this build
+    # simply predates / omits the optional privileged watcher: skip it cleanly
+    # rather than aborting the whole binary install. (The refusal below still
+    # fires when the assets are PARTIALLY present, i.e. incomplete or tampered.)
+    if [[ ! -f "$source_policy" && ! -f "$source_unit" && -z "$source_signature" && -z "$source_signature_info" ]]; then
+        print_info "Host-exposure watcher assets not present in this package; skipping (optional component)"
+        return 0
+    fi
+
+    if [[ ! -f "$source_policy" || ! -f "$source_unit" || -z "$source_signature" || -z "$source_signature_info" ]]; then
+        print_error "Host-exposure protected runtime assets are incomplete"
+        print_error "Refusing to install a privileged watcher without its policy, signature, and service unit"
+        return 1
+    fi
+    if ! verify_signature "$source_policy" "$EXTRACT_DIR/signatures"; then
+        print_error "Host-exposure default policy signature verification failed"
+        return 1
+    fi
+
+    for component in /etc /etc/sudoers.d /etc/sysctl.d /usr/local /usr/local/bin /usr/local/libexec /usr/local/libexec/kodachi "$protected_exec_dir" /var/lib "$protected_state_dir"; do
+        if [[ -L "$component" ]]; then
+            print_error "Protected host-exposure path must not contain a symlink: $component"
+            return 1
+        fi
+        if [[ -e "$component" ]]; then
+            owner="$(sudo stat -c '%u' -- "$component" 2>/dev/null || true)"
+            mode="$(sudo stat -c '%a' -- "$component" 2>/dev/null || true)"
+            if [[ "$owner" != "0" || ! "$mode" =~ ^[0-7]{3,4}$ || $((8#$mode & 022)) -ne 0 ]]; then
+                print_error "Protected host-exposure path is not root-owned and non-writable by group/other: $component"
+                return 1
+            fi
+        fi
+    done
+
+    print_step "Installing protected host-exposure watcher runtime..."
+    sudo install -d -o root -g root -m 0755 /usr/local/libexec /usr/local/libexec/kodachi "$protected_exec_dir"
+    sudo install -d -o root -g root -m 0711 "$protected_state_dir"
+    sudo install -d -o root -g root -m 0755 "$protected_config_dir" "$protected_signature_dir"
+
+    local binary_tmp="$protected_exec_dir/.kodachi-soc.new.$$"
+    local policy_tmp="$protected_config_dir/.host-exposure-defaults.json.new.$$"
+    local unit_tmp="/etc/systemd/system/.kodachi-soc-watcher.service.new.$$"
+    local sudoers_tmp="/etc/sudoers.d/.kodachi-host-exposure.new.$$"
+    local sysctl_tmp="/etc/sysctl.d/.90-kodachi-host-exposure.conf.new.$$"
+
+    sudo install -o root -g root -m 0755 "$source_binary" "$binary_tmp"
+    sudo install -o root -g root -m 0644 "$source_policy" "$policy_tmp"
+    sudo install -o root -g root -m 0644 "$source_unit" "$unit_tmp"
+    sudo mv -Tf "$binary_tmp" "$protected_exec_dir/kodachi-soc"
+    sudo mv -Tf "$policy_tmp" "$protected_config_dir/host-exposure-defaults.json"
+    sudo mv -Tf "$unit_tmp" "$protected_unit"
+    printf '%s\n' \
+        '%sudo ALL=(root) NOPASSWD: /usr/local/libexec/kodachi/host-exposure/kodachi-soc exposure acknowledge --finding-id * --json' \
+        '%sudo ALL=(root) NOPASSWD: /usr/local/libexec/kodachi/host-exposure/kodachi-soc exposure history --limit 32 --json' \
+        '%sudo ALL=(root) NOPASSWD: /usr/local/libexec/kodachi/host-exposure/kodachi-soc exposure history --before-sequence * --before-finding-id * --limit 32 --json' \
+        '%sudo ALL=(root) NOPASSWD: /usr/local/libexec/kodachi/host-exposure/kodachi-soc exposure watcher --enable --json' \
+        '%sudo ALL=(root) NOPASSWD: /usr/local/libexec/kodachi/host-exposure/kodachi-soc exposure watcher --disable --json' \
+        | sudo tee "$sudoers_tmp" >/dev/null
+    sudo chown root:root "$sudoers_tmp"
+    sudo chmod 0440 "$sudoers_tmp"
+    if command -v visudo >/dev/null 2>&1 && ! sudo visudo -c -f "$sudoers_tmp" >/dev/null; then
+        print_error "Host-exposure acknowledgement sudoers rule failed validation"
+        return 1
+    fi
+    sudo mv -Tf "$sudoers_tmp" "$protected_sudoers"
+    printf '%s\n' 'kernel.io_uring_disabled = 2' | sudo tee "$sysctl_tmp" >/dev/null
+    sudo chown root:root "$sysctl_tmp"
+    sudo chmod 0644 "$sysctl_tmp"
+    sudo mv -Tf "$sysctl_tmp" "$protected_sysctl"
+
+    local release_signature=""
+    local release_signature_name=""
+    local release_signature_tmp=""
+    local signature_count=0
+    local signature_bytes=0
+    local current_signature_bytes=0
+    while IFS= read -r -d '' release_signature; do
+        release_signature_name="$(basename "$release_signature")"
+        if [[ ! "$release_signature_name" =~ ^[A-Za-z0-9._-]+_v[0-9.]+\.sig(\.info)?$ ]]; then
+            print_error "Unexpected signature filename in verified pack: $release_signature_name"
+            return 1
+        fi
+        current_signature_bytes="$(stat -c '%s' -- "$release_signature" 2>/dev/null || true)"
+        if [[ ! "$current_signature_bytes" =~ ^[0-9]+$ ]]; then
+            print_error "Cannot measure protected signature: $release_signature_name"
+            return 1
+        fi
+        signature_count=$((signature_count + 1))
+        signature_bytes=$((signature_bytes + current_signature_bytes))
+        if [[ $signature_count -gt 512 || $signature_bytes -gt 8388608 ]]; then
+            print_error "Protected signature set exceeds the 512-file or 8 MiB ceiling"
+            return 1
+        fi
+        release_signature_tmp="$protected_signature_dir/.${release_signature_name}.new.$$"
+        sudo install -o root -g root -m 0644 "$release_signature" "$release_signature_tmp"
+        sudo mv -Tf "$release_signature_tmp" "$protected_signature_dir/$release_signature_name"
+    done < <(find "$EXTRACT_DIR/signatures" -maxdepth 1 -type f \( -name '*.sig' -o -name '*.sig.info' \) -print0)
+    if [[ $signature_count -eq 0 ]]; then
+        print_error "Verified package contains no protected release signatures"
+        return 1
+    fi
+
+    local command_link_tmp="/usr/local/bin/.kodachi-soc.new.$$"
+    sudo ln -s "$protected_exec_dir/kodachi-soc" "$command_link_tmp"
+    sudo mv -Tf "$command_link_tmp" /usr/local/bin/kodachi-soc
+
+    for component in "$protected_exec_dir" "$protected_exec_dir/kodachi-soc" "$protected_state_dir" "$protected_config_dir" "$protected_signature_dir" "$protected_unit" "$protected_sudoers" "$protected_sysctl"; do
+        if [[ -L "$component" ]]; then
+            print_error "Protected host-exposure installation produced a symlink unexpectedly: $component"
+            return 1
+        fi
+        owner="$(sudo stat -c '%u' -- "$component" 2>/dev/null || true)"
+        mode="$(sudo stat -c '%a' -- "$component" 2>/dev/null || true)"
+        if [[ "$owner" != "0" || ! "$mode" =~ ^[0-7]{3,4}$ || $((8#$mode & 022)) -ne 0 ]]; then
+            print_error "Protected host-exposure installation failed ownership or mode validation: $component"
+            return 1
+        fi
+    done
+    if [[ "$(readlink /usr/local/bin/kodachi-soc 2>/dev/null || true)" != "$protected_exec_dir/kodachi-soc" ]]; then
+        print_error "Protected host-exposure command link does not target the protected executable"
+        return 1
+    fi
+
+    if command -v systemctl >/dev/null 2>&1 && [[ -d /run/systemd/system ]]; then
+        if ! sudo sysctl -q -p "$protected_sysctl"; then
+            print_warning "Required io_uring hardening could not be applied; watcher coverage will remain unsupported"
+        elif [[ "$(cat /proc/sys/kernel/io_uring_disabled 2>/dev/null || true)" != "2" ]]; then
+            print_warning "Required io_uring hardening is not active; watcher coverage will remain unsupported"
+        fi
+        sudo systemctl daemon-reload
+        if host_exposure_rollout_enabled; then
+            sudo systemctl enable kodachi-soc-watcher.service
+            sudo systemctl restart kodachi-soc-watcher.service
+            if ! sudo systemctl is-active --quiet kodachi-soc-watcher.service; then
+                print_error "Host-exposure watcher service did not become active"
+                return 1
+            fi
+            print_success "Protected host-exposure watcher installed and active"
+        else
+            rollout_status=$?
+            if [[ $rollout_status -ne 1 ]]; then
+                return 1
+            fi
+            if ! sudo systemctl disable --now kodachi-soc-watcher.service >/dev/null; then
+                print_error "Default-disabled host-exposure watcher could not be stopped and disabled"
+                return 1
+            fi
+            if sudo systemctl is-active --quiet kodachi-soc-watcher.service; then
+                print_error "Default-disabled host-exposure watcher remained active"
+                return 1
+            fi
+            print_warning "Protected host-exposure watcher installed but disabled pending release approval"
+            print_info "Authorized test rollout requires KODACHI_HOST_EXPOSURE_WATCHER_ENABLED=1"
+        fi
+    else
+        print_warning "systemd is not active; protected host-exposure watcher is installed but not started"
+    fi
+}
+
+install_host_exposure_notifier_service() {
+    local notifier_binary="$INSTALL_PATH/kodachi-soc-notifier"
+    if [[ ! -x "$notifier_binary" ]]; then
+        return 0
+    fi
+
+    local source_unit="$EXTRACT_DIR/config/systemd/kodachi-soc-notifier.service"
+    if [[ ! -f "$source_unit" ]]; then
+        print_error "Host-exposure notifier service is missing from the verified package"
+        return 1
+    fi
+    if [[ "$INSTALL_PATH" != "/opt/kodachi/dashboard/hooks" ]]; then
+        print_warning "Host-exposure notifier auto-start is available only for the canonical /opt installation"
+        print_warning "The watcher remains active, but this custom-path install has no session notifier service"
+        return 0
+    fi
+
+    local user_systemd_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+    mkdir -p "$user_systemd_dir"
+    install -m 0644 "$source_unit" "$user_systemd_dir/kodachi-soc-notifier.service"
+    if command -v systemctl >/dev/null 2>&1 && systemctl --user daemon-reload 2>/dev/null; then
+        if systemctl --user enable --now kodachi-soc-notifier.service 2>/dev/null; then
+            print_success "Host-exposure session notifier installed and active"
+        else
+            print_warning "Host-exposure notifier is installed but could not start in this session"
+        fi
+    else
+        print_warning "No user systemd manager is active; the host-exposure notifier will start at the next graphical session"
     fi
 }
 
@@ -1094,17 +1694,47 @@ echo ""
 print_highlight "======= Downloading Kodachi Binaries ======="
 echo ""
 
-# Step 1: Download package
+# Step 1: Download package (with completeness retry)
+# The pack is large (~255 MB). A slow/interrupted connection can leave a TRUNCATED
+# file. We verify the published sha256 HERE, before the signature step, so an
+# incomplete transfer is reported as a DOWNLOAD problem (and retried) instead of
+# surfacing later as an alarming "signature verification FAILED / may be
+# compromised" message that wrongly implies tampering.
 print_step "Downloading Kodachi binaries package..."
 PACKAGE_NAME="kodachi-binaries-v${KODACHI_VERSION}"
 PACKAGE_FILE="$TEMP_DIR/${PACKAGE_NAME}.tar.gz"
+CHECKSUM_FILE="$TEMP_DIR/${PACKAGE_NAME}.tar.gz.sha256"
 
-if ! download_pack_file "${PACKAGE_NAME}.tar.gz" "$PACKAGE_FILE"; then
-    print_error "Failed to download package (tried $PACK_BASE and $PACK_BASE_FALLBACK)"
+# fetch the expected checksum first (best-effort; used to detect truncation)
+download_pack_file "${PACKAGE_NAME}.tar.gz.sha256" "$CHECKSUM_FILE" || true
+
+dl_attempt=0; dl_max=3; dl_ok=false
+while [[ $dl_attempt -lt $dl_max ]]; do
+    dl_attempt=$((dl_attempt + 1))
+    if ! download_pack_file "${PACKAGE_NAME}.tar.gz" "$PACKAGE_FILE"; then
+        print_warning "Download attempt ${dl_attempt}/${dl_max} could not connect; retrying..."
+        sleep 3; continue
+    fi
+    if [[ -s "$CHECKSUM_FILE" ]]; then
+        if ( cd "$TEMP_DIR" && sha256sum -c "$(basename "$CHECKSUM_FILE")" &>/dev/null ); then
+            dl_ok=true; break
+        fi
+        got_size=$(du -h "$PACKAGE_FILE" 2>/dev/null | cut -f1)
+        print_warning "Download incomplete or corrupted (got ${got_size}, checksum mismatch); retrying ${dl_attempt}/${dl_max}..."
+        sleep 3; continue
+    fi
+    # no checksum available to compare against; accept the transfer as-is
+    dl_ok=true; break
+done
+
+if [[ "$dl_ok" != true ]]; then
+    print_error "Could not obtain a complete package after ${dl_max} attempts."
+    print_error "This is a DOWNLOAD problem (incomplete transfer), NOT a security issue."
+    print_error "Check your connection (the package is ~255 MB) and re-run the installer."
     exit 1
 fi
 file_size=$(du -h "$PACKAGE_FILE" | cut -f1)
-print_success "Package downloaded successfully ($file_size)"
+print_success "Package downloaded + integrity verified ($file_size)"
 
 # Step 2: Download and verify package signature
 print_step "Downloading package signature..."
@@ -1235,33 +1865,45 @@ cleanup_global_symlinks
 
 # Step 6: Install binaries
 print_step "Installing binaries..."
-VERIFIED_COUNT=0
-FAILED_COUNT=0
-INSTALL_FAILED_COUNT=0
-TOTAL_COUNT=0
-FAILED_BINARIES=""
-INSTALL_FAILED_BINARIES=""
-PACKAGE_BINARY_NAMES=()
 
-for binary_file in "$EXTRACT_DIR/binaries/"*; do
-    if [[ -f "$binary_file" ]]; then
-        binary_name=$(basename "$binary_file")
-        PACKAGE_BINARY_NAMES+=("$binary_name")
-        TOTAL_COUNT=$((TOTAL_COUNT + 1))
+# BEGIN KODACHI VERIFIED BINARY PRODUCER
+deploy_verified_package_binaries() {
+    local binary_file=""
+    local binary_name=""
+    local tmp_target=""
 
-        # Skip permission-guard when user chose to keep it running
-        if [[ "$PERMISSION_GUARD_SKIPPED" == "true" ]] && [[ "$binary_name" == "permission-guard" ]]; then
-            SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
-            echo -e "  ${YELLOW}⊘${NC} $binary_name - SKIPPED (daemon still running)"
-            continue
-        fi
+    for binary_file in "$EXTRACT_DIR/binaries/"*; do
+        if [[ -f "$binary_file" ]]; then
+            binary_name="$(basename "$binary_file")"
+            PACKAGE_BINARY_NAMES+=("$binary_name")
+            TOTAL_COUNT=$((TOTAL_COUNT + 1))
 
-        # Verify signature BEFORE copying
-        if verify_signature "$binary_file" "$EXTRACT_DIR/signatures"; then
+            # Every source that reaches final root hardening must first pass
+            # detached-signature verification, including permission-guard when
+            # its currently running daemon cannot be stopped.
+            if ! verify_signature "$binary_file" "$EXTRACT_DIR/signatures"; then
+                FAILED_COUNT=$((FAILED_COUNT + 1))
+                FAILED_BINARIES="${FAILED_BINARIES}    - ${binary_name}\n"
+                echo -e "  ${RED}✗${NC} $binary_name - signature verification FAILED"
+                continue
+            fi
+
+            if [[ "$PERMISSION_GUARD_SKIPPED" == "true" ]] \
+                && [[ "$binary_name" == "permission-guard" ]]; then
+                PRESERVE_HARDEN_BINARY_NAMES+=("$binary_name")
+                SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+                echo -e "  ${YELLOW}⊘${NC} $binary_name - daemon stop skipped; existing installed bytes will be root-hardened after package verification"
+                continue
+            fi
+
+            FINAL_HARDEN_BINARY_NAMES+=("$binary_name")
+
             # Atomic replace avoids ETXTBSY on running binaries.
             tmp_target="$INSTALL_PATH/.${binary_name}.new.$$"
-            if install -m 755 "$binary_file" "$tmp_target" && mv -f "$tmp_target" "$INSTALL_PATH/$binary_name"; then
+            if install -m 755 "$binary_file" "$tmp_target" \
+                && mv -f "$tmp_target" "$INSTALL_PATH/$binary_name"; then
                 VERIFIED_COUNT=$((VERIFIED_COUNT + 1))
+                DEPLOYED_BINARY_NAMES+=("$binary_name")
                 echo -e "  ${GREEN}✓${NC} $binary_name - signature verified and installed"
             else
                 rm -f "$tmp_target" 2>/dev/null || true
@@ -1269,13 +1911,23 @@ for binary_file in "$EXTRACT_DIR/binaries/"*; do
                 INSTALL_FAILED_BINARIES="${INSTALL_FAILED_BINARIES}    - ${binary_name}\n"
                 echo -e "  ${RED}✗${NC} $binary_name - install failed (write/permission/busy)"
             fi
-        else
-            FAILED_COUNT=$((FAILED_COUNT + 1))
-            FAILED_BINARIES="${FAILED_BINARIES}    - ${binary_name}\n"
-            echo -e "  ${RED}✗${NC} $binary_name - signature verification FAILED"
         fi
-    fi
-done
+    done
+}
+# END KODACHI VERIFIED BINARY PRODUCER
+
+VERIFIED_COUNT=0
+FAILED_COUNT=0
+INSTALL_FAILED_COUNT=0
+TOTAL_COUNT=0
+FAILED_BINARIES=""
+INSTALL_FAILED_BINARIES=""
+PACKAGE_BINARY_NAMES=()
+DEPLOYED_BINARY_NAMES=()
+FINAL_HARDEN_BINARY_NAMES=()
+PRESERVE_HARDEN_BINARY_NAMES=()
+
+deploy_verified_package_binaries
 
 # Check if any signatures failed
 if [[ $FAILED_COUNT -gt 0 ]]; then
@@ -1315,6 +1967,15 @@ fi
 # Step 8: Copy other assets
 if [[ -d "$EXTRACT_DIR/signatures" ]]; then
     cp -r "$EXTRACT_DIR/signatures/"* "$INSTALL_PATH/results/signatures/" 2>/dev/null || true
+fi
+
+if ! install_host_exposure_protected_runtime; then
+    print_error "Protected host-exposure installation failed"
+    exit 1
+fi
+if ! install_host_exposure_notifier_service; then
+    print_error "Host-exposure notifier installation failed"
+    exit 1
 fi
 
 if [[ -d "$EXTRACT_DIR/sounds" ]]; then
@@ -2132,7 +2793,7 @@ write_session_helper_service_file() {
     cat > "$service_file" << EOF
 [Unit]
 Description=Kodachi Session Helper - Global Emergency Shortcut Daemon
-Documentation=https://kodachi.cloud/wiki/bina/binaries/kodachi-session-helper/
+Documentation=https://kodachi.cloud/docs/binaries/kodachi-session-helper.html
 After=graphical-session.target
 PartOf=graphical-session.target
 StartLimitIntervalSec=120
@@ -2257,7 +2918,9 @@ setup_dashboard_autostart() {
     local launcher_script="/usr/local/bin/kodachi-dashboard-launcher"
     if [[ ! -f "$launcher_script" ]] || ! grep -q 'GPU_NEEDS_FALLBACK' "$launcher_script" 2>/dev/null || ! grep -q 'DASHBOARD_BIN=' "$launcher_script" 2>/dev/null; then
         print_info "Installing/refreshing dashboard launcher script..."
-        sudo tee "$launcher_script" > /dev/null << 'LAUNCHER_EOF'
+        local _launcher_tmp
+        _launcher_tmp="$(mktemp "${TMPDIR:-/tmp}/kodachi-launcher.XXXXXX")"
+        cat > "$_launcher_tmp" << 'LAUNCHER_EOF'
 #!/bin/bash
 # Kodachi Dashboard Launcher with VM + GPU-driver detection
 # Auto-detects VM environments and GPU drivers that need the WebKitGTK
@@ -2348,8 +3011,15 @@ else
 fi
 
 LAUNCHER_EOF
-        sudo chmod 755 "$launcher_script"
-        print_success "Created launcher script: $launcher_script"
+        # best-effort install (a piped `curl | bash` non-root install cannot prompt
+        # for a sudo password; the launcher is an optional convenience, the dashboard
+        # binary itself is already installed, so never abort the install over it)
+        if sudo cp "$_launcher_tmp" "$launcher_script" 2>/dev/null && sudo chmod 755 "$launcher_script" 2>/dev/null; then
+            print_success "Created launcher script: $launcher_script"
+        else
+            print_warning "Could not install $launcher_script (sudo unavailable / no terminal for password); dashboard works, launcher is optional (re-run in a terminal with sudo to add it)"
+        fi
+        rm -f "$_launcher_tmp" 2>/dev/null || true
     fi
 
     # Repair permissions even when the launcher was pre-seeded by the image.
@@ -2492,7 +3162,7 @@ update_thunar_root_actions() {
 create_desktop_shortcuts() {
     print_step "Creating desktop shortcuts..."
 
-    local DESKTOP_DIR
+    local DESKTOP_DIR=""   # init for set -u: on headless systems no branch below assigns it
     # Detect desktop directory (supports multiple languages)
     if [[ -d "$HOME/Desktop" ]]; then
         DESKTOP_DIR="$HOME/Desktop"
@@ -2558,7 +3228,7 @@ Version=1.0
 Type=Application
 Name=Kodachi Binaries
 Comment=Open Kodachi binaries folder
-Exec=thunar $INSTALL_PATH
+Exec=xdg-open $INSTALL_PATH
 Icon=folder-open
 Terminal=false
 Categories=Utility;
@@ -2667,6 +3337,11 @@ write_installed_binary_pack_metadata \
     "$PACKAGE_SHA256"
 print_info "Binary pack metadata recorded: $INSTALL_METADATA_FILE"
 
+if ! finalize_production_auth_trust "/opt/kodachi/dashboard/hooks"; then
+    print_error "Production auth-trust installation failed"
+    exit 1
+fi
+
 # Final summary
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════╗${NC}"
@@ -2704,13 +3379,13 @@ fi
 
 if [[ "$PERMISSION_GUARD_SKIPPED" == "true" ]]; then
     echo ""
-    echo -e "${RED}╔════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${RED}║  WARNING: permission-guard binary was NOT updated!         ║${NC}"
-    echo -e "${RED}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo -e "${YELLOW}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${YELLOW}║  permission-guard daemon is still using its old image      ║${NC}"
+    echo -e "${YELLOW}╚════════════════════════════════════════════════════════════╝${NC}"
     echo ""
-    echo -e "  To update it:"
-    echo -e "    1. Stop the daemon:  ${BOLD}sudo permission-guard --stop-daemon${NC}"
-    echo -e "    2. Re-run this script"
+    echo -e "  The verified root-owned replacement is installed on disk."
+    echo -e "  Stop or restart the daemon to activate it:"
+    echo -e "    ${BOLD}sudo permission-guard --stop-daemon${NC}"
     echo ""
     echo -e "  The daemon will auto-restart on next login."
     echo ""

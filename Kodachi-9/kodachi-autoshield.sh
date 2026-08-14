@@ -4,12 +4,12 @@ set -o pipefail
 # Kodachi AutoShield Script - Login Session Information Display
 # ===========================================================
 #
-# SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.0
+# SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.1
 # Copyright (c) 2013-2026 Warith Al Maawali
 #
 # This file is part of Kodachi OS.
 # For full license terms, see LICENSE.md or visit:
-# http://kodachi.cloud/wiki/bina/license.html
+# https://kodachi.cloud/docs/license.html
 #
 # Commercial or organizational use requires a written license.
 # Contact: warith@digi77.com
@@ -49,19 +49,29 @@ set -o pipefail
 #   - Cryptocurrency prices and news headlines
 #   - Interactive profile menu for system workflows
 
-# Parse command-line arguments
+# Parse command-line arguments only for direct execution. When this file is sourced, its
+# positional parameters belong to the caller and must never authorize or reject DNS work.
+DIRECT_EXECUTION=false
+[ "${BASH_SOURCE[0]}" = "$0" ] && DIRECT_EXECUTION=true
 FORCE_DNS_SETUP=false
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --force-dns-setup)
-            FORCE_DNS_SETUP=true
-            shift
-            ;;
-        *)
-            shift
-            ;;
+DIRECT_DNS_REQUEST=false
+ARGV_VALID=true
+if [ "$DIRECT_EXECUTION" = "true" ]; then
+    case "$#:${1:-}" in
+        0:) ;;
+        1:--force-dns-setup) FORCE_DNS_SETUP=true ;;
+        *) ARGV_VALID=false ;;
     esac
-done
+fi
+
+if [ "$FORCE_DNS_SETUP" = "true" ] && [ "$DIRECT_EXECUTION" = "true" ]; then
+    DIRECT_DNS_REQUEST=true
+fi
+
+if [ "$ARGV_VALID" != "true" ]; then
+    echo "Usage: $(basename "$0") [--force-dns-setup]" >&2
+    exit 2
+fi
 
 # Skip if environment variable is set
 if [ "${KODACHI_SKIP_WELCOME:-0}" = "1" ]; then
@@ -69,13 +79,29 @@ if [ "${KODACHI_SKIP_WELCOME:-0}" = "1" ]; then
 fi
 
 # Skip if not interactive
-if [[ $- != *i* ]]; then
+if [ "$DIRECT_DNS_REQUEST" != "true" ] && [[ $- != *i* ]]; then
+    return 0 2>/dev/null || exit 0
+fi
+
+# Skip if stdin is not a real terminal.
+#
+# The `$-` test above is NOT sufficient on its own. `/usr/local/bin/welcome` invokes this
+# script as `bash -i -c 'source ...'`, and `bash -i` puts `i` into `$-` whether or not a
+# terminal is attached, so the guard above passes for a non-interactive caller: a script,
+# a cron entry, a systemd unit, an `ssh host welcome`, or a test harness. Such a caller
+# then runs the whole SYSTEM INITIALIZATION section (GRUB theme repair, binary deployment,
+# auth relogin, DNS setup) and reaches the menu loop, where it can never make a choice.
+# Measured 2026-08-14: one accidental automated command on a test VM was retried four times
+# by its caller, and EACH retry entered here and left its own orphan runtime temp directory,
+# four in total, while driving sustained load, because there is no input and no exit condition.
+# A real terminal is the actual precondition for an interactive menu, so test for one.
+if [ "$DIRECT_DNS_REQUEST" != "true" ] && [ ! -t 0 ]; then
     return 0 2>/dev/null || exit 0
 fi
 
 # Default behavior is manual invocation only (`welcome` command).
 # Enable automatic startup explicitly by exporting KODACHI_WELCOME_AUTO=1.
-if [ "${KODACHI_WELCOME_FORCE:-0}" != "1" ] && [ "${KODACHI_WELCOME_AUTO:-0}" != "1" ] && [ "$FORCE_DNS_SETUP" != "true" ]; then
+if [ "${KODACHI_WELCOME_FORCE:-0}" != "1" ] && [ "${KODACHI_WELCOME_AUTO:-0}" != "1" ] && [ "$DIRECT_DNS_REQUEST" != "true" ]; then
     return 0 2>/dev/null || exit 0
 fi
 
@@ -461,7 +487,7 @@ parse_json() {
 
 # Function to display compact header
 show_header() {
-    local header_text=" Linux Kodachi ${KODACHI_VERSION} - ${KODACHI_EDITION_LABEL} - ${KODACHI_WEBSITE}"
+    local header_text=" Kodachi OS ${KODACHI_VERSION} - ${KODACHI_EDITION_LABEL} - ${KODACHI_WEBSITE}"
     clear
     echo -e "${CYAN}╔══════════════════════════════════════════════════════════════════════════════╗${NC}"
     # Keep output fixed-width for clean 80-column rendering even when edition text changes.
@@ -1662,7 +1688,18 @@ fetch_system_info() {
     echo -ne "${YELLOW}▸ Calculating security score...${NC}"
     start_timer
     SCORE_JSON=$(run_command health-control 50 security-score --json 2>/dev/null)
-    SEC_SCORE=$(parse_json "$SCORE_JSON" ".data.total_score" || echo "N/A")
+    # `.data.total_score` is a RAW weighted point total measured against
+    # health-control's ADAPTIVE maximum (81 on a live ISO / legacy BIOS, 100 on an
+    # installed EFI box): checks that cannot physically apply are dropped from the
+    # denominator instead of failed. This value is printed below as "<score>/100"
+    # and colour-coded against percentage bands, so it must be the normalised
+    # percentage, not the raw total (43.8 of an applicable 81 is 54%, not 44%).
+    # `.data.percentage` is exactly that figure. Fall back to the raw total only if
+    # an older health-control does not publish it.
+    SEC_SCORE=$(parse_json "$SCORE_JSON" ".data.percentage" || echo "")
+    if [ -z "$SEC_SCORE" ] || [ "$SEC_SCORE" = "null" ]; then
+        SEC_SCORE=$(parse_json "$SCORE_JSON" ".data.total_score" || echo "N/A")
+    fi
     SEC_STATUS=$(parse_json "$SCORE_JSON" ".data.security_level" || echo "UNKNOWN")
     end_timer
     echo -e " ${GREEN}+ Score calculated${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
@@ -2838,6 +2875,20 @@ main() {
         read -t $AUTO_REFRESH_TIMEOUT -r choice
         local read_status=$?
 
+        # END OF INPUT means there is nobody to answer the menu, so leave.
+        #
+        # This MUST come before the two branches below, because neither catches it: `read`
+        # returns exactly 1 on EOF, which is not 130 (SIGINT) and not greater than 128
+        # (timeout). Without this, an empty `choice` falls through to the `*)` invalid-choice
+        # arm, prints, loops, and `read` returns EOF again immediately: a tight infinite loop
+        # with no delay and no exit condition. The non-TTY guard near the top of this script
+        # is the primary defence; this is the second, so the menu itself is safe even if some
+        # future caller reaches it with a closed stdin.
+        if [ "$read_status" -eq 1 ]; then
+            echo ""
+            return 0 2>/dev/null || exit 0
+        fi
+
         # SIGINT during menu input should exit, not be treated as an auto-refresh timeout.
         if [ "$read_status" -eq 130 ]; then
             return 130
@@ -3045,7 +3096,46 @@ main() {
     echo ""
 }
 
-# Run main function
+# Run the direct DNS operation without entering normal initialization. The explicit request
+# promises DNSCrypt reconfiguration, so unavailable connectivity or authentication never
+# selects fallback DNS.
+force_dns_setup_main() {
+    local result=1
+    local connectivity_check=""
+    local domain_connectivity="false"
+    local login_check=""
+    local is_logged_in="false"
+
+    if init_runtime_environment; then
+        setup_runtime_signal_traps
+        detect_hooks_dir >/dev/null 2>&1 || true
+        connectivity_check=$(run_command health-control 30 net-check --domain-only --json 2>/dev/null) || connectivity_check=""
+        domain_connectivity=$(parse_json "$connectivity_check" ".domain_connectivity")
+        if [ "$domain_connectivity" != "true" ]; then
+            result=3
+        else
+            login_check=$(run_command online-auth 50 check-login --json 2>/dev/null) || login_check=""
+            is_logged_in=$(parse_json "$login_check" ".data.is_logged_in")
+            if [ "$is_logged_in" != "true" ] && ! authenticate; then
+                result=3
+            elif setup_dnscrypt_locked; then
+                result=0
+            else
+                result=1
+            fi
+        fi
+    fi
+
+    clear_runtime_signal_traps
+    cleanup_runtime_environment
+    return "$result"
+}
+
+if [ "$DIRECT_DNS_REQUEST" = "true" ]; then
+    force_dns_setup_main
+    exit $?
+fi
+
 main
 main_status=$?
 

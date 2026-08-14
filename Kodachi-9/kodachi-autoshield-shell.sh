@@ -26,12 +26,12 @@ set -o pipefail
 # interactive guard will pollute the calling shell and break non-interactive
 # sessions (ssh, scp, rsync, cron). Use kodachi-autoshield.sh for that role.
 #
-# SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.0
+# SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.1
 # Copyright (c) 2013-2026 Warith Al Maawali
 #
 # This file is part of Kodachi OS.
 # For full license terms, see LICENSE.md or visit:
-# http://kodachi.cloud/wiki/bina/license.html
+# https://kodachi.cloud/docs/license.html
 #
 # Commercial or organizational use requires a written license.
 # Contact: warith@digi77.com
@@ -533,7 +533,7 @@ parse_json() {
 
 # Function to display compact header
 show_header() {
-    local header_text=" Linux Kodachi ${KODACHI_VERSION} - ${KODACHI_EDITION_LABEL} - ${KODACHI_WEBSITE}"
+    local header_text=" Kodachi OS ${KODACHI_VERSION} - ${KODACHI_EDITION_LABEL} - ${KODACHI_WEBSITE}"
     clear
     echo -e "${CYAN}╔══════════════════════════════════════════════════════════════════════════════╗${NC}"
     # Keep output fixed-width for clean 80-column rendering even when edition text changes.
@@ -1742,7 +1742,18 @@ fetch_system_info() {
     echo -ne "${YELLOW}▸ Calculating security score...${NC}"
     start_timer
     SCORE_JSON=$(run_command health-control 50 security-score --json 2>/dev/null)
-    SEC_SCORE=$(parse_json "$SCORE_JSON" ".data.total_score" || echo "N/A")
+    # `.data.total_score` is a RAW weighted point total measured against
+    # health-control's ADAPTIVE maximum (81 on a live ISO / legacy BIOS, 100 on an
+    # installed EFI box): checks that cannot physically apply are dropped from the
+    # denominator instead of failed. This value is printed below as "<score>/100"
+    # and colour-coded against percentage bands, so it must be the normalised
+    # percentage, not the raw total (43.8 of an applicable 81 is 54%, not 44%).
+    # `.data.percentage` is exactly that figure. Fall back to the raw total only if
+    # an older health-control does not publish it.
+    SEC_SCORE=$(parse_json "$SCORE_JSON" ".data.percentage" || echo "")
+    if [ -z "$SEC_SCORE" ] || [ "$SEC_SCORE" = "null" ]; then
+        SEC_SCORE=$(parse_json "$SCORE_JSON" ".data.total_score" || echo "N/A")
+    fi
     SEC_STATUS=$(parse_json "$SCORE_JSON" ".data.security_level" || echo "UNKNOWN")
     end_timer
     echo -e " ${GREEN}+ Score calculated${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
@@ -2917,6 +2928,21 @@ main() {
         show_menu
         read -t $AUTO_REFRESH_TIMEOUT -r choice
         local read_status=$?
+
+        # END OF INPUT means there is nobody to answer the menu, so leave.
+        #
+        # This variant deliberately has NO non-interactive gating block (see the header),
+        # which is correct for a manual harness but means a closed stdin reaches this loop
+        # directly. `read` returns exactly 1 on EOF, which is neither 130 (SIGINT) nor
+        # greater than 128 (timeout), so without this the empty `choice` falls to the `*)`
+        # invalid-choice arm and loops with no delay. The `read` wrapper at the top of this
+        # file returns the builtin's status verbatim, so EOF is still 1 here.
+        # NOTE: the production script's `[ ! -t 0 ]` guard is deliberately NOT added here.
+        # This file's documented contract is that it always runs main() when executed.
+        if [ "$read_status" -eq 1 ]; then
+            echo ""
+            return 0 2>/dev/null || exit 0
+        fi
 
         # SIGINT during menu input should exit, not be treated as an auto-refresh timeout.
         if [ "$read_status" -eq 130 ]; then

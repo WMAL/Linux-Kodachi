@@ -3,12 +3,12 @@
 # Kodachi OS Debug Collector
 # ======================================================
 #
-# SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.0
+# SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.1
 # Copyright (c) 2013-2026 Warith Al Maawali
 #
 # This file is part of Kodachi OS.
 # For full license terms, see LICENSE.md or visit:
-# http://kodachi.cloud/wiki/bina/license.html
+# https://kodachi.cloud/docs/license.html
 #
 # Commercial or organizational use requires a written license.
 # Contact: warith@digi77.com
@@ -119,8 +119,16 @@ detect_real_user() {
     elif [[ -n "${USER:-}" ]] && [[ "$USER" != "root" ]]; then
         echo "$USER"
     else
-        # Fallback: detect from console login
-        who | awk 'NR==1{print $1}' || echo "kodachi"
+        # Fallback: detect from console login. NOTE: who can succeed with
+        # EMPTY output (headless/ssh-root), which used to leave REAL_USER
+        # blank and pollute / with a /Desktop dir; test the value, not rc.
+        local from_who
+        from_who=$(who | awk 'NR==1{print $1}')
+        if [[ -n "$from_who" ]]; then
+            echo "$from_who"
+        else
+            echo "kodachi"
+        fi
     fi
 }
 
@@ -202,7 +210,7 @@ safe_copy() {
 # routing secrets (cached_card_*.json contained an OpenVPN private key,
 # WireGuard keys, a password, and hysteria2:// / ss:// URIs). This filter
 # is applied to EVERY Kodachi config/result/log file before it enters the
-# bundle. It over-redacts on purpose — privacy beats completeness here.
+# bundle. It over-redacts on purpose, privacy beats completeness here.
 #
 # awk handles multi-line secret blocks (PEM keys, OpenVPN inline <key>/
 # <tls-crypt>/<tls-auth>/<static> tags); sed handles single-line key/value,
@@ -255,17 +263,45 @@ redact_secrets() {
         # and the JSON string boundary (") is never crossed.
         s#([a-zA-Z][a-zA-Z0-9.+-]*://)[^/@"[:space:]<>]+(:[^/@"[:space:]<>]*)?@#\1[REDACTED]@#Ig
         # Known PROXY schemes only: nuke the whole URL (these embed creds/
-        # tokens in the path/fragment). http(s) is intentionally NOT here —
+        # tokens in the path/fragment). http(s) is intentionally NOT here -
         # ordinary URLs must stay readable for diagnostics; real https
         # credentials are already covered by the userinfo rule above and the
         # key-name rule (token=/key=/password= in query strings).
         s#((ss|ssr|vmess|vless|trojan|hysteria2?|hy2|tuic|socks5?)://)[^[:space:]"<>]+#\1[REDACTED]#Ig
-        # Network identifiers are private in support bundles. Redact them
-        # everywhere, including logs, command output, routes and copied files.
-        s/([0-9]{1,3}\.){3}[0-9]{1,3}/[REDACTED-IPV4]/g
+        # Identifier fields (hardware/machine/device IDs, license, serial,
+        # activation): mask keeping a 4-char prefix so support can correlate
+        # a bundle with server records without exposing the full value.
+        # These names do NOT overlap the full-redact rule above (no pass/key/
+        # token substring), so a masked value is never re-redacted.
+        s#("?(hardware[-_]?id|hwid|machine[-_]?id|device[-_]?id|license|licence|serial([-_]?number)?|activation([-_]?code)?)"?[[:space:]]*[:=][[:space:]]*"?)([A-Za-z0-9][A-Za-z0-9+/._-]{3})[^",}[:space:]]*#\1\5[MASKED]#Ig
+        # Network identifiers are private in support bundles. MACs and IPv6
+        # are redacted everywhere; IPv4 redaction is SELECTIVE (below): a
+        # blanket rule gutted the very service logs this bundle exists for
+        # (gateways, 127.0.0.1 binds, DNS at 10.x) - see audit 2026-07-02.
         s/([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}/[REDACTED-MAC]/Ig
         s/([[:xdigit:]]{0,4}:){3,7}[[:xdigit:]]{0,4}(%[A-Za-z0-9_.-]+)?/[REDACTED-IPV6]/Ig
-    '
+    ' | awk '
+    # Selective IPv4 redaction: keep loopback/RFC1918/link-local/unspecified
+    # (privacy-safe, diagnostically essential); redact public/routable IPs.
+    # Invalid dotted quads (e.g. 4-part version numbers with octets >255)
+    # are left untouched.
+    {
+        out = ""; rest = $0
+        while (match(rest, /[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/)) {
+            ip  = substr(rest, RSTART, RLENGTH)
+            pre = substr(rest, 1, RSTART - 1)
+            n = split(ip, o, ".")
+            valid = (n == 4 && o[1] <= 255 && o[2] <= 255 && o[3] <= 255 && o[4] <= 255 && length(o[1]) <= 3 && length(o[2]) <= 3 && length(o[3]) <= 3 && length(o[4]) <= 3)
+            priv = (o[1] == 10 || o[1] == 127 || o[1] == 0 || \
+                    (o[1] == 192 && o[2] == 168) || \
+                    (o[1] == 172 && o[2] >= 16 && o[2] <= 31) || \
+                    (o[1] == 169 && o[2] == 254) || \
+                    (o[1] == 255 && o[2] == 255))
+            out = out pre ((valid && !priv) ? "[REDACTED-IPV4]" : ip)
+            rest = substr(rest, RSTART + RLENGTH)
+        }
+        print out rest
+    }'
 }
 
 # Copy a file into the bundle THROUGH redact_secrets, preserving an optional
@@ -297,7 +333,7 @@ safe_copy_redacted() {
 # Run a command as the real (non-root) user with full graphical-session env so
 # that systemctl --user, journalctl --user, xfconf-query, xrandr, dconf, etc.
 # all reach the right session bus and runtime directory. We do not assume the
-# user is root — if collector is run as the user already, fall back to plain
+# user is root, if collector is run as the user already, fall back to plain
 # eval. audit 2026-05-07 (login-stall investigation): without this helper,
 # user-systemd state and ~/.xsession-errors were never captured, so xfce4
 # session hangs were undiagnosable.
@@ -314,7 +350,7 @@ safe_exec_user() {
     fi
 
     if [[ "$(id -u)" == "0" ]] && [[ -n "${REAL_USER:-}" ]] && [[ "$REAL_USER" != "root" ]]; then
-        # Running as root — drop to real user with their session env restored.
+        # Running as root, drop to real user with their session env restored.
         output=$(sudo -u "$REAL_USER" \
             XDG_RUNTIME_DIR="/run/user/${REAL_UID}" \
             DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/${REAL_UID}/bus" \
@@ -550,7 +586,7 @@ KODACHI_VERSION="unknown"
 if [[ -f "/etc/kodachi-version" ]]; then
     # /etc/kodachi-version is a multi-line ASCII banner. Display the full
     # content for context but extract ONLY the "Version: X.Y.Z" line into
-    # the scalar — capturing the whole banner into $KODACHI_VERSION breaks
+    # the scalar, capturing the whole banner into $KODACHI_VERSION breaks
     # downstream consumers (meta-vars.txt, summary box).
     echo "kodachi-version file content:"
     sed 's/^/  /' /etc/kodachi-version 2>/dev/null
@@ -759,7 +795,7 @@ echo "----------------------------------------------"
 NUKE_STATUS="NOT DETECTED"
 
 # Check if cryptsetup-nuke-password package is installed.
-# audit 2026-05-10: dpkg -l | grep proved unreliable — observed bundle had
+# audit 2026-05-10: dpkg -l | grep proved unreliable, observed bundle had
 # "ii cryptsetup-nuke-password 8" in dpkg-list.txt yet the collector
 # reported NOT INSTALLED. Likely cause: dpkg-query column wrap on narrow
 # COLUMNS env in the collector context, where the package name was split
@@ -789,7 +825,11 @@ if command -v cryptsetup &>/dev/null && [[ "$LUKS_ACTIVE" == "YES" ]]; then
         DUMP=$(cryptsetup luksDump "$luks_dev" 2>/dev/null || true)
         if [[ -n "$DUMP" ]]; then
             # Count active key slots
-            ACTIVE_SLOTS=$(echo "$DUMP" | grep -c "ENABLED" 2>/dev/null || echo "0")
+            # NOTE: grep -c prints 0 AND exits 1 on no match; the old
+            # "|| echo 0" appended a second line making ACTIVE_SLOTS "0\n0"
+            # and breaking the -ge test below.
+            ACTIVE_SLOTS=$(echo "$DUMP" | grep -c "ENABLED" 2>/dev/null)
+            [[ "$ACTIVE_SLOTS" =~ ^[0-9]+$ ]] || ACTIVE_SLOTS=0
             echo "    Active key slots: $ACTIVE_SLOTS"
             echo "$DUMP" | grep -E "(Key Slot|ENABLED|DISABLED)" | head -16 | sed 's/^/    /'
             if [[ "$ACTIVE_SLOTS" -ge 2 ]]; then
@@ -1017,7 +1057,9 @@ LUKS_ACTIVE="NO"
 lsblk -f 2>/dev/null | grep -qi "crypto_LUKS" && LUKS_ACTIVE="YES"
 
 NUKE_STATUS="NOT DETECTED"
-dpkg -l 2>/dev/null | grep -qi "cryptsetup-nuke" && NUKE_STATUS="PACKAGE INSTALLED"
+# dpkg-query, not "dpkg -l | grep": grep matches removed-but-not-purged
+# packages too, making this disagree with the meta-summary detection.
+dpkg-query -W -f='${Status}' cryptsetup-nuke-password 2>/dev/null | grep -q '^install ok installed$' && NUKE_STATUS="PACKAGE INSTALLED"
 
 ROOT_FS=$(findmnt -n -o FSTYPE / 2>/dev/null || echo "unknown")
 ROOT_SOURCE=$(findmnt -n -o SOURCE / 2>/dev/null || echo "unknown")
@@ -1092,7 +1134,7 @@ safe_exec "$COLLECTION_DIR/01-system-boot/systemd-analyze-units-graphical.txt" \
 safe_exec "$COLLECTION_DIR/01-system-boot/systemd-analyze-units-multi-user.txt" \
     "systemd-analyze critical-chain multi-user.target"
 
-# Cycle-detection helper — surfaces any "Found ordering cycle" lines from
+# Cycle-detection helper, surfaces any "Found ordering cycle" lines from
 # THIS boot together with the units involved so reviewers don't have to
 # grep journalctl-full.txt by hand.
 safe_exec "$COLLECTION_DIR/01-system-boot/ordering-cycles.txt" \
@@ -1146,7 +1188,7 @@ safe_exec "$COLLECTION_DIR/02-hardware-drivers/dmesg-errors.txt" "dmesg | grep -
 safe_exec "$COLLECTION_DIR/02-hardware-drivers/gpu-info.txt" "lspci | grep -iE 'vga|3d|display'"
 # SSD vs HDD detection (ROTA=0 means SSD, ROTA=1 means HDD)
 safe_exec "$COLLECTION_DIR/02-hardware-drivers/disk-type.txt" "lsblk -d -o NAME,SIZE,ROTA,TRAN,TYPE"
-# System brand/model only — no serial numbers, no UUIDs, no asset tags
+# System brand/model only, no serial numbers, no UUIDs, no asset tags
 safe_exec "$COLLECTION_DIR/02-hardware-drivers/dmidecode-system.txt" "dmidecode --type system 2>/dev/null | grep -iE 'manufacturer|product|family' || echo 'dmidecode not available'"
 
 # Sensors if available
@@ -1213,6 +1255,10 @@ fi
 if [[ -f "/etc/dnscrypt-proxy/dnscrypt-proxy.toml" ]]; then
     grep -v -E "^(stamp|server_names)" /etc/dnscrypt-proxy/dnscrypt-proxy.toml \
         > "$COLLECTION_DIR/03-network/dnscrypt-proxy.toml" 2>/dev/null || true
+    # DNSCrypt runtime state: the .toml alone cannot explain resolution
+    # failures (cold-start window, cert refresh errors live in the journal).
+    safe_exec "$COLLECTION_DIR/03-network/dnscrypt-service.txt" "systemctl status dnscrypt-proxy --no-pager -l"
+    safe_exec "$COLLECTION_DIR/03-network/dnscrypt-journal.txt" "journalctl -b -u dnscrypt-proxy --no-pager -n 400"
 fi
 
 # WireGuard status (redact private/preshared keys)
@@ -1257,7 +1303,7 @@ if command -v resolvectl &> /dev/null; then
     if systemctl is-active --quiet systemd-resolved 2>/dev/null; then
         safe_exec "$COLLECTION_DIR/03-network/resolvectl.txt" "resolvectl status"
     else
-        echo "[SKIPPED] systemd-resolved is not active (masked/disabled) — resolvectl not applicable on this DNS setup" \
+        echo "[SKIPPED] systemd-resolved is not active (masked/disabled), resolvectl not applicable on this DNS setup" \
             > "$COLLECTION_DIR/03-network/resolvectl.txt"
     fi
 fi
@@ -1280,6 +1326,10 @@ progress "Collecting Tor information..."
 mkdir -p "$COLLECTION_DIR/04-tor"
 
 safe_exec "$COLLECTION_DIR/04-tor/tor-service-status.txt" "systemctl status tor* --no-pager"
+
+# Tor commonly logs to the journal (not /var/log/tor) on systemd distros;
+# without this slice bootstrap failures are invisible in the bundle.
+safe_exec "$COLLECTION_DIR/04-tor/tor-journal.txt" "journalctl -b -u tor@default -u tor --no-pager -n 400"
 
 # Copy Tor logs
 if [[ -d "/var/log/tor" ]]; then
@@ -1352,7 +1402,7 @@ for hooks_pattern in "${KODACHI_HOOKS_DIRS[@]}"; do
         if [[ -d "$hooks_dir" ]]; then
             echo "Found Kodachi hooks at: $hooks_dir" >> "$COLLECTION_DIR/06-kodachi/hooks-locations.txt"
 
-            # Copy logs (redacted — hook execution output can echo secrets)
+            # Copy logs (redacted, hook execution output can echo secrets)
             if [[ -d "$hooks_dir/logs" ]]; then
                 mkdir -p "$COLLECTION_DIR/06-kodachi/hooks-logs"
                 find "$hooks_dir/logs" -type f 2>/dev/null | while read -r lfile; do
@@ -1375,7 +1425,7 @@ for hooks_pattern in "${KODACHI_HOOKS_DIRS[@]}"; do
                             ;;
                     esac
                     # Determine relative path and recreate structure.
-                    # EVERY result file is copied through redact_secrets —
+                    # EVERY result file is copied through redact_secrets -
                     # the previous code left non-configs/ files and all
                     # non-json/conf/ovpn files unredacted, which is exactly
                     # how cached_card_*.json leaked live keys.
@@ -1391,7 +1441,7 @@ done
 # Required binaries are part of every shipped ISO and must be present.
 # Optional binaries are AI/experimental components that may not be shipped
 # in every release (the orchestrator `kodachi-ai` is not yet bundled in the
-# v9.0.1 ISO cache — only the subagents ai-admin/ai-cmd/.../ai-trainer are
+# v9.0.1 ISO cache, only the subagents ai-admin/ai-cmd/.../ai-trainer are
 # shipped); flagging them as ✗ NOT FOUND in field debug bundles caused
 # noise reports against systems that were operating correctly.
 KODACHI_BINARIES_REQUIRED=(
@@ -1465,7 +1515,7 @@ for hooks_pattern in "/opt/kodachi/dashboard/hooks" "${REAL_HOME}/dashboard/hook
                 ! -path "*/signkeys/*" ! -path "*/secrets/*" ! -path "*credential*" ! -path "*password*" ! -path "*token*" \
                 2>/dev/null | while read -r cfile; do
                 crel="${cfile#"$hooks_dir"/config/}"
-                # Path-based exclusions above are not enough — a file named
+                # Path-based exclusions above are not enough, a file named
                 # general-config.json can still embed credentials. Redact
                 # every copied config file as well.
                 safe_copy_redacted "$cfile" "$COLLECTION_DIR/06-kodachi/hooks-config" "$crel"
@@ -1477,6 +1527,57 @@ done
 
 # Kodachi systemd services
 safe_exec "$COLLECTION_DIR/06-kodachi/kodachi-services.txt" "systemctl list-units 'kodachi*' --all --no-pager"
+
+# Per-unit deep dive: status, definition, restart counters and journal slice
+# for every kodachi* unit. A crash-looping service is invisible without
+# NRestarts/ExecMainStatus and its own journal lines.
+mkdir -p "$COLLECTION_DIR/06-kodachi/units"
+systemctl list-units 'kodachi*' --all --no-legend --plain 2>/dev/null | awk '{print $1}' | while read -r kunit; do
+    [[ -n "$kunit" ]] || continue
+    uname_safe="${kunit//[^A-Za-z0-9._-]/_}"
+    safe_exec "$COLLECTION_DIR/06-kodachi/units/${uname_safe}-status.txt" "systemctl status '$kunit' --no-pager -l"
+    safe_exec "$COLLECTION_DIR/06-kodachi/units/${uname_safe}-show.txt" "systemctl show '$kunit' -p ActiveState,SubState,Result,NRestarts,ExecMainStatus,ExecMainStartTimestamp,Restart,RestartUSec,FragmentPath"
+    safe_exec "$COLLECTION_DIR/06-kodachi/units/${uname_safe}-cat.txt" "systemctl cat '$kunit' --no-pager"
+    safe_exec "$COLLECTION_DIR/06-kodachi/units/${uname_safe}-journal.txt" "journalctl -b -u '$kunit' --no-pager -n 500"
+done
+
+# Crash evidence: coredumps and kernel core routing. Rust service panics and
+# segfaults leave no trace in the bundle without this.
+safe_exec "$COLLECTION_DIR/06-kodachi/coredumps.txt" "coredumpctl list --no-pager 2>/dev/null | tail -60 || echo 'coredumpctl unavailable'"
+safe_exec "$COLLECTION_DIR/06-kodachi/coredumps.txt" "coredumpctl info --no-pager 2>/dev/null | head -200 || true"
+safe_exec "$COLLECTION_DIR/06-kodachi/coredumps.txt" "cat /proc/sys/kernel/core_pattern"
+safe_exec "$COLLECTION_DIR/06-kodachi/coredumps.txt" "ls -lah /var/crash/ /var/lib/systemd/coredump/ 2>/dev/null || echo 'no crash dirs'"
+
+# Hooks state files outside config/results/logs: top-level JSON plus the
+# state/cache/db/flags dirs hold runtime state needed for root-causing
+# (autoshield state, DNS cache meta, session flags).
+for hooks_pattern in "/opt/kodachi/dashboard/hooks" "${REAL_HOME}/dashboard/hooks"; do
+    for hooks_dir in $hooks_pattern; do
+        [[ -d "$hooks_dir" ]] || continue
+        mkdir -p "$COLLECTION_DIR/06-kodachi/hooks-state"
+        find "$hooks_dir" -maxdepth 1 -type f -name "*.json" 2>/dev/null | while read -r sfile; do
+            safe_copy_redacted "$sfile" "$COLLECTION_DIR/06-kodachi/hooks-state" "top-level/$(basename "$sfile")"
+        done
+        for sdir in state cache db flags .soc-state; do
+            [[ -d "$hooks_dir/$sdir" ]] || continue
+            find "$hooks_dir/$sdir" -type f -size -2M 2>/dev/null | head -200 | while read -r sfile; do
+                srel="${sfile#"$hooks_dir"/}"
+                safe_copy_redacted "$sfile" "$COLLECTION_DIR/06-kodachi/hooks-state" "$srel"
+            done
+        done
+        break 2
+    done
+done
+
+# Tauri dashboard app-side logs/state (~/.local/share, ~/.config): the GUI
+# shell writes WebKit/renderer diagnostics outside hooks/logs.
+mkdir -p "$COLLECTION_DIR/06-kodachi/dashboard-app"
+for dapp_dir in "$REAL_HOME/.local/share/kodachi-dashboard" "$REAL_HOME/.local/share/cloud.kodachi.dashboard" "$REAL_HOME/.config/kodachi-dashboard"; do
+    [[ -d "$dapp_dir" ]] || continue
+    find "$dapp_dir" -type f \( -name "*.log" -o -name "*.json" -o -name "*.txt" \) -size -5M 2>/dev/null | head -50 | while read -r dfile; do
+        safe_copy_redacted "$dfile" "$COLLECTION_DIR/06-kodachi/dashboard-app" "$(basename "$dapp_dir")-$(basename "$dfile")"
+    done
+done
 
 # Health-control diagnostics (read-only commands, safe to run)
 if command -v health-control &> /dev/null; then
@@ -1555,7 +1656,7 @@ find /var/log -maxdepth 2 -name 'kodachi-*.log' -o -name 'kodachi*.log' 2>/dev/n
     safe_copy "$kl" "$COLLECTION_DIR/07-installation-packages/kodachi-logs"
 done
 
-# /var/lib/kodachi marker files (one-shot install/upgrade markers — their
+# /var/lib/kodachi marker files (one-shot install/upgrade markers, their
 # presence/absence tells us which post-install hooks have run).
 if [[ -d /var/lib/kodachi ]]; then
     mkdir -p "$COLLECTION_DIR/07-installation-packages/kodachi-state"
@@ -1571,7 +1672,7 @@ if [[ -d /var/log/live-build ]]; then
     cp -r /var/log/live-build/* "$COLLECTION_DIR/07-installation-packages/live-build/" 2>/dev/null || true
 fi
 
-# Crypttab (raw copy — critical for cryptswap timeout debugging)
+# Crypttab (raw copy, critical for cryptswap timeout debugging)
 safe_copy "/etc/crypttab" "$COLLECTION_DIR/07-installation-packages"
 
 # Crypttab repair logs (Kodachi's boot-time cryptswap fixer)
@@ -1630,7 +1731,7 @@ fi # end CATEGORY 7
 # ============================================================================
 # CATEGORY 8: Display & Desktop Environment + User-session diagnostics
 # audit 2026-05-07: massively expanded to capture user-systemd, xsession-errors,
-# xfconf state, autostart entries, and session timing — without these the
+# xfconf state, autostart entries, and session timing, without these the
 # 135 s post-login stall on the CentOS-Stream-9 / GLaDOS bundles was
 # undiagnosable from the collected data alone.
 # ============================================================================
@@ -1695,7 +1796,7 @@ safe_exec "$COLLECTION_DIR/08-display-desktop/user-session/last-logins.txt" \
 safe_exec "$COLLECTION_DIR/08-display-desktop/user-session/lastlog.txt" \
     "if command -v lastlog >/dev/null 2>&1; then lastlog; \
      elif command -v lastlog2 >/dev/null 2>&1; then lastlog2; \
-     else echo '(no lastlog/lastlog2 — Trixie ships neither by default; falling back to per-user systemd journal:)'; \
+     else echo '(no lastlog/lastlog2, Trixie ships neither by default; falling back to per-user systemd journal:)'; \
           for u in \$(awk -F: '\$3>=1000 && \$3<60000 {print \$1}' /etc/passwd); do \
               echo \"--- \$u ---\"; \
               journalctl _UID=\$(id -u \"\$u\" 2>/dev/null) --no-pager -n 1 -o short-iso 2>/dev/null | tail -1 || true; \
@@ -1703,7 +1804,7 @@ safe_exec "$COLLECTION_DIR/08-display-desktop/user-session/lastlog.txt" \
 
 # ---- ~/.xsession-errors AND XFCE LOGS ------------------------------------
 # This is THE file that captures every Xsession.d/* and autostart .desktop
-# stdout/stderr — slow login symptoms always surface here first.
+# stdout/stderr, slow login symptoms always surface here first.
 safe_copy_user_redacted "${REAL_HOME}/.xsession-errors" "$COLLECTION_DIR/08-display-desktop/user-session"
 safe_copy_user_redacted "${REAL_HOME}/.xsession-errors.old" "$COLLECTION_DIR/08-display-desktop/user-session"
 safe_copy_user "${REAL_HOME}/.cache/sessions/xfce4-session-:0" "$COLLECTION_DIR/08-display-desktop/user-session"
@@ -1717,7 +1818,7 @@ if [[ -n "$REAL_HOME" ]] && [[ -d "$REAL_HOME/.cache" ]]; then
 fi
 
 # Saved XFCE session files (a stale saved session is a known cause of
-# 90-180 s post-login stalls — xfce4-session retries restore with timeouts).
+# 90-180 s post-login stalls, xfce4-session retries restore with timeouts).
 if sudo -u "$REAL_USER" test -d "$REAL_HOME/.cache/sessions" 2>/dev/null; then
     safe_exec_user "$COLLECTION_DIR/08-display-desktop/user-session/cache-sessions-listing.txt" \
         "ls -laR \$HOME/.cache/sessions"
@@ -1752,9 +1853,9 @@ fi
 # blocking exec here surfaces directly as a login stall.
 # v1.5: also produce a Phase= / Hidden= / Exec= SUMMARY TABLE so root cause
 # is identifiable without parsing each .desktop by hand. Phase=Initialization
-# entries are the ones that BLOCK xfce4-session — they are the prime suspects
+# entries are the ones that BLOCK xfce4-session, they are the prime suspects
 # in any post-login stall. Reproduces the macOS-Ventura bundle finding where
-# pkcs11-register's Phase=Initialization caused a 60–90 s pcscd stall.
+# pkcs11-register's Phase=Initialization caused a 60-90 s pcscd stall.
 for d in /etc/xdg/autostart "${REAL_HOME}/.config/autostart"; do
     if [[ -d "$d" ]]; then
         rel="$(echo "$d" | tr '/' '_')"
@@ -1791,7 +1892,7 @@ done
     done | sort -k2,2
 } > "$COLLECTION_DIR/08-display-desktop/autostart/SUMMARY-phase-table.txt" 2>/dev/null
 
-# Highlight Phase=Initialization entries — these BLOCK xfce4-session startup.
+# Highlight Phase=Initialization entries, these BLOCK xfce4-session startup.
 {
     echo "=== Phase=Initialization autostart entries (BLOCKING xfce4-session) ==="
     echo "These run synchronously and xfce4-session waits for each to exit"
@@ -1813,7 +1914,7 @@ done
     done
 } > "$COLLECTION_DIR/08-display-desktop/autostart/INITIALIZATION-PHASE-blocking.txt" 2>/dev/null
 
-# pkcs11-register inspection (top suspect for login stalls — its
+# pkcs11-register inspection (top suspect for login stalls, its
 # Phase=Initialization + pcscd 60s idle timeout = ~60-90 s stall).
 {
     echo "=== pkcs11-register binary + autostart status ==="
@@ -1842,7 +1943,7 @@ done
     dpkg-query -W -f='${Package}\t${Version}\t${Status}\n' 'opensc*' 'pcscd' 2>/dev/null || true
 } > "$COLLECTION_DIR/08-display-desktop/autostart/pkcs11-register-triage.txt" 2>/dev/null
 
-# Listing of /etc/X11/Xsession.d/ — the Debian-style scripts that run in
+# Listing of /etc/X11/Xsession.d/, the Debian-style scripts that run in
 # series on every graphical login. A slow one here = 100% login-stall culprit.
 safe_exec "$COLLECTION_DIR/08-display-desktop/Xsession.d-listing.txt" \
     "ls -la /etc/X11/Xsession.d/ /etc/X11/Xsession 2>/dev/null"
@@ -1882,7 +1983,7 @@ done
     find /etc/xdg/xfce4 -maxdepth 3 -type f 2>/dev/null | head -20
 } > "$COLLECTION_DIR/08-display-desktop/xfce4-startup-chain/INSPECT.txt" 2>/dev/null
 
-# v1.5: dbus alias state — the bug discovered in the macOS-Ventura bundle
+# v1.5: dbus alias state, the bug discovered in the macOS-Ventura bundle
 # was 12 dbus-org.freedesktop.resolve1.service "File exists" failures because
 # the alias symlink survived `systemctl mask systemd-resolved`. Capture the
 # full state of every dbus-* alias unit so this regression is detectable.
@@ -1913,7 +2014,7 @@ done
 } > "$COLLECTION_DIR/08-display-desktop/dbus-alias-state.txt" 2>/dev/null
 
 # v1.5: list of all MASKED services (those that were /dev/null-symlinked).
-# This is essential for verifying the install hook actually applied — when
+# This is essential for verifying the install hook actually applied, when
 # the macOS-Ventura bundle's mask was incomplete, the mask state was
 # invisible without explicit listing.
 {
@@ -1935,7 +2036,7 @@ done
     done
 } > "$COLLECTION_DIR/08-display-desktop/masked-services.txt" 2>/dev/null
 
-# v1.5: install-method detection — Calamares vs debian-installer. Critical
+# v1.5: install-method detection, Calamares vs debian-installer. Critical
 # for triaging hook bugs because our 9999-zzz install hook runs in the
 # chroot at ISO build time (always present in squashfs), but post-install
 # regenerations can vary by installer flavour.
@@ -1963,7 +2064,7 @@ done
     if [[ -f /var/log/kodachi-finish-install.log ]]; then
         cat /var/log/kodachi-finish-install.log 2>/dev/null | head -100
     else
-        echo "  (not present — kodachi-finish-install did not run)"
+        echo "  (not present, kodachi-finish-install did not run)"
     fi
     echo ""
     echo "=== /tmp/kodachi-grub-theme.log (during install) ==="
@@ -1972,14 +2073,14 @@ done
     fi
 } > "$COLLECTION_DIR/07-installation-packages/install-method.txt" 2>/dev/null
 
-# /etc/profile.d/ — also runs on login shell (incl. lightdm xsession). The
+# /etc/profile.d/, also runs on login shell (incl. lightdm xsession). The
 # Kodachi-specific kodachi-autoshield.sh and kodachi-path.sh live here.
 if [[ -d /etc/profile.d ]]; then
     mkdir -p "$COLLECTION_DIR/08-display-desktop/profile.d"
     cp /etc/profile.d/*.sh "$COLLECTION_DIR/08-display-desktop/profile.d/" 2>/dev/null || true
 fi
 
-# User shell init files — if they have side-effects (network calls, slow
+# User shell init files, if they have side-effects (network calls, slow
 # command-not-found handlers, etc.) login feels slow even when systemd is fine.
 for shf in .profile .bash_profile .bash_login .bashrc .zshrc .xprofile .xsessionrc .xinitrc; do
     if sudo -u "$REAL_USER" test -f "$REAL_HOME/$shf" 2>/dev/null; then
@@ -1999,7 +2100,7 @@ safe_exec "$COLLECTION_DIR/08-display-desktop/user-session/wchan-user.txt" \
 # macOS-Ventura bundle proved that when xfce4-session stalls for 134 s
 # during login, NONE of the existing data captures what it's blocked on.
 # /proc/$pid/stack + status + io + a 5-second strace gives us syscalls
-# visible at collection time — enough to prove "blocked on read() of
+# visible at collection time, enough to prove "blocked on read() of
 # Firefox cert9.db" or "blocked on connect() to dbus". 5 s is short
 # enough not to disturb a healthy session and long enough to catch a
 # blocked syscall.
@@ -2009,19 +2110,19 @@ if [[ -n "$XFCE_PIDS" ]]; then
     for pid in $XFCE_PIDS; do
         ppath="$COLLECTION_DIR/08-display-desktop/user-session/xfce4-session-pid-inspect/pid-${pid}"
         mkdir -p "$ppath"
-        # /proc snapshots — read once, no syscall trace
+        # /proc snapshots, read once, no syscall trace
         for f in status stat wchan stack syscall io comm cmdline environ limits; do
             if [[ -r "/proc/$pid/$f" ]]; then
                 cat "/proc/$pid/$f" 2>/dev/null > "$ppath/$f.txt" || true
             fi
         done
-        # File descriptors — see what's open (sockets, files, pipes).
+        # File descriptors, see what's open (sockets, files, pipes).
         ls -la "/proc/$pid/fd/" 2>/dev/null > "$ppath/fd-listing.txt" || true
-        # Memory map — heavy but useful when a stuck mmap is suspected.
+        # Memory map, heavy but useful when a stuck mmap is suspected.
         ( cat "/proc/$pid/maps" 2>/dev/null | head -200 ) > "$ppath/maps-head200.txt" || true
-        # Children — recurse one level.
+        # Children, recurse one level.
         ls "/proc/$pid/task/" 2>/dev/null > "$ppath/threads.txt" || true
-        # Short strace — only if strace is installed AND xfce4-session has been
+        # Short strace, only if strace is installed AND xfce4-session has been
         # alive for under 300 s (so we ONLY capture stalls during the post-login
         # window, never disturb a long-running healthy desktop).
         if command -v strace >/dev/null 2>&1; then
@@ -2048,7 +2149,7 @@ if [[ -n "$XFCE_PIDS" ]]; then
     done
 fi
 # Same deep-inspect for lightdm session-child (parent of Xsession), and
-# any startxfce4 / ssh-agent processes still alive — these are the chain
+# any startxfce4 / ssh-agent processes still alive, these are the chain
 # between PAM and xfce4-session.
 for pname in lightdm startxfce4 ssh-agent; do
     pids=$(pgrep -u "$REAL_USER" -x "$pname" 2>/dev/null || true)
@@ -2148,7 +2249,7 @@ fi
 safe_exec "$COLLECTION_DIR/10-security-permissions/ntpsec-status.txt" "systemctl status ntpsec --no-pager 2>/dev/null || systemctl status ntp --no-pager 2>/dev/null || echo 'no NTP service'"
 safe_copy "/etc/ntpsec/ntp.conf" "$COLLECTION_DIR/10-security-permissions"
 
-# Sudoers (list files only, don't copy contents — too sensitive)
+# Sudoers (list files only, don't copy contents, too sensitive)
 safe_exec "$COLLECTION_DIR/10-security-permissions/sudoers-files.txt" "ls -la /etc/sudoers.d/ 2>/dev/null || echo 'no sudoers.d'"
 
 fi # end CATEGORY 10
@@ -2308,8 +2409,10 @@ progress "Cleaning up temporary files..."
 
 rm -rf "$TEMP_DIR"
 
-# Change ownership to real user
-chown "$REAL_USER:$REAL_USER" "$ZIP_FILE"
+# Change ownership to real user (primary group looked up, not assumed
+# equal to the username).
+REAL_GROUP=$(id -gn "$REAL_USER" 2>/dev/null || echo "$REAL_USER")
+chown "$REAL_USER:$REAL_GROUP" "$ZIP_FILE" 2>/dev/null || chown "$REAL_USER" "$ZIP_FILE" 2>/dev/null || true
 
 # Summary
 echo ""
@@ -2346,7 +2449,7 @@ if [[ -f "$ZIP_FILE" ]]; then
     _luks="NO"
     if lsblk -f 2>/dev/null | grep -qi "crypto_LUKS"; then _luks="YES"; fi
     _nuke="NOT DETECTED"
-    if dpkg -l 2>/dev/null | grep -qi "cryptsetup-nuke"; then _nuke="PACKAGE INSTALLED"; fi
+    if dpkg-query -W -f='${Status}' cryptsetup-nuke-password 2>/dev/null | grep -q '^install ok installed$'; then _nuke="PACKAGE INSTALLED"; fi
     echo -e "  Version:     ${BLUE}${_ver}${NC}"
     echo -e "  System:      ${BLUE}${_type}${NC}"
     echo -e "  LUKS:        ${BLUE}${_luks}${NC}"
