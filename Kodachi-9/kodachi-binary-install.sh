@@ -915,6 +915,30 @@ install_production_auth_trust() {
         staged_index=$((staged_index + 1))
     done
 
+    # The signed host-exposure policy rides in the same signatures/ dir as the binary
+    # signatures, and results/signatures receives ALL of that dir (see the cp -r at the
+    # end of this script), while this store received only the per-binary pairs. So every
+    # fresh ISO shipped results/signatures with 60 entries and auth-trust/signatures with
+    # 58, and vm-hooks-trust-gate.sh V3 (bidirectional store parity for the stamp) failed
+    # on host-exposure-defaults.json_v<stamp>.sig before any deploy had touched the box.
+    # Measured on the 10.0.1 live ISO at 192.168.104.225 by claude-b92c49e1 on
+    # 2026-09-05, reported for the ISO/signer owner and adopted here on 2026-09-06.
+    # build-apt-channels.sh already copies the whole results store into auth-trust for
+    # the apt trees, so this only brings the ISO path to the same layout. The policy is
+    # a reviewed artifact, not an execution anchor: online-auth composes auth-trust
+    # paths per binary name and never enumerates the store, so an extra pair is inert
+    # to it, and both integrity-check (results/) and this installer's own policy
+    # verification (EXTRACT_DIR/signatures) keep reading where they always did.
+    local policy_signature=""
+    local policy_signature_name=""
+    while IFS= read -r -d '' policy_signature; do
+        policy_signature_name="$(basename "$policy_signature")"
+        atomic_install_root_file \
+            "$policy_signature" "$auth_signatures_dir/$policy_signature_name" 0644 || return 1
+    done < <(find "$EXTRACT_DIR/signatures" -maxdepth 1 -type f \
+        \( -name 'host-exposure-defaults.json_v*.sig' -o -name 'host-exposure-defaults.json_v*.sig.info' \) \
+        -print0 2>/dev/null)
+
     print_success "Protected production binaries and auth-trust artifacts installed"
 }
 
@@ -1250,7 +1274,7 @@ install_host_exposure_notifier_service() {
             print_warning "Host-exposure notifier is installed but could not start in this session"
         fi
     else
-        print_warning "No user systemd manager is active; the host-exposure notifier will start at the next graphical session"
+        print_warning "No user systemd manager is active; the host-exposure notifier will start with the next user systemd manager"
     fi
 }
 
@@ -2916,24 +2940,63 @@ setup_dashboard_autostart() {
     # Refresh marker is GPU_NEEDS_FALLBACK — older launchers used the
     # narrower NVIDIA_PROPRIETARY token and get rewritten on next install.
     local launcher_script="/usr/local/bin/kodachi-dashboard-launcher"
-    if [[ ! -f "$launcher_script" ]] || ! grep -q 'GPU_NEEDS_FALLBACK' "$launcher_script" 2>/dev/null || ! grep -q 'DASHBOARD_BIN=' "$launcher_script" 2>/dev/null; then
+    if [[ ! -f "$launcher_script" ]] || ! grep -q 'GPU_NEEDS_FALLBACK' "$launcher_script" 2>/dev/null || ! grep -q 'DASHBOARD_BIN=' "$launcher_script" 2>/dev/null || ! grep -q 'ALLOW_MULTI' "$launcher_script" 2>/dev/null; then
         print_info "Installing/refreshing dashboard launcher script..."
         local _launcher_tmp
         _launcher_tmp="$(mktemp "${TMPDIR:-/tmp}/kodachi-launcher.XXXXXX")"
         cat > "$_launcher_tmp" << 'LAUNCHER_EOF'
 #!/bin/bash
-# Kodachi Dashboard Launcher with VM + GPU-driver detection
+
+# kodachi-dashboard-launcher
+# ===========================================================
+#
+# SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.1
+# Copyright (c) 2013-2026 Warith Al Maawali
+#
+# This file is part of Kodachi OS.
+# For full license terms, see LICENSE.md or visit:
+# http://kodachi.cloud/wiki/bina/license.html
+#
+# Commercial or organizational use requires a written license.
+# Contact: warith@digi77.com
+
+# ==========================================
+# KODACHI OS - DASHBOARD LAUNCHER
+# ==========================================
+#
+# Launches the Kodachi Dashboard with VM and GPU-driver detection.
 # Auto-detects VM environments and GPU drivers that need the WebKitGTK
 # software-render fallback so the dashboard does not come up as a blank
-# window. Covers: NVIDIA proprietary, Nouveau (Mesa, GTX Kepler/Maxwell
-# era), and legacy radeon (pre-amdgpu).
+# window.
+#
+# Detected paths that need the fallback:
+#   - NVIDIA proprietary driver (kernel module: nvidia)
+#   - Nouveau (open-source NVIDIA driver; Mesa-based; Kepler/Maxwell EGL
+#     and GBM are flaky enough to silently break WebKitGTK DMABUF init)
+#   - Legacy AMD via the radeon kernel module (pre-amdgpu, GCN1 and older)
+#
+# Applied env vars:
+#   - WEBKIT_DISABLE_DMABUF_RENDERER=1  (disables DMA-BUF render path)
+#   - WEBKIT_DISABLE_COMPOSITING_MODE=1 (forces simpler render path)
+#   - LIBGL_ALWAYS_SOFTWARE=1           (Mesa-only; forces llvmpipe;
+#                                        ineffective on NVIDIA proprietary
+#                                        GL stack so scoped to Mesa drivers)
+#   - __NV_DISABLE_EXPLICIT_SYNC=1      (NVIDIA-proprietary-only; disables
+#                                        explicit-sync path that crashes
+#                                        WebKitGTK on some kernel combos)
+# And on the launch line: --no-gpu (Tauri / WebKit hint)
+#
+# Version: 9.0.1
+# Author:  Warith Al Maawali
+# Website: https://kodachi.cloud
+# GitHub:  https://github.com/AiGptCode/Kodachi-OS
 
 VM_DETECTED=false
 GPU_NEEDS_FALLBACK=false
 GPU_IS_MESA_DRIVER=false
 GPU_IS_NVIDIA_PROPRIETARY=false
 
-# VM detection
+# VM detection via DMI strings.
 if [ -f /sys/class/dmi/id/sys_vendor ]; then
     vendor=$(cat /sys/class/dmi/id/sys_vendor 2>/dev/null | tr '[:upper:]' '[:lower:]')
     case "$vendor" in
@@ -2952,44 +3015,54 @@ if [ -f /sys/class/dmi/id/product_name ]; then
     esac
 fi
 
-# 1. NVIDIA proprietary driver
+# GPU driver detection. Order matters only for the IS_* flags (Mesa vs
+# proprietary controls which env-var subset gets applied below).
+
+# 1. NVIDIA proprietary driver.
 if [ -f /proc/driver/nvidia/version ] || \
    lsmod 2>/dev/null | grep -qE '^nvidia[[:space:]]'; then
     GPU_NEEDS_FALLBACK=true
     GPU_IS_NVIDIA_PROPRIETARY=true
 fi
 
-# 2. Nouveau (open-source NVIDIA, Mesa) — catches older NVIDIA chips
-#    (e.g. GTX 770 / Kepler) whose Nouveau GBM/EGL silently breaks
+# 2. Nouveau (open-source NVIDIA, Mesa-based). Catches GTX 770 / Kepler
+#    and other older NVIDIA chips whose Nouveau GBM/EGL silently fails the
 #    WebKitGTK DMABUF init, producing a black dashboard window.
 if lsmod 2>/dev/null | grep -qE '^nouveau[[:space:]]'; then
     GPU_NEEDS_FALLBACK=true
     GPU_IS_MESA_DRIVER=true
 fi
 
-# 3. Legacy AMD via radeon module (pre-amdgpu, GCN1 and earlier)
+# 3. Legacy AMD via radeon module (pre-amdgpu, GCN1 and earlier). Modern
+#    AMD loads amdgpu, so this only matches the truly old hardware.
 if lsmod 2>/dev/null | grep -qE '^radeon[[:space:]]' && \
    ! lsmod 2>/dev/null | grep -qE '^amdgpu[[:space:]]'; then
     GPU_NEEDS_FALLBACK=true
     GPU_IS_MESA_DRIVER=true
 fi
 
+# Apply env vars based on what was detected.
 if [ "$GPU_NEEDS_FALLBACK" = "true" ]; then
     export WEBKIT_DISABLE_DMABUF_RENDERER=1
     export WEBKIT_DISABLE_COMPOSITING_MODE=1
 fi
 
-# LIBGL_ALWAYS_SOFTWARE is Mesa-only — NVIDIA proprietary GL ignores it.
+# LIBGL_ALWAYS_SOFTWARE is Mesa-only. The NVIDIA proprietary GL stack
+# ignores it, so scope to Mesa drivers only.
 if [ "$GPU_IS_MESA_DRIVER" = "true" ]; then
     export LIBGL_ALWAYS_SOFTWARE=1
 fi
 
-# NVIDIA proprietary Wayland explicit-sync can crash WebKitGTK.
+# NVIDIA proprietary on Wayland can crash WebKitGTK via explicit-sync;
+# disabling it forces the older sync path that compositors handle.
 if [ "$GPU_IS_NVIDIA_PROPRIETARY" = "true" ]; then
     export __NV_DISABLE_EXPLICIT_SYNC=1
 fi
 
-# Resolve dashboard binary at runtime across the known install locations.
+# Resolve the dashboard binary at runtime. global-launcher normally
+# symlinks it to /usr/local/bin/kodachi-dashboard, but that symlink is
+# absent if global-launcher's deploy step never ran. Fall back across the
+# known install locations so the launcher never dies with "No such file".
 DASHBOARD_BIN=""
 for _cand in /usr/local/bin/kodachi-dashboard \
              /opt/kodachi/dashboard/hooks/kodachi-dashboard \
@@ -3004,12 +3077,88 @@ if [ -z "$DASHBOARD_BIN" ]; then
     exit 1
 fi
 
+# ==========================================
+# SINGLE-INSTANCE GUARD
+# ==========================================
+#
+# Alt+F4 HIDES the dashboard to the tray, it does not exit. Clicking the desktop
+# icon again used to start a SECOND full instance: measured on 2026-08-31 across
+# three VMs, one process and one window became two processes and two windows,
+# each with its own tray registration, its own permission-guard auto-start and
+# its own polling loop. On a four-core box that is a second copy of every hook
+# poll for no benefit, and the user has no way to tell which window is which.
+#
+# Raise the existing window instead. `pgrep -x` cannot be used here: the process
+# name is 17 characters and Linux truncates comm to 15, so an -x match silently
+# returns nothing. Match the argv path instead, anchored so that this launcher's
+# own command line ("kodachi-dashboard-launcher") cannot match itself.
+#
+# KODACHI_DASHBOARD_ALLOW_MULTI=1 deliberately bypasses the guard.
+if [ "${KODACHI_DASHBOARD_ALLOW_MULTI:-0}" != "1" ]; then
+    # Candidates come from a broad argv match, but argv is NOT trusted to decide:
+    # any process whose command line merely CONTAINS this path matches, including
+    # a shell running a script that mentions it. Proven while writing this guard:
+    # the probe shell that tested the pattern matched itself twice. A false
+    # positive here does not misreport anything, it PREVENTS THE DASHBOARD FROM
+    # STARTING AT ALL, so the candidate is confirmed by its actual executable via
+    # /proc/<pid>/exe, which a shell can never fake.
+    _existing=""
+    for _pid in $(pgrep -u "$(id -u)" -f 'kodachi-dashboard' 2>/dev/null); do
+        [ "$_pid" = "$$" ] && continue
+        _exe=$(readlink "/proc/$_pid/exe" 2>/dev/null) || continue
+        # INST-1: a deploy that overwrites the binary while the old dashboard is
+        # still running makes the kernel append ' (deleted)' to this readlink, so
+        # the bare basename stops matching and the guard misses exactly the
+        # instance it exists to find. That is the moment the operator clicks the
+        # icon again and gets a second full instance, two trays and two poll loops.
+        _exe=${_exe% (deleted)}
+        [ "${_exe##*/}" = "kodachi-dashboard" ] || continue
+        _existing="$_pid"
+        break
+    done
+    if [ -n "$_existing" ]; then
+        # Whether we ACTUALLY raised the window. The success message used to sit
+        # outside every guard below, so it printed "raised the existing window"
+        # even when there was no DISPLAY, no xdotool, no matching window, or a
+        # failed map/activate. That is a false-success path: it reports the very
+        # outcome it failed to achieve, and it reproduces the silent no-op this
+        # guard exists to prevent, only with a reassuring message on top.
+        _raised=0
+        if [ -n "${DISPLAY:-}" ] && command -v xdotool >/dev/null 2>&1; then
+            # --class matches the SECOND WM_CLASS value, which is the
+            # capitalised "Kodachi-dashboard", and xdotool matches it
+            # case-sensitively, so `--class 'kodachi-dashboard'` returns NOTHING.
+            # Measured read-only on .192 by codex-f6c78d9b against the live
+            # dashboard: xprop reports WM_CLASS = "kodachi-dashboard",
+            # "Kodachi-dashboard"; --class with the lowercase value returned 0
+            # ids while --classname returned the real window. Getting this wrong
+            # is worse than the bug being fixed: the guard would suppress the
+            # second process, fail to raise the first, and exit 0, so clicking
+            # the icon would do NOTHING AT ALL. --classname matches the instance
+            # name, which is the stable lowercase value.
+            _win=$(xdotool search --classname 'kodachi-dashboard' 2>/dev/null | tail -1)
+            if [ -n "$_win" ]; then
+                if xdotool windowmap "$_win" >/dev/null 2>&1 &&
+                   xdotool windowactivate "$_win" >/dev/null 2>&1; then
+                    _raised=1
+                fi
+            fi
+        fi
+        if [ "$_raised" = "1" ]; then
+            echo "kodachi-dashboard-launcher: already running (pid $_existing); raised the existing window instead of starting a second instance." >&2
+        else
+            echo "kodachi-dashboard-launcher: already running (pid $_existing), and the existing window could NOT be raised (no DISPLAY, xdotool unavailable, or no matching window). Not starting a second instance; use the tray icon, or set KODACHI_DASHBOARD_ALLOW_MULTI=1 to force one." >&2
+        fi
+        exit 0
+    fi
+fi
+
+# Launch dashboard with appropriate flags.
 if [ "$VM_DETECTED" = "true" ] || [ "$GPU_NEEDS_FALLBACK" = "true" ]; then
     exec "$DASHBOARD_BIN" --no-gpu "$@"
 else
     exec "$DASHBOARD_BIN" "$@"
 fi
-
 LAUNCHER_EOF
         # best-effort install (a piped `curl | bash` non-root install cannot prompt
         # for a sudo password; the launcher is an optional convenience, the dashboard

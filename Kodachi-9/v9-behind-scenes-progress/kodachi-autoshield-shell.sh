@@ -1,26 +1,48 @@
 #!/bin/bash
 set -o pipefail
 
-# Kodachi AutoShield Script - Login Session Information Display
+# Kodachi AutoShield Script - MANUAL TESTING VARIANT
 # ===========================================================
 #
-# SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.0
+# !!! READ THIS FIRST !!!
+# This file is the MANUAL-TESTING / DEVELOPER variant of kodachi-autoshield.sh.
+# It is NOT shipped in the ISO and NOT installed at /etc/profile.d/.
+# The production file that runs on user login is kodachi-autoshield.sh
+# (no -shell suffix), which lives in the same directory and is copied to
+# /etc/profile.d/kodachi-autoshield.sh by the live-build overlay.
+#
+# Differences from the production kodachi-autoshield.sh:
+#   1. The early-return gating block has been removed
+#      (no KODACHI_SKIP_WELCOME / non-interactive / KODACHI_WELCOME_AUTO checks),
+#      so this variant ALWAYS runs main() when executed.
+#   2. Top-level function wrappers for sleep / curl / timeout / read add
+#      SIGINT/SIGTERM propagation through terminate_autoshield. These wrappers
+#      live at script scope on purpose for the standalone-execution model.
+#   3. propagate_signal_exit calls are inserted after every PIPESTATUS capture
+#      in the DNSCrypt setup paths.
+#
+# DO NOT install this file at /etc/profile.d/ and DO NOT source it from a
+# login shell. If sourced, the top-level function wrappers and the missing
+# interactive guard will pollute the calling shell and break non-interactive
+# sessions (ssh, scp, rsync, cron). Use kodachi-autoshield.sh for that role.
+#
+# SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.1
 # Copyright (c) 2013-2026 Warith Al Maawali
 #
 # This file is part of Kodachi OS.
 # For full license terms, see LICENSE.md or visit:
-# http://kodachi.cloud/wiki/bina/license.html
+# https://kodachi.cloud/docs/license.html
 #
 # Commercial or organizational use requires a written license.
 # Contact: warith@digi77.com
 #
 # Author: Warith Al Maawali
 # Version: 9.0.1
-# Last updated: 2026-02-22
+# Last updated: 2026-05-23
 #
 # Description:
-# This script displays system status, security information, and network details
-# when users log in to Kodachi OS. Optimized for 80x24 terminal resolution.
+# Manual-testing harness for the AutoShield login flow. Displays system status,
+# security information, and network details. Optimized for 80x24 terminal.
 # Provides interactive menu for executing common system profiles and workflows.
 #
 # Links:
@@ -28,17 +50,13 @@ set -o pipefail
 # - Website: https://www.kodachi.cloud
 # - GitHub: https://github.com/WMAL
 # - Discord: https://discord.gg/KEFErEx
-# - LinkedIn: https://www.linkedin.com/in/warith1977
+# - LinkedIn: https://om.linkedin.com/in/warith1977
 # - X (Twitter): https://x.com/warith2020
 #
-# Installation:
-#   sudo cp kodachi-autoshield.sh /etc/profile.d/kodachi-autoshield.sh
-#   sudo chmod +x /etc/profile.d/kodachi-autoshield.sh
-#
-# Usage:
-#   Automatically runs on login for interactive shell sessions.
-#   To skip: export KODACHI_SKIP_WELCOME=1 before login
-#   To force DNSCrypt configuration: ./kodachi-autoshield-shell.sh --force-dns-setup
+# Usage (manual testing only):
+#   chmod +x kodachi-autoshield-shell.sh
+#   ./kodachi-autoshield-shell.sh
+#   ./kodachi-autoshield-shell.sh --force-dns-setup    # re-run DNSCrypt setup
 #
 # Features:
 #   - Binary deployment verification
@@ -67,8 +85,8 @@ done
 # Source: main-info.json (terminal section)
 # DO NOT EDIT MANUALLY - Run pack-kodachi.sh to update these values
 BUILD_VERSION="9.0.1"  # From: terminal.main_version
-BUILD_NUM="27"          # From: terminal.build_number (auto-incremented)
-BUILD_DATE="2026-03-06"  # From: terminal.last_build_date
+BUILD_NUM="179"          # From: terminal.build_number (auto-incremented)
+BUILD_DATE="2026-06-26"  # From: terminal.last_build_date
 SCRIPT_VERSION="${BUILD_VERSION}.${BUILD_NUM}"
 
 # Color codes for compact display (optimized for black terminal)
@@ -82,7 +100,32 @@ BOLD='\033[1m'
 NC='\033[0m' # No Color
 
 # Kodachi version and website
-KODACHI_VERSION="9.0.1"
+# The header used to print BUILD_VERSION, which only pack-kodachi.sh rewrites. The ISO
+# build copies this file as-is, so the 10.0.1 live ISO of 2026-09-04 shipped a header
+# reading "Kodachi OS 9.0.1" while /etc/os-release and every hook binary said 10.0.1
+# (measured 2026-09-06 on 192.168.104.225). The OS release file is written by the
+# branding hook for exactly this purpose, so read it at runtime and keep BUILD_VERSION
+# only as the last fallback and as the terminal-track build stamp on the Build: line.
+detect_os_version() {
+    local version=""
+    # The two file paths are overridable so the regression suite can feed fixtures.
+    local os_release="${AUTOSHIELD_OS_RELEASE_FILE:-/etc/os-release}"
+    local issue_net="${AUTOSHIELD_ISSUE_NET_FILE:-/etc/issue.net}"
+
+    # Only trust VERSION_ID when the release file is Kodachi's own; on a plain Debian
+    # host it would read "13".
+    if [ -r "$os_release" ] && grep -q '^ID=kodachi' "$os_release" 2>/dev/null; then
+        version=$(sed -nE 's/^VERSION_ID="?([0-9][0-9.]*)"?.*/\1/p' "$os_release" 2>/dev/null | head -1)
+    fi
+
+    if [ -z "$version" ] && [ -r "$issue_net" ]; then
+        version=$(sed -nE '1{s/^Kodachi[[:space:]]+(OS[[:space:]]+)?([0-9][0-9.]*).*/\2/p;q}' "$issue_net" 2>/dev/null)
+    fi
+
+    [ -n "$version" ] && echo "$version" || echo "$BUILD_VERSION"
+}
+
+KODACHI_VERSION="$(detect_os_version)"
 KODACHI_WEBSITE="kodachi.cloud"
 
 # Detect edition label from runtime branding so Terminal/XFCE builds show distinct headers.
@@ -103,6 +146,22 @@ detect_edition_label() {
 }
 
 KODACHI_EDITION_LABEL="$(detect_edition_label)"
+
+# On desktop editions the ISO install hook re-links welcome/shield/kodachi to
+# kodachi-dashboard-launcher (AutoShield lives in the dashboard there), so the old
+# "type 'kodachi' and press Enter" hint on the Exit row opened the GUI instead of
+# returning here. Say what the link actually does on this system.
+detect_relaunch_hint() {
+    local target=""
+    target=$(readlink -f /usr/local/bin/welcome 2>/dev/null || true)
+    case "$(basename "${target:-}")" in
+        kodachi-dashboard-launcher) echo "${CYAN}'welcome'${NC} opens the GUI dashboard" ;;
+        welcome) echo "${CYAN}'welcome'${NC} returns here" ;;
+        *) echo "no relaunch shortcut on this system" ;;
+    esac
+}
+
+AUTOSHIELD_RELAUNCH_HINT="$(detect_relaunch_hint)"
 
 # Auto-refresh timeout in seconds (600 = 10 minutes)
 # Change this value to adjust auto-refresh interval
@@ -151,19 +210,65 @@ HOOKS_DIR=""
 
 # Command resolution and runtime safety settings
 SAFE_COMMAND_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-# Use /run/kodachi/ for cross-process lock files (shared path, proper ownership)
-# Falls back to /tmp if /run/kodachi/ cannot be created
-if [ -d "/run/kodachi" ] || sudo -n mkdir -p /run/kodachi 2>/dev/null; then
-    DNS_LOCK_FILE="/run/kodachi/kodachi-autoshield-dns.lock"
-else
-    DNS_LOCK_FILE="/tmp/kodachi-autoshield-dns.lock"
-fi
+# Prefer /run/kodachi for cross-process lock files when the current user can
+# actually create files there. Live sessions may expose a root-only directory,
+# so fall back to /tmp instead of failing with "Permission denied".
+detect_dns_lock_file() {
+    local runtime_dir="/run/kodachi"
+    local lock_file="$runtime_dir/kodachi-autoshield-dns.lock"
+    local probe_file="$runtime_dir/.kodachi-autoshield-lock-probe.$$"
+
+    if [ ! -d "$runtime_dir" ]; then
+        sudo -n mkdir -p "$runtime_dir" 2>/dev/null || true
+    fi
+
+    if [ -d "$runtime_dir" ]; then
+        if [ -e "$lock_file" ]; then
+            if [ -w "$lock_file" ]; then
+                echo "$lock_file"
+                return 0
+            fi
+        elif touch "$probe_file" >/dev/null 2>&1; then
+            rm -f "$probe_file" 2>/dev/null || true
+            echo "$lock_file"
+            return 0
+        fi
+    fi
+
+    # ONE lock for the whole machine. setup_dnscrypt reconfigures SYSTEM DNS, so the lock
+    # has to exclude every user on the box, and a per-user lock would turn a loud
+    # fail-closed skip into a silent concurrent reconfiguration.
+    #
+    # The failure this addresses, measured 2026-09-06 on 192.168.104.225: a
+    # `sudo ... --force-dns-setup` creates the lock as root with the default 0644, and every
+    # later run by the desktop user then fails to open it (EACCES) and skips DNS setup
+    # entirely. The fix is to make the shared lock OPENABLE by everyone, not to give each
+    # user a lock of their own: create it world-writable, and widen an existing one when we
+    # can. If it still cannot be opened, with_dns_lock reports it and refuses, which is the
+    # correct fail-closed behaviour for a system-wide reconfiguration.
+    local shared_lock="/tmp/kodachi-autoshield-dns.lock"
+    if [ ! -e "$shared_lock" ]; then
+        ( umask 000; : >"$shared_lock" ) 2>/dev/null || true
+    fi
+    if [ -e "$shared_lock" ] && [ ! -w "$shared_lock" ]; then
+        sudo -n chmod 0666 "$shared_lock" >/dev/null 2>&1 || true
+    fi
+
+    echo "$shared_lock"
+}
+
+DNS_LOCK_FILE="$(detect_dns_lock_file)"
 RUNTIME_TMP_DIR=""
 GRUB_THEME_LOG=""
 VERIFY_CHECK_JSON=""
 VERIFY_RESULT_JSON=""
 DEPLOY_OUTPUT_LOG=""
 DNS_SWITCH_LOG=""
+AUTOSHIELD_RUNNING_AS_SCRIPT=false
+
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+    AUTOSHIELD_RUNNING_AS_SCRIPT=true
+fi
 
 is_allowed_run_command() {
     case "$1" in
@@ -182,7 +287,7 @@ check_critical_dependencies() {
     local critical_tools=(curl flock timeout mktemp getent)
 
     for tool in "${critical_tools[@]}"; do
-        if ! command -v "$tool" >/dev/null 2>&1; then
+        if ! type -P "$tool" >/dev/null 2>&1; then
             missing+=("$tool")
         fi
     done
@@ -227,27 +332,89 @@ cleanup_runtime_environment() {
     DNS_SWITCH_LOG=""
 }
 
-handle_runtime_sigint() {
+is_signal_exit_status() {
+    case "$1" in
+        130|143)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+terminate_autoshield() {
+    local status="${1:-130}"
+
     cleanup_runtime_environment
-    return 130 2>/dev/null || exit 130
+    clear_runtime_signal_traps
+
+    if [ "$AUTOSHIELD_RUNNING_AS_SCRIPT" = "true" ]; then
+        exit "$status"
+    fi
+
+    return "$status"
+}
+
+propagate_signal_exit() {
+    local status="$1"
+
+    if is_signal_exit_status "$status"; then
+        terminate_autoshield "$status"
+    fi
+
+    return "$status"
+}
+
+sleep() {
+    command sleep "$@"
+    local sleep_status=$?
+    propagate_signal_exit "$sleep_status"
+    return "$sleep_status"
+}
+
+curl() {
+    command curl "$@"
+    local curl_status=$?
+    propagate_signal_exit "$curl_status"
+    return "$curl_status"
+}
+
+timeout() {
+    command timeout "$@"
+    local timeout_status=$?
+    propagate_signal_exit "$timeout_status"
+    return "$timeout_status"
+}
+
+read() {
+    builtin read "$@"
+    local read_status=$?
+    propagate_signal_exit "$read_status"
+    return "$read_status"
+}
+
+handle_runtime_sigint() {
+    terminate_autoshield 130
 }
 
 handle_runtime_sigterm() {
-    cleanup_runtime_environment
-    return 143 2>/dev/null || exit 143
+    terminate_autoshield 143
 }
 
+# AUTOSHIELD_RUNNING_AS_SCRIPT is this file's single answer to "is this process mine";
+# terminate_autoshield already keys on it, and these must use the SAME predicate.
 setup_runtime_signal_traps() {
     trap handle_runtime_sigint INT
     trap handle_runtime_sigterm TERM
-    if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+    if [ "$AUTOSHIELD_RUNNING_AS_SCRIPT" = "true" ]; then
         trap cleanup_runtime_environment EXIT
     fi
 }
 
 clear_runtime_signal_traps() {
     trap - INT TERM
-    if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+    if [ "$AUTOSHIELD_RUNNING_AS_SCRIPT" = "true" ]; then
         trap - EXIT
     fi
 }
@@ -282,6 +449,7 @@ execute_sudo_command_with_timeout() {
     shift 2
     local -a args=("$@")
     local -a timeout_cmd=()
+    local command_status=0
 
     if [ -n "$timeout_val" ] && [ "$timeout_val" != "0" ]; then
         if [[ ! "$timeout_val" =~ ^[0-9]+$ ]]; then
@@ -294,9 +462,31 @@ execute_sudo_command_with_timeout() {
     # Use sudo -n (non-interactive) to fail fast if NOPASSWD is missing
     if [ "${#timeout_cmd[@]}" -gt 0 ]; then
         "${timeout_cmd[@]}" sudo -n "$resolved_cmd" "${args[@]}"
+        command_status=$?
     else
         sudo -n "$resolved_cmd" "${args[@]}"
+        command_status=$?
     fi
+
+    propagate_signal_exit "$command_status"
+    return "$command_status"
+}
+
+run_privileged_command() {
+    local command_status=0
+
+    if sudo -n true >/dev/null 2>&1; then
+        sudo -n "$@"
+        command_status=$?
+    elif [ "${BASH_SOURCE[0]}" = "$0" ]; then
+        sudo "$@"
+        command_status=$?
+    else
+        return 1
+    fi
+
+    propagate_signal_exit "$command_status"
+    return "$command_status"
 }
 
 with_dns_lock() {
@@ -340,7 +530,7 @@ is_live_session() {
 ensure_grub_theme() {
     local helper="/usr/local/bin/kodachi-apply-grub-theme"
     local theme_txt="/boot/grub/live-theme/theme.txt"
-    local splash_png="/boot/grub/splash.png"
+    local splash_png="/boot/grub/live-theme/splash.png"
     local cfg_file="/etc/default/grub.d/40-kodachi-theme.cfg"
 
     echo -e "${CYAN}▸ Checking Kodachi GRUB theme...${NC}"
@@ -367,7 +557,7 @@ ensure_grub_theme() {
     if [ $needs_fix -eq 1 ]; then
         echo -e "${CYAN}▸ Restoring Kodachi GRUB theme...${NC}"
         init_runtime_environment || return 1
-        if sudo "$helper" >"$GRUB_THEME_LOG" 2>&1; then
+        if run_privileged_command "$helper" >"$GRUB_THEME_LOG" 2>&1; then
             echo -e "${GREEN}+ GRUB theme synchronized${NC}"
         else
             echo -e "${YELLOW}! Unable to apply GRUB theme (see $GRUB_THEME_LOG)${NC}"
@@ -405,7 +595,7 @@ parse_json() {
 
 # Function to display compact header
 show_header() {
-    local header_text=" Linux Kodachi ${KODACHI_VERSION} - ${KODACHI_EDITION_LABEL} - ${KODACHI_WEBSITE}"
+    local header_text=" Kodachi OS ${KODACHI_VERSION} - ${KODACHI_EDITION_LABEL} - ${KODACHI_WEBSITE}"
     clear
     echo -e "${CYAN}╔══════════════════════════════════════════════════════════════════════════════╗${NC}"
     # Keep output fixed-width for clean 80-column rendering even when edition text changes.
@@ -420,8 +610,13 @@ start_timer() {
 }
 
 end_timer() {
-    local end_time=$(date +%s 2>/dev/null || echo "0")
-    OPERATION_TIME=$((end_time - TIMER_START))
+    local end_time
+    end_time=$(date +%s 2>/dev/null || echo "0")
+    if [[ "${TIMER_START:-0}" =~ ^[0-9]+$ ]] && [ "${TIMER_START:-0}" -gt 0 ] && [ "$end_time" -ge "${TIMER_START:-0}" ]; then
+        OPERATION_TIME=$((end_time - TIMER_START))
+    else
+        OPERATION_TIME=0
+    fi
 }
 
 format_duration() {
@@ -464,19 +659,23 @@ search_binaries_in_home() {
 
     # Strategy 1: Quick search for directories with multiple core binaries (any depth up to 5)
     # Check multiple depth levels with glob patterns
-    local depth_patterns=(
-        "$REAL_HOME/*"
-        "$REAL_HOME/*/*"
-        "$REAL_HOME/*/*/*"
-        "$REAL_HOME/*/*/*/*"
-        "$REAL_HOME/*/*/*/*/*"
-    )
-
     local best_dir=""
     local best_count=0
+    local depth
+    local -a depth_dirs=()
 
-    for pattern in "${depth_patterns[@]}"; do
-        for dir in $pattern; do
+    for depth in 1 2 3 4 5; do
+        # Expand each depth with the home part QUOTED, so a home directory containing a
+        # space is one path and not several (the old unquoted $pattern word-split it).
+        # An unmatched glob stays literal and is dropped by the -d test below.
+        case "$depth" in
+            1) depth_dirs=("$REAL_HOME"/*) ;;
+            2) depth_dirs=("$REAL_HOME"/*/*) ;;
+            3) depth_dirs=("$REAL_HOME"/*/*/*) ;;
+            4) depth_dirs=("$REAL_HOME"/*/*/*/*) ;;
+            5) depth_dirs=("$REAL_HOME"/*/*/*/*/*) ;;
+        esac
+        for dir in "${depth_dirs[@]}"; do
             # Only check directories
             [ ! -d "$dir" ] && continue
 
@@ -534,7 +733,8 @@ search_binaries_in_home() {
     local best_dir=""
     local best_count=0
 
-    for dir in $hooks_dirs; do
+    while IFS= read -r dir; do
+        [ -n "$dir" ] || continue
         if verify_hooks_structure "$dir"; then
             local count=$(find "$dir" -maxdepth 1 -type f -executable ! -name "*.sh" 2>/dev/null | wc -l)
 
@@ -543,7 +743,7 @@ search_binaries_in_home() {
                 best_dir="$dir"
             fi
         fi
-    done
+    done <<< "$hooks_dirs"
 
     if [ -n "$best_dir" ] && [ $best_count -ge 3 ]; then
         HOOKS_DIR="$best_dir"
@@ -590,6 +790,32 @@ detect_hooks_dir() {
         return 0
     fi
 
+    # Check explicit env vars and canonical install locations before searching home.
+    local candidate_dirs=()
+    [ -n "${HOOKS_DIR:-}" ] && candidate_dirs+=("$HOOKS_DIR")
+    [ -n "${KODACHI_HOOKS_DIR:-}" ] && candidate_dirs+=("$KODACHI_HOOKS_DIR")
+    [ -n "${KODACHI_HOME:-}" ] && candidate_dirs+=("$KODACHI_HOME")
+    candidate_dirs+=(
+        "/opt/kodachi/dashboard/hooks"
+        "/usr/local/share/kodachi/hooks"
+        "$REAL_HOME/dashboard/hooks"
+        "$REAL_HOME/Desktop/dashboard/hooks"
+        "$REAL_HOME/k900/dashboard/hooks"
+        "$HOME/dashboard/hooks"
+        "$HOME/Desktop/dashboard/hooks"
+        "$HOME/k900/dashboard/hooks"
+    )
+
+    local dir
+    for dir in "${candidate_dirs[@]}"; do
+        [ -n "$dir" ] || continue
+        if verify_hooks_structure "$dir"; then
+            HOOKS_DIR="$dir"
+            echo -e "${GREEN}+ Found binaries at: ${HOOKS_DIR}${NC}"
+            return 0
+        fi
+    done
+
     # Search for health-control in home directory (PRIMARY METHOD)
     if search_binaries_in_home; then
         return 0
@@ -613,10 +839,18 @@ run_command() {
         return 1
     fi
 
-    if ! execute_sudo_command_with_timeout "$resolved_cmd" "$timeout_val" "${args[@]}"; then
-        echo "ERROR: sudo failed for $resolved_cmd - check /etc/sudoers.d/kodachi-binaries" >&2
-        return 1
+    local command_status=0
+    execute_sudo_command_with_timeout "$resolved_cmd" "$timeout_val" "${args[@]}"
+    command_status=$?
+    if [ "$command_status" -eq 124 ]; then
+        echo "ERROR: $cmd timed out after ${timeout_val}s" >&2
+        return "$command_status"
     fi
+    if [ "$command_status" -ne 0 ]; then
+        echo "ERROR: $cmd exited with status $command_status (if sudo asked for a password, check /etc/sudoers.d/kodachi-binaries)" >&2
+        return "$command_status"
+    fi
+    return 0
 }
 
 # Function to deploy binaries with proper verification
@@ -670,8 +904,9 @@ deploy_binaries() {
 
     # Need to deploy
     echo -e "  • Deploying binaries to /usr/local/bin/..."
-    sudo "$HOOKS_DIR/global-launcher" deploy 2>&1 | tee "$DEPLOY_OUTPUT_LOG"
+    run_privileged_command "$HOOKS_DIR/global-launcher" deploy 2>&1 | tee "$DEPLOY_OUTPUT_LOG"
     local deploy_exit=${PIPESTATUS[0]}
+    propagate_signal_exit "$deploy_exit"
     if [ "$deploy_exit" -eq 0 ]; then
         # Deployment command succeeded - now VERIFY it actually worked
         echo -e "  • Verifying deployment..."
@@ -679,9 +914,11 @@ deploy_binaries() {
 
         if "$HOOKS_DIR/global-launcher" verify --json >"$VERIFY_RESULT_JSON" 2>&1; then
             if check_jq; then
-                local verified=$(jq -r '.verification_success // empty' "$VERIFY_RESULT_JSON" 2>/dev/null)
-                local count=$(jq -r '.total_verified // empty' "$VERIFY_RESULT_JSON" 2>/dev/null)
-                local broken=$(jq -r '.total_broken // empty' "$VERIFY_RESULT_JSON" 2>/dev/null)
+                # The envelope puts the payload under .data (measured 2026-09-06 on the
+                # 10.0.1 binary); accept the bare form too for an older launcher.
+                local verified=$(jq -r '.data.verification_success // .verification_success // empty' "$VERIFY_RESULT_JSON" 2>/dev/null)
+                local count=$(jq -r '.data.total_verified // .total_verified // empty' "$VERIFY_RESULT_JSON" 2>/dev/null)
+                local broken=$(jq -r '.data.total_broken // .total_broken // empty' "$VERIFY_RESULT_JSON" 2>/dev/null)
 
                 # Check if jq actually returned values (not null/empty)
                 if [ -n "$verified" ] && [ -n "$count" ] && [ -n "$broken" ]; then
@@ -781,9 +1018,14 @@ authenticate() {
 setup_dnscrypt() {
     # Check if this is first run - only force configuration on first boot
     # Detect hooks directory silently (function prints output, we just need the path)
+    # Use a function-local copy of HOOKS_DIR so we never accidentally clobber
+    # the global one set by detect_hooks_dir for the rest of the script.
     detect_hooks_dir >/dev/null 2>&1
-    local HOOKS_DIR="${HOOKS_DIR:-$HOME/dashboard/hooks}"
-    local DNS_MARKER="$HOOKS_DIR/results/dns-configured"
+    local _hooks_dir="${HOOKS_DIR:-${KODACHI_HOOKS_DIR:-${KODACHI_HOME:-/opt/kodachi/dashboard/hooks}}}"
+    if ! verify_hooks_structure "$_hooks_dir"; then
+        _hooks_dir="$REAL_HOME/dashboard/hooks"
+    fi
+    local DNS_MARKER="$_hooks_dir/results/dns-configured"
     local IS_FIRST_RUN=false
 
     if [ ! -f "$DNS_MARKER" ] || [ "$FORCE_DNS_SETUP" = "true" ]; then
@@ -857,7 +1099,9 @@ setup_dnscrypt() {
             # Re-configure DNSCrypt as resolver (dns-switch handles systemd-resolved automatically)
             echo -e "${YELLOW}  • Configuring DNSCrypt as DNS resolver...${NC}"
             run_command dns-switch 120 switch --names dnscrypt 2>&1 | tee "$DNS_SWITCH_LOG"
-            if [ "${PIPESTATUS[0]}" -eq 0 ]; then
+            local dns_switch_status=${PIPESTATUS[0]}
+            propagate_signal_exit "$dns_switch_status"
+            if [ "$dns_switch_status" -eq 0 ]; then
                 echo -e "${GREEN}  + DNSCrypt configuration fixed${NC}"
             else
                 echo -e "${RED}  - Failed to fix DNSCrypt (see $DNS_SWITCH_LOG)${NC}"
@@ -938,7 +1182,9 @@ setup_dnscrypt() {
                         echo -e "${YELLOW}  • Starting DNSCrypt service...${NC}"
 
                         run_command dns-switch 120 switch --names dnscrypt 2>&1 | tee -a "$DNS_SWITCH_LOG"
-                        if [ "${PIPESTATUS[0]}" -eq 0 ]; then
+                        local dns_switch_status=${PIPESTATUS[0]}
+                        propagate_signal_exit "$dns_switch_status"
+                        if [ "$dns_switch_status" -eq 0 ]; then
                             echo -e "${GREEN}  + DNSCrypt service started${NC}"
                         else
                             echo -e "${RED}  - Failed to start DNSCrypt (see $DNS_SWITCH_LOG)${NC}"
@@ -984,7 +1230,9 @@ setup_dnscrypt() {
                     # Start and configure DNSCrypt service
                     echo -e "${YELLOW}  • Starting DNSCrypt service and setting as resolver...${NC}"
                     run_command dns-switch 120 switch --names dnscrypt 2>&1 | tee -a "$DNS_SWITCH_LOG"
-                    if [ "${PIPESTATUS[0]}" -eq 0 ]; then
+                    local dns_switch_status=${PIPESTATUS[0]}
+                    propagate_signal_exit "$dns_switch_status"
+                    if [ "$dns_switch_status" -eq 0 ]; then
                         echo -e "${GREEN}  + DNSCrypt service started and configured${NC}"
                     else
                         echo -e "${RED}  - Failed to start DNSCrypt (see $DNS_SWITCH_LOG)${NC}"
@@ -1026,7 +1274,9 @@ setup_dnscrypt() {
                 # Set DNSCrypt as system resolver
                 echo -e "${YELLOW}  • Configuring DNSCrypt resolver...${NC}"
                 run_command dns-switch 120 switch --names dnscrypt 2>&1 | tee -a "$DNS_SWITCH_LOG"
-                if [ "${PIPESTATUS[0]}" -eq 0 ]; then
+                local dns_switch_status=${PIPESTATUS[0]}
+                propagate_signal_exit "$dns_switch_status"
+                if [ "$dns_switch_status" -eq 0 ]; then
                     echo -e "${GREEN}  + DNSCrypt resolver configured${NC}"
                 else
                     echo -e "${RED}  - Failed to configure DNSCrypt resolver (see $DNS_SWITCH_LOG)${NC}"
@@ -1064,6 +1314,18 @@ setup_dnscrypt() {
 
 setup_dnscrypt_locked() {
     with_dns_lock setup_dnscrypt
+}
+
+print_dns_setup_result() {
+    if [[ "$DNS_STATUS_MSG" == *"SDNS:+"* ]] || [[ "$DNS_STATUS_MSG" == *"SDNS:Tor:++"* ]]; then
+        echo -e " ${GREEN}+ DNSCrypt configured${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+    elif [[ "$DNS_STATUS_MSG" == *"SDNS:Stopped"* ]]; then
+        echo -e " ${YELLOW}! DNSCrypt not started${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+    elif [[ "$DNS_STATUS_MSG" == *"SDNS:Direct"* ]]; then
+        echo -e " ${YELLOW}! DNSCrypt unchanged - direct DNS remains active${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+    else
+        echo -e " ${RED}! DNSCrypt setup failed${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+    fi
 }
 
 # Function to verify Tor DNS at firewall level using which-is-active
@@ -1296,7 +1558,18 @@ count_binaries() {
     if [ -n "$HOOKS_DIR" ] && [ -d "$HOOKS_DIR" ]; then
         # Count executable binary files in hooks directory (actual deployed binaries)
         local count=$(find "$HOOKS_DIR" -maxdepth 1 -type f -executable ! -name "*.sh" ! -name ".*" 2>/dev/null | wc -l)
-        BINARIES_COUNT="Binaries: ${GREEN}${count}${NC}"
+        # The OS release and the hook binaries can carry different versions on an
+        # updated install (measured 2026-09-06: 9.0.1 OS with 10.0.1 hooks), so show
+        # the binary version here where the count already comes from the hooks dir.
+        local hook_version=""
+        if [ -x "$HOOKS_DIR/health-control" ]; then
+            hook_version=$("$HOOKS_DIR/health-control" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+        fi
+        if [ -n "$hook_version" ]; then
+            BINARIES_COUNT="Binaries: ${GREEN}${count}${NC} (v${hook_version})"
+        else
+            BINARIES_COUNT="Binaries: ${GREEN}${count}${NC}"
+        fi
     else
         # Hooks directory not found - show N/A (normal for ISO users)
         BINARIES_COUNT="Binaries: ${GREEN}N/A${NC}"
@@ -1487,8 +1760,20 @@ fetch_system_info() {
         ROUTING_JSON=$(run_command routing-switch 50 status --json 2>/dev/null)
         CONNECTED=$(parse_json "$ROUTING_JSON" ".data.connected" || echo "false")
         PROTOCOL=$(parse_json "$ROUTING_JSON" ".data.protocol" || echo "none")
+        # 2026-05-24: routing-switch status now also carries provider_name +
+        # connection_source (kodachi | provider:<id>) when raised via the
+        # providers panel. Surface it: "wireguard via Mullvad" beats bare
+        # "wireguard" when the user has multiple VPN paths.
+        VPN_SOURCE=$(parse_json "$ROUTING_JSON" ".data.connection_source" || echo "")
+        VPN_PROVIDER_NAME=$(parse_json "$ROUTING_JSON" ".data.provider_name" || echo "")
         if [ "$CONNECTED" = "true" ]; then
-            NET_STATUS="${GREEN}${PROTOCOL}${NC}"  # Bright green for VPN
+            if [ -n "$VPN_PROVIDER_NAME" ] && [ "$VPN_PROVIDER_NAME" != "null" ]; then
+                NET_STATUS="${GREEN}${PROTOCOL} via ${VPN_PROVIDER_NAME}${NC}"
+            elif [ "$VPN_SOURCE" = "kodachi" ]; then
+                NET_STATUS="${GREEN}${PROTOCOL} (Kodachi)${NC}"
+            else
+                NET_STATUS="${GREEN}${PROTOCOL}${NC}"  # Bright green for VPN
+            fi
         else
             NET_STATUS="${RED}No VPN${NC}"
         fi
@@ -1550,7 +1835,18 @@ fetch_system_info() {
     echo -ne "${YELLOW}▸ Calculating security score...${NC}"
     start_timer
     SCORE_JSON=$(run_command health-control 50 security-score --json 2>/dev/null)
-    SEC_SCORE=$(parse_json "$SCORE_JSON" ".data.total_score" || echo "N/A")
+    # `.data.total_score` is a RAW weighted point total measured against
+    # health-control's ADAPTIVE maximum (81 on a live ISO / legacy BIOS, 100 on an
+    # installed EFI box): checks that cannot physically apply are dropped from the
+    # denominator instead of failed. This value is printed below as "<score>/100"
+    # and colour-coded against percentage bands, so it must be the normalised
+    # percentage, not the raw total (43.8 of an applicable 81 is 54%, not 44%).
+    # `.data.percentage` is exactly that figure. Fall back to the raw total only if
+    # an older health-control does not publish it.
+    SEC_SCORE=$(parse_json "$SCORE_JSON" ".data.percentage" || echo "")
+    if [ -z "$SEC_SCORE" ] || [ "$SEC_SCORE" = "null" ]; then
+        SEC_SCORE=$(parse_json "$SCORE_JSON" ".data.total_score" || echo "N/A")
+    fi
     SEC_STATUS=$(parse_json "$SCORE_JSON" ".data.security_level" || echo "UNKNOWN")
     end_timer
     echo -e " ${GREEN}+ Score calculated${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
@@ -1569,8 +1865,16 @@ fetch_system_info() {
     end_timer
     echo -e " ${GREEN}+ Configuration loaded${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
 
-    # Store status
-    INFO_STATUS="${GREEN}[Net:+]${NC}"
+    # Store status. Three states, never one unconditional green: offline is reported as
+    # offline with the same marker the auth and DNS pills use, a failed lookup while online
+    # is red, and green means an address was actually retrieved.
+    if [ "$HAS_INTERNET" != "true" ]; then
+        INFO_STATUS="${YELLOW}[Net:⊘]${NC}"
+    elif [ -z "$IP_ADDR" ] || [ "$IP_ADDR" = "N/A" ] || [ "$IP_ADDR" = "null" ]; then
+        INFO_STATUS="${RED}[Net:-]${NC}"
+    else
+        INFO_STATUS="${GREEN}[Net:+]${NC}"
+    fi
 }
 
 # Function to detect boot mode (UEFI or Legacy BIOS)
@@ -1583,10 +1887,69 @@ detect_boot_mode() {
     fi
 }
 
+health_control_reports_encryption() {
+    local encryption_json="$1"
+
+    [ -n "$encryption_json" ] || return 1
+
+    if check_jq; then
+        jq -e '
+            (.data.system_encrypted // false) or
+            (.data.full_disk_encryption // false) or
+            (.data.root_encrypted // false) or
+            (.data.home_encryption // false)
+        ' >/dev/null 2>&1 <<<"$encryption_json"
+        return $?
+    fi
+
+    echo "$encryption_json" | grep -Eq '"(system_encrypted|full_disk_encryption|root_encrypted|home_encryption)"[[:space:]]*:[[:space:]]*true' && return 0
+    return 1
+}
+
+local_system_encryption_detected() {
+    local root_source=""
+    local root_resolved=""
+    local root_type=""
+    local dm_uuid=""
+
+    if lsblk -P -o TYPE,MOUNTPOINT 2>/dev/null | grep -q 'TYPE="crypt".*MOUNTPOINT="/"'; then
+        return 0
+    fi
+
+    root_source=$(findmnt -n -o SOURCE / 2>/dev/null | head -1)
+    [ -n "$root_source" ] || return 1
+
+    root_resolved=$(readlink -f "$root_source" 2>/dev/null || echo "$root_source")
+    root_type=$(lsblk -no TYPE "$root_resolved" 2>/dev/null | head -1 | tr -d '[:space:]')
+    if [ "$root_type" = "crypt" ]; then
+        return 0
+    fi
+
+    dm_uuid=$(dmsetup info -C --noheadings -o uuid "$root_resolved" 2>/dev/null | tr -d '[:space:]')
+    case "$dm_uuid" in
+        CRYPT-*)
+            return 0
+            ;;
+    esac
+
+    if [[ "$root_source" == /dev/mapper/* ]] && sudo -n cryptsetup status "${root_source#/dev/mapper/}" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if grep -qsE '^[^#[:space:]]' /etc/crypttab 2>/dev/null && lsblk -rno FSTYPE 2>/dev/null | grep -qi '^crypto_LUKS$'; then
+        return 0
+    fi
+
+    return 1
+}
+
 # Function to detect system status (Live vs Installed + Encryption + Boot Mode)
 detect_system_status() {
     # Method 1: Live ISO Detection (robust - checks multiple indicators)
-    if grep -q "boot=live\|live" /proc/cmdline 2>/dev/null || mount | grep -q "overlay" 2>/dev/null; then
+    # is_live_session() checks boot=live/persistent=0/boot=casper and /run/live, so an
+    # installed system running a podman or docker container (an overlay mount) is no
+    # longer reported as "Live" and its disk encryption state is still shown.
+    if is_live_session; then
         local boot_mode=$(detect_boot_mode)
         echo "Live - ${boot_mode}"
         return 0
@@ -1600,22 +1963,13 @@ detect_system_status() {
         # Call health-control encryption-status command
         ENCRYPTION_JSON=$(run_command health-control 30 encryption-status --json 2>/dev/null)
 
-        # Parse JSON to check if system is encrypted
-        if check_jq; then
-            SYSTEM_ENCRYPTED=$(echo "$ENCRYPTION_JSON" | jq -r '.data.system_encrypted' 2>/dev/null)
-        else
-            # Fallback parsing without jq
-            SYSTEM_ENCRYPTED=$(echo "$ENCRYPTION_JSON" | grep -o '"system_encrypted":[^,}]*' | cut -d':' -f2 | tr -d ' "')
-        fi
-
-        if [ "$SYSTEM_ENCRYPTED" = "true" ]; then
+        if health_control_reports_encryption "$ENCRYPTION_JSON" || local_system_encryption_detected; then
             echo "Installed - Encrypted - ${boot_mode}"
         else
             echo "Installed - Not Encrypted - ${boot_mode}"
         fi
     else
-        # Fallback: Simple lsblk check if health-control not available
-        if lsblk -f 2>/dev/null | grep -qi "crypto_LUKS"; then
+        if local_system_encryption_detected; then
             echo "Installed - Encrypted - ${boot_mode}"
         else
             echo "Installed - Not Encrypted - ${boot_mode}"
@@ -1714,20 +2068,20 @@ show_menu() {
     echo -e " ${GREEN}[1]${NC} ${BOLD}WireGuard${NC}  ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Connect ${CYAN}→${NC} Verify"
     echo -e " ${GREEN}[2]${NC} ${BOLD}OpenVPN${NC}    ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Connect ${CYAN}→${NC} Verify"
     echo -e " ${GREEN}[3]${NC} ${BOLD}V2Ray${NC}      ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Connect ${CYAN}→${NC} Verify"
-    echo -e " ${GREEN}[4]${NC} ${BOLD}More VPN Protocols...${NC} (7 more)"
+    echo -e " ${GREEN}[4]${NC} ${BOLD}More VPN Protocols...${NC} (9 more)"
     echo ""
     echo -e "${CYAN}=== TOR/PRIVACY & DNS ===${NC}"
     echo -e " ${GREEN}[5]${NC} ${BOLD}Torrify: Round-Robin${NC}     ${CYAN}→${NC} Auth ${CYAN}→${NC} Torrify ${CYAN}→${NC} nftables ${CYAN}→${NC} DNS ${CYAN}→${NC} Verify"
     echo -e " ${GREEN}[6]${NC} ${BOLD}Torrify: Consistent-Hash${NC} ${CYAN}→${NC} Auth ${CYAN}→${NC} Torrify ${CYAN}→${NC} nftables ${CYAN}→${NC} DNS ${CYAN}→${NC} Verify"
     echo -e " ${GREEN}[7]${NC} ${BOLD}Torrify: Weighted${NC}        ${CYAN}→${NC} Auth ${CYAN}→${NC} Torrify ${CYAN}→${NC} nftables ${CYAN}→${NC} DNS ${CYAN}→${NC} Verify"
     echo -e " ${GREEN}[8]${NC} ${BOLD}WireGuard + Torrify RR${NC}   ${CYAN}→${NC} Auth ${CYAN}→${NC} Harden ${CYAN}→${NC} Connect ${CYAN}→${NC} Torrify ${CYAN}→${NC} Verify"
-    echo -e " ${GREEN}[9]${NC} ${BOLD}More Tor Options...${NC} (5 more)"
+    echo -e " ${GREEN}[9]${NC} ${BOLD}More Tor Options...${NC} (8 more)"
     echo ""
     echo -e "${CYAN}=== NETWORK & SYSTEM ===${NC}"
     echo -e " ${GREEN}[10]${NC} ${BOLD}Disconnect Routing${NC}          ${CYAN}→${NC} Disconnect ${CYAN}→${NC} Status ${CYAN}→${NC} IP Fetch"
     echo -e " ${GREEN}[11]${NC} ${BOLD}Detorrify System${NC}            ${CYAN}→${NC} Remove iptables ${CYAN}→${NC} Remove nftables ${CYAN}→${NC} Stop DNS ${CYAN}→${NC} Verify"
     echo -e " ${GREEN}[12]${NC} ${BOLD}Emergency Network Recovery${NC}  ${CYAN}→${NC} Detorrify ${CYAN}→${NC} Disconnect ${CYAN}→${NC} Recover ${CYAN}→${NC} Verify"
-    echo -e " ${GREEN}[13]${NC} ${BOLD}More System Options...${NC} (4 more)"
+    echo -e " ${GREEN}[13]${NC} ${BOLD}More System Options...${NC} (8 more)"
     echo -e "${CYAN}────────────────────────────────────────────────────────────────────────────${NC}"
     echo -e "${YELLOW}NOTE:${NC} ${CYAN}health-control -e${NC}, ${CYAN}routing-switch -e${NC} | ${PROFILE_COUNT_RAW}+ profiles: ${CYAN}workflow-manager list${NC}"
     echo -e "${YELLOW}TIP:${NC} MicroSOCKS: ${CYAN}routing-switch microsocks-enable -u USER -p PASS${NC}"
@@ -1755,10 +2109,12 @@ show_vpn_submenu() {
     echo -e " ${GREEN}[5]${NC} ${BOLD}Hysteria2${NC}               ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Connect ${CYAN}→${NC} Verify"
     echo -e " ${GREEN}[6]${NC} ${BOLD}Mita${NC}                    ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Connect ${CYAN}→${NC} Verify"
     echo -e " ${GREEN}[7]${NC} ${BOLD}Dante SOCKS5${NC}            ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Connect ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[8]${NC} ${BOLD}AmneziaWG${NC}               ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Connect ${CYAN}→${NC} Verify"
+    echo -e " ${GREEN}[9]${NC} ${BOLD}OpenVPN over Cloak${NC}      ${CYAN}→${NC} Auth ${CYAN}→${NC} Status ${CYAN}→${NC} Harden ${CYAN}→${NC} Connect ${CYAN}→${NC} Verify"
     echo -e " ${GREEN}[0]${NC} ${BOLD}Back to main menu${NC}"
     echo ""
     echo -e "${CYAN}────────────────────────────────────────────────────────────────────────────${NC}"
-    echo -ne "${BOLD}Enter choice [0-7]${NC}: "
+    echo -ne "${BOLD}Enter choice [0-9]${NC}: "
 }
 
 # Submenu: More Tor Options (DNS items + restart)
@@ -1811,7 +2167,7 @@ show_system_submenu() {
     echo -e " ${GREEN}[5]${NC} ${BOLD}Flush iptables and nftables${NC} ${CYAN}→${NC} Clear firewall rules"
     echo -e " ${GREEN}[6]${NC} ${BOLD}Reboot System${NC}         ${CYAN}→${NC} Restart the system"
     echo -e " ${GREEN}[7]${NC} ${BOLD}Shutdown System${NC}       ${CYAN}→${NC} Power off the system"
-    echo -e " ${GREEN}[8]${NC} ${BOLD}Exit${NC}                  ${CYAN}→${NC} Skip to shell (type ${CYAN}'kodachi'${NC} and press Enter)"
+    echo -e " ${GREEN}[8]${NC} ${BOLD}Exit${NC}                  ${CYAN}→${NC} Skip to shell (${AUTOSHIELD_RELAUNCH_HINT})"
     echo -e " ${GREEN}[0]${NC} ${BOLD}Back to main menu${NC}"
     echo ""
     echo -e "${CYAN}────────────────────────────────────────────────────────────────────────────${NC}"
@@ -1968,9 +2324,12 @@ execute_profile() {
             ;;
         12)
             echo -e "\n${YELLOW}Connecting WireGuard...${NC}\n"
-            run_command workflow-manager 0 run initial_terminal_setup_wireguard_only
-            echo -e "\n${YELLOW}Torrifying System (Round-Robin)...${NC}\n"
-            run_command workflow-manager 0 run torrify-balance-nftables-roundrobin
+            if run_command workflow-manager 0 run initial_terminal_setup_wireguard_only; then
+                echo -e "\n${YELLOW}Torrifying System (Round-Robin)...${NC}\n"
+                run_command workflow-manager 0 run torrify-balance-nftables-roundrobin
+            else
+                echo -e "\n${RED}WireGuard connect failed - skipping torrification so traffic is not sent through Tor without the VPN you selected${NC}\n"
+            fi
             echo ""
             echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
             echo -e "${BOLD}Return to Menu Options:${NC}"
@@ -2060,6 +2419,11 @@ execute_profile() {
             read -r refresh_choice
             ;;
         19)
+            # NOTE: reboot and shutdown intentionally bypass is_allowed_run_command
+            # and call sudo -n directly. The allowlist gates the Kodachi service
+            # binaries (health-control, dns-switch, etc); system power verbs are
+            # standard /sbin tools and are gated by the y/N confirmation above.
+            # Do not "fix" by adding them to is_allowed_run_command.
             echo -e "\n${YELLOW}Reboot System${NC}"
             echo -ne "${RED}Are you sure you want to reboot? [y/N]:${NC} "
             read -r confirm
@@ -2072,6 +2436,7 @@ execute_profile() {
             fi
             ;;
         20)
+            # See note on case 19: power verbs intentionally bypass the allowlist.
             echo -e "\n${YELLOW}Shutdown System${NC}"
             echo -ne "${RED}Are you sure you want to shutdown? [y/N]:${NC} "
             read -r confirm
@@ -2142,6 +2507,32 @@ execute_profile() {
             echo -ne "${BOLD}Your choice:${NC} "
             read -r refresh_choice
             ;;
+        26)
+            echo -e "\n${YELLOW}Connecting to AmneziaWG...${NC}\n"
+            run_command workflow-manager 0 run initial_terminal_setup_amneziawg_only
+            echo ""
+            echo -e "${CYAN}═════════════════════════════════════════════════════════════════════════════${NC}"
+            echo -e "${BOLD}Return to Menu Options:${NC}"
+            echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+            echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+            echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+            echo ""
+            echo -ne "${BOLD}Your choice:${NC} "
+            read -r refresh_choice
+            ;;
+        27)
+            echo -e "\n${YELLOW}Connecting to OpenVPN over Cloak...${NC}\n"
+            run_command workflow-manager 0 run initial_terminal_setup_openvpn_cloak_only
+            echo ""
+            echo -e "${CYAN}═════════════════════════════════════════════════════════════════════════════${NC}"
+            echo -e "${BOLD}Return to Menu Options:${NC}"
+            echo -e "  ${GREEN}[Enter]${NC} - Refresh data and show menu (recommended)"
+            echo -e "  ${GREEN}[s]${NC}     - Skip refresh and show menu (fast)"
+            echo -e "  ${GREEN}[Ctrl+C]${NC} - Exit to shell"
+            echo ""
+            echo -ne "${BOLD}Your choice:${NC} "
+            read -r refresh_choice
+            ;;
         *)
             echo -e "\n${RED}Invalid choice. Please try again...${NC}\n"
             sleep 1
@@ -2160,13 +2551,15 @@ handle_submenu() {
                 show_vpn_submenu
                 read -r vpn_choice
                 case "$vpn_choice" in
-                    1) execute_profile "2"; submenu_executed=true ;; # Xray-VLESS-Reality
-                    2) execute_profile "6"; submenu_executed=true ;; # Xray-VLESS
-                    3) execute_profile "7"; submenu_executed=true ;; # Xray-Trojan
-                    4) execute_profile "23"; submenu_executed=true ;; # Shadowsocks
-                    5) execute_profile "5"; submenu_executed=true ;; # Hysteria2
-                    6) execute_profile "8"; submenu_executed=true ;; # Mita
-                    7) execute_profile "22"; submenu_executed=true ;; # Dante SOCKS5
+                    1) execute_profile "2" || return $?; submenu_executed=true ;; # Xray-VLESS-Reality
+                    2) execute_profile "6" || return $?; submenu_executed=true ;; # Xray-VLESS
+                    3) execute_profile "7" || return $?; submenu_executed=true ;; # Xray-Trojan
+                    4) execute_profile "23" || return $?; submenu_executed=true ;; # Shadowsocks
+                    5) execute_profile "5" || return $?; submenu_executed=true ;; # Hysteria2
+                    6) execute_profile "8" || return $?; submenu_executed=true ;; # Mita
+                    7) execute_profile "22" || return $?; submenu_executed=true ;; # Dante SOCKS5
+                    8) execute_profile "26" || return $?; submenu_executed=true ;; # AmneziaWG
+                    9) execute_profile "27" || return $?; submenu_executed=true ;; # OpenVPN over Cloak
                     0) SKIP_REFRESH=true; break ;; # Back to main menu (no refresh)
                     *) echo -e "${RED}Invalid choice. Try again.${NC}"; sleep 2 ;;
                 esac
@@ -2175,8 +2568,8 @@ handle_submenu() {
                 show_tor_submenu
                 read -r tor_choice
                 case "$tor_choice" in
-                    1) execute_profile "13"; submenu_executed=true ;; # Enable DNSCrypt
-                    2) execute_profile "14"; submenu_executed=true ;; # Enable Tor DNS
+                    1) execute_profile "13" || return $?; submenu_executed=true ;; # Enable DNSCrypt
+                    2) execute_profile "14" || return $?; submenu_executed=true ;; # Enable Tor DNS
                     3) # Set Random Reputable Servers
                         echo -e "\n${YELLOW}Switching to Random Reputable DNS Servers...${NC}\n"
                         run_command dns-switch 30 random
@@ -2205,8 +2598,8 @@ handle_submenu() {
                         read -r refresh_choice
                         submenu_executed=true
                         ;;
-                    5) execute_profile "24"; submenu_executed=true ;; # Remote Tor via RedSocks
-                    6) execute_profile "25"; submenu_executed=true ;; # Torrify Single Default Node
+                    5) execute_profile "24" || return $?; submenu_executed=true ;; # Remote Tor via RedSocks
+                    6) execute_profile "25" || return $?; submenu_executed=true ;; # Torrify Single Default Node
                     7) # Restart All Tor Instances
                         echo -e "\n${YELLOW}Restarting All Tor Instances...${NC}\n"
                         run_command tor-switch 60 restart-all-instances
@@ -2243,7 +2636,7 @@ handle_submenu() {
                 show_system_submenu
                 read -r sys_choice
                 case "$sys_choice" in
-                    1) execute_profile "18"; submenu_executed=true ;; # Check Security Score
+                    1) execute_profile "18" || return $?; submenu_executed=true ;; # Check Security Score
                     2) # System Integrity Check
                         echo -e "\n${YELLOW}Running System Integrity Check...${NC}\n"
                         run_command integrity-check 120 check-all
@@ -2260,7 +2653,7 @@ handle_submenu() {
                         ;;
                     3) # Test DNS Leaks
                         echo -e "\n${YELLOW}Testing DNS Leaks...${NC}\n"
-                        run_command dns-leak 30 test
+                        run_command dns-leak 120 test
                         echo ""
                         echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
                         echo -e "${BOLD}Return to Menu Options:${NC}"
@@ -2288,8 +2681,12 @@ handle_submenu() {
                         ;;
                     5) # Flush iptables and nftables
                         echo -e "\n${YELLOW}Flushing iptables and nftables...${NC}\n"
-                        run_command tor-switch 30 flush-iptables
-                        run_command tor-switch 30 flush-nftables
+                        # --force: flush-iptables/flush-nftables are destructive
+                        # force-gated ops; selecting menu option 5 IS the user
+                        # confirmation, so pass --force or the calls refuse and
+                        # the flush silently no-ops.
+                        run_command tor-switch 30 flush-iptables --force
+                        run_command tor-switch 30 flush-nftables --force
                         echo ""
                         echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
                         echo -e "${BOLD}Return to Menu Options:${NC}"
@@ -2301,9 +2698,9 @@ handle_submenu() {
                         read -r refresh_choice
                         submenu_executed=true
                         ;;
-                    6) execute_profile "19"; submenu_executed=true ;; # Reboot System
-                    7) execute_profile "20"; submenu_executed=true ;; # Shutdown System
-                    8) execute_profile "21"; submenu_executed=true ;; # Exit
+                    6) execute_profile "19" || return $?; submenu_executed=true ;; # Reboot System
+                    7) execute_profile "20" || return $?; submenu_executed=true ;; # Shutdown System
+                    8) execute_profile "21" || return $?; submenu_executed=true ;; # Exit
                     0) SKIP_REFRESH=true; break ;; # Back to main menu (no refresh)
                     *) echo -e "${RED}Invalid choice. Try again.${NC}"; sleep 2 ;;
                 esac
@@ -2424,9 +2821,13 @@ main() {
             # Authenticated - use DNSCrypt (requires auth)
             echo -ne "${YELLOW}▸ Configuring DNSCrypt...${NC}"
             start_timer
-            setup_dnscrypt_locked
-            end_timer
-            echo -e " ${GREEN}+ DNSCrypt configured${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+            if setup_dnscrypt_locked; then
+                end_timer
+                print_dns_setup_result
+            else
+                end_timer
+                echo -e " ${RED}! DNSCrypt setup failed${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+            fi
         else
             echo -e " ${YELLOW}! Not authenticated${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
             echo -e "${YELLOW}  Attempting login...${NC}"
@@ -2441,9 +2842,13 @@ main() {
                 # Authenticated - use DNSCrypt (requires auth)
                 echo -ne "${YELLOW}▸ Configuring DNSCrypt...${NC}"
                 start_timer
-                setup_dnscrypt_locked
-                end_timer
-                echo -e " ${GREEN}+ DNSCrypt configured${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+                if setup_dnscrypt_locked; then
+                    end_timer
+                    print_dns_setup_result
+                else
+                    end_timer
+                    echo -e " ${RED}! DNSCrypt setup failed${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
+                fi
             else
                 end_timer
                 echo -e "${RED}! Authentication failed - using fallback DNS${NC} ${CYAN}(took $(format_duration $OPERATION_TIME))${NC}"
@@ -2505,68 +2910,80 @@ main() {
         # Track if at least one sync succeeded
         any_sync_succeeded=false
 
-    # Method 1: ntpdig with time.cloudflare.com (PRIORITY - privacy-focused, most accurate)
-    if ! $any_sync_succeeded; then
-        if sudo -n ntpdig -S time.cloudflare.com >/dev/null 2>&1 || sudo ntpdig -S time.cloudflare.com >/dev/null 2>&1; then
-            any_sync_succeeded=true
-        fi
-    fi
-
-    # Method 2: ntpdig with pool.ntp.org (if Cloudflare fails)
-    if ! $any_sync_succeeded; then
-        if sudo -n ntpdig -S pool.ntp.org >/dev/null 2>&1; then
-            any_sync_succeeded=true
-        fi
-    fi
-
-    # Method 3: ntpdig with time.nist.gov (if both above fail)
-    if ! $any_sync_succeeded; then
-        if sudo -n ntpdig -S time.nist.gov >/dev/null 2>&1; then
-            any_sync_succeeded=true
-        fi
-    fi
-
-    # Method 4: timedatectl (if all ntpdig fail)
-    if ! $any_sync_succeeded; then
-        if sudo -n timedatectl set-ntp true 2>/dev/null; then
-            any_sync_succeeded=true
-        fi
-    fi
-
-    # Method 5: ntpdate with pool.ntp.org (legacy fallback)
-    if ! $any_sync_succeeded; then
-        if command -v ntpdate >/dev/null 2>&1; then
-            if sudo -n ntpdate pool.ntp.org >/dev/null 2>&1 || sudo ntpdate pool.ntp.org >/dev/null 2>&1; then
-                any_sync_succeeded=true
-            fi
-        elif [ -x /usr/sbin/ntpdate ]; then
-            if sudo -n /usr/sbin/ntpdate pool.ntp.org >/dev/null 2>&1 || sudo /usr/sbin/ntpdate pool.ntp.org >/dev/null 2>&1; then
+        # Method 1: ntpdig with time.cloudflare.com (PRIORITY - privacy-focused, most accurate)
+        if ! $any_sync_succeeded; then
+            if run_privileged_command ntpdig -S time.cloudflare.com >/dev/null 2>&1; then
                 any_sync_succeeded=true
             fi
         fi
-    fi
 
-    # Method 6: ntpdate with time.nist.gov (legacy fallback)
-    if ! $any_sync_succeeded; then
-        if command -v ntpdate >/dev/null 2>&1; then
-            if sudo -n ntpdate time.nist.gov >/dev/null 2>&1; then
-                any_sync_succeeded=true
-            fi
-        elif [ -x /usr/sbin/ntpdate ]; then
-            if sudo -n /usr/sbin/ntpdate time.nist.gov >/dev/null 2>&1; then
+        # Method 2: ntpdig with pool.ntp.org (if Cloudflare fails)
+        if ! $any_sync_succeeded; then
+            if run_privileged_command ntpdig -S pool.ntp.org >/dev/null 2>&1; then
                 any_sync_succeeded=true
             fi
         fi
-    fi
 
-    # Method 7: ntpd one-shot sync (final fallback)
-    if ! $any_sync_succeeded; then
-        if [ -x /usr/sbin/ntpd ]; then
-            if sudo -n /usr/sbin/ntpd -gq >/dev/null 2>&1; then
+        # Method 3: ntpdig with time.nist.gov (if both above fail)
+        if ! $any_sync_succeeded; then
+            if run_privileged_command ntpdig -S time.nist.gov >/dev/null 2>&1; then
                 any_sync_succeeded=true
             fi
         fi
-    fi
+
+        # Method 4: timedatectl (if all ntpdig fail). `set-ntp true` only ENABLES
+        # systemd-timesyncd and returns 0 whether or not the clock ever syncs; on a
+        # torrified or UDP-blocked host it never will, and this used to paint [TSync:+]
+        # over a clock that was never touched. Count it only when the kernel's
+        # synchronized flag actually flips within a bounded wait.
+        if ! $any_sync_succeeded; then
+            if run_privileged_command timedatectl set-ntp true 2>/dev/null; then
+                local ntp_wait=0
+                while [ "$ntp_wait" -lt 6 ]; do
+                    if [ "$(timedatectl show -p NTPSynchronized --value 2>/dev/null)" = "yes" ]; then
+                        any_sync_succeeded=true
+                        break
+                    fi
+                    sleep 1
+                    ntp_wait=$((ntp_wait + 1))
+                done
+            fi
+        fi
+
+        # Method 5: ntpdate with pool.ntp.org (legacy fallback)
+        if ! $any_sync_succeeded; then
+            if command -v ntpdate >/dev/null 2>&1; then
+                if run_privileged_command ntpdate pool.ntp.org >/dev/null 2>&1; then
+                    any_sync_succeeded=true
+                fi
+            elif [ -x /usr/sbin/ntpdate ]; then
+                if run_privileged_command /usr/sbin/ntpdate pool.ntp.org >/dev/null 2>&1; then
+                    any_sync_succeeded=true
+                fi
+            fi
+        fi
+
+        # Method 6: ntpdate with time.nist.gov (legacy fallback)
+        if ! $any_sync_succeeded; then
+            if command -v ntpdate >/dev/null 2>&1; then
+                if run_privileged_command ntpdate time.nist.gov >/dev/null 2>&1; then
+                    any_sync_succeeded=true
+                fi
+            elif [ -x /usr/sbin/ntpdate ]; then
+                if run_privileged_command /usr/sbin/ntpdate time.nist.gov >/dev/null 2>&1; then
+                    any_sync_succeeded=true
+                fi
+            fi
+        fi
+
+        # Method 7: ntpd one-shot sync (final fallback)
+        if ! $any_sync_succeeded; then
+            if [ -x /usr/sbin/ntpd ]; then
+                if run_privileged_command /usr/sbin/ntpd -gq >/dev/null 2>&1; then
+                    any_sync_succeeded=true
+                fi
+            fi
+        fi
 
         # Report accurate status based on actual results
         end_timer
@@ -2660,6 +3077,26 @@ main() {
         show_menu
         read -t $AUTO_REFRESH_TIMEOUT -r choice
         local read_status=$?
+
+        # END OF INPUT means there is nobody to answer the menu, so leave.
+        #
+        # This variant deliberately has NO non-interactive gating block (see the header),
+        # which is correct for a manual harness but means a closed stdin reaches this loop
+        # directly. `read` returns exactly 1 on EOF, which is neither 130 (SIGINT) nor
+        # greater than 128 (timeout), so without this the empty `choice` falls to the `*)`
+        # invalid-choice arm and loops with no delay. The `read` wrapper at the top of this
+        # file returns the builtin's status verbatim, so EOF is still 1 here.
+        # NOTE: the production script's `[ ! -t 0 ]` guard is deliberately NOT added here.
+        # This file's documented contract is that it always runs main() when executed.
+        if [ "$read_status" -eq 1 ]; then
+            echo ""
+            return 0 2>/dev/null || exit 0
+        fi
+
+        # SIGINT during menu input should exit, not be treated as an auto-refresh timeout.
+        if [ "$read_status" -eq 130 ]; then
+            return 130
+        fi
 
         # Check if read timed out (status > 128 means timeout)
         if [ $read_status -gt 128 ]; then

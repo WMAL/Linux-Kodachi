@@ -10,11 +10,27 @@ Failover VPN, Tor routing, DNSCrypt, a kill switch and anti-forensic tooling, pr
 [![Website](https://img.shields.io/badge/kodachi.cloud-Visit-9FEF00?style=flat-square&logo=firefox&logoColor=black)](https://kodachi.cloud/)
 [![Download](https://img.shields.io/badge/Download-ISOs%20%26%20binaries-blue?style=flat-square&logo=cloudsmith&logoColor=white)](https://kodachi.cloud/downloads/)
 [![Version](https://img.shields.io/badge/Current-Kodachi%209-brightgreen?style=flat-square)](https://kodachi.cloud/)
-[![Next](https://img.shields.io/badge/In%20development-Kodachi%2010-orange?style=flat-square&logo=git&logoColor=white)](#kodachi-10--in-development)
+[![Beta](https://img.shields.io/badge/Beta%20available-Kodachi%2010-orange?style=flat-square&logo=git&logoColor=white)](#kodachi-10--now-in-beta)
 [![License](https://img.shields.io/badge/License-KSAN--1.1-lightgrey?style=flat-square)](LICENSE.md)
 [![Discord](https://img.shields.io/badge/Discord-Support-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/KEFErEx)
 
 </div>
+
+---
+
+> [!IMPORTANT]
+> **Kodachi 10 beta is out. Give it a try.**
+>
+> The 10.x line is published on the **beta channel** and open for public testing, while Kodachi 9 stays the stable release. Beta gets new work first, including the AmneziaWG and OpenVPN over Cloak transports, and is rebuilt often, so expect rough edges and report what you find.
+>
+> **There is no beta ISO.** Beta is a package channel, not a separate system image. Install a current ISO, or use a Debian-family system you already run, then point APT at the beta repository:
+>
+> ```bash
+> curl -fsSL https://kodachi.cloud/repo-beta/setup.sh | sudo sh
+> sudo apt update && sudo apt install --allow-downgrades kodachi/beta
+> ```
+>
+> Supported releases, the full instructions and the two commands that put you back on stable: **[kodachi.cloud/downloads](https://kodachi.cloud/downloads/)**
 
 ---
 
@@ -34,13 +50,15 @@ Everything lives on the **[Downloads Center](https://kodachi.cloud/downloads/)**
 
 ---
 
-## Kodachi 10 , in development
+## Kodachi 10 , now in beta
 
-Kodachi 10 is the next major release and is being built now, on the Kodachi 9 foundation: new capabilities, wider feature coverage, and performance and security work across the whole stack (binaries, terminal edition, desktop edition, AI layer, cloud platform).
+Kodachi 10 is the next major release, built on the Kodachi 9 foundation: new capabilities, wider feature coverage, and performance and security work across the whole stack (binaries, terminal edition, desktop edition, AI layer, cloud platform).
 
-There is no fixed release date. Roadmap items, previews and changelogs are published here and on the [landing page](https://kodachi.cloud/) as they land.
+**You can run it today.** The 10.x packages ship on the beta channel and are open to anyone who wants to test them. Kodachi 9 remains the stable release and is what the Desktop and Terminal ISOs install. Beta is a package channel only, there is no beta ISO, and it is rebuilt often, so run it somewhere a break costs you nothing. Setup, supported releases and the route back to stable are on the **[Downloads Center](https://kodachi.cloud/downloads/)**.
 
-**Feature requests and feedback shape what ships.** Open an [issue](https://github.com/WMAL/kodachios/issues) or bring it to [Discord](https://discord.gg/KEFErEx).
+There is no fixed date for the stable Kodachi 10 release. Roadmap items, previews and changelogs are published here and on the [landing page](https://kodachi.cloud/) as they land.
+
+**Feature requests and feedback shape what ships**, and a bug report from a beta tester is the most useful thing anyone can send right now. Open an [issue](https://github.com/WMAL/kodachios/issues) or bring it to [Discord](https://discord.gg/KEFErEx).
 
 | | |
 |---|---|

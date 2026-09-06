@@ -136,13 +136,38 @@ REAL_USER=$(detect_real_user)
 REAL_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
 DESKTOP_DIR="${REAL_HOME}/Desktop"
 
-# Ensure Desktop directory exists
-mkdir -p "$DESKTOP_DIR"
+# Ensure Desktop directory exists. The collector runs as root, so a Desktop
+# that IT creates would be root-owned and the user could no longer write to
+# their own Desktop afterwards. Only chown when this script created it.
+if [[ ! -d "$DESKTOP_DIR" ]]; then
+    mkdir -p "$DESKTOP_DIR"
+    if [[ "$(id -u)" == "0" ]] && [[ -n "${REAL_USER:-}" ]] && [[ "$REAL_USER" != "root" ]]; then
+        chown "${REAL_USER}:$(id -gn "$REAL_USER" 2>/dev/null || echo "$REAL_USER")" \
+            "$DESKTOP_DIR" 2>/dev/null || true
+    fi
+fi
 
 # Create temp collection directory
 TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
 HOSTNAME=$(hostname)
 TEMP_DIR=$(mktemp -d -t kodachi-debug-XXXXXX)
+
+# Remove the staging tree on ANY exit, not only the happy path. Observed
+# 2026-08-19: a run interrupted by a dropped SSH session left
+# /tmp/kodachi-debug-XXXXXX behind holding the whole partially-collected
+# tree, which on an installed machine reaches ~150 MB. Repeated support
+# sessions therefore filled /tmp, and on a live ISO /tmp is RAM.
+# The zip is written to the Desktop before this fires, so a completed run
+# keeps its bundle; only the staging copy goes.
+cleanup_temp_dir() {
+    if [[ -n "${TEMP_DIR:-}" ]] && [[ -d "$TEMP_DIR" ]]; then
+        rm -rf -- "$TEMP_DIR" 2>/dev/null || true
+    fi
+}
+trap cleanup_temp_dir EXIT
+trap 'cleanup_temp_dir; exit 130' INT
+trap 'cleanup_temp_dir; exit 143' TERM
+
 COLLECTION_NAME="kodachi-debug-${HOSTNAME}-${TIMESTAMP}"
 COLLECTION_DIR="${TEMP_DIR}/${COLLECTION_NAME}"
 ZIP_FILE="${DESKTOP_DIR}/${COLLECTION_NAME}.zip"
@@ -155,30 +180,88 @@ progress() {
     echo -e "${BLUE}[${STEP}/${TOTAL_STEPS}]${NC} $1"
 }
 
-# Safe command execution with error handling
+# ---- Redaction manifest ----------------------------------------------------
+# Every helper below already writes its output THROUGH redact_secrets, and the
+# final sweep then redacted all of it a SECOND time. On an ordinary installed
+# machine that means re-processing the whole boot journal, auth.log and syslog
+# for no change at all. Measured 2026-08-19 on an installed VM: 148 MB of
+# collected text and the run had still not finished after 15 minutes.
+#
+# The manifest records each file's size at the moment it was redacted. The
+# sweep skips a file only when its size is UNCHANGED, so anything appended
+# raw afterwards is still swept: the optimisation is fail-closed, an unknown
+# or moved file is always redacted again.
+#
+# It lives in TEMP_DIR and never in COLLECTION_DIR, so it cannot enter the zip.
+REDACTED_MANIFEST="${TEMP_DIR}/.redacted-manifest"
+: > "$REDACTED_MANIFEST"
+
+declare -A REDACTED_OK=()
+
+mark_redacted() {
+    local f="$1" sz
+    [[ -f "$f" ]] || return 0
+    sz=$(stat -c%s "$f" 2>/dev/null || echo 0)
+    REDACTED_OK["$f"]="$sz"
+    printf '%s\t%s\n' "$sz" "$f" >> "$REDACTED_MANIFEST"
+}
+
+# Provenance guard for the append-style helpers.
+#
+# The manifest lets the final sweep skip a file, so a file may only be marked
+# when EVERY byte in it arrived through redact_secrets. safe_exec appends, so
+# if some earlier RAW write had already put unredacted bytes in the same file,
+# marking it afterwards would skip those bytes forever.
+#
+# A source audit on 2026-08-19 found exactly one path written both ways
+# (03-network/resolvectl.txt) and its two writers are mutually exclusive
+# if/else branches, so the hole is not reachable today. This guard makes that
+# a property of the CODE rather than of that audit: the file is marked only
+# when it was empty before the append, or when the size it had before the
+# append is exactly the size this run last recorded as fully redacted.
+#
+# Round 2 (inspector F9): the guard originally covered 2 of the 5 places that
+# mark a file, and the other 3 were argued safe because each is preceded by a
+# truncating ">". That is the same audit-shaped reasoning this guard exists to
+# replace, and it silently stops being true the day someone changes a ">" to a
+# ">>". All 5 now go through should_mark. The failure mode is fail-CLOSED and
+# costs only work: an unmarked file is swept again, never skipped wrongly.
+should_mark() {
+    local f="$1" pre="$2"
+    [[ "$pre" == "0" ]] && return 0
+    [[ "${REDACTED_OK[$f]:-}" == "$pre" ]] && return 0
+    return 1
+}
+
+# Safe command execution with error handling.
+# The output is streamed through a spool file instead of being captured into a
+# shell variable: `journalctl -b` alone produced 30 MB on the measurement VM,
+# and $(...) holds a full copy of that in the shell's heap before redaction
+# even starts, then a second copy for the redacted result.
 safe_exec() {
     local output_file="$1"
     shift
     local cmd="$*"
-    local output rc
+    local rc spool pre=0
 
-    output=$(eval "$cmd" 2>&1)
+    [[ -f "$output_file" ]] && pre=$(stat -c%s "$output_file" 2>/dev/null || echo 0)
+    spool="${TEMP_DIR}/.safe_exec.$$"
+    eval "$cmd" > "$spool" 2>&1
     rc=$?
 
     local redacted_cmd
     redacted_cmd=$(printf '%s\n' "$cmd" | redact_secrets)
-    if [[ -n "$output" ]]; then
-        output=$(printf '%s\n' "$output" | redact_secrets)
-    fi
 
     if [[ $rc -ne 0 ]]; then
         echo "[EXIT CODE: $rc] Command failed: $redacted_cmd" >> "$output_file"
-        [[ -n "$output" ]] && echo "$output" >> "$output_file"
-    elif [[ -z "$output" ]]; then
+        [[ -s "$spool" ]] && redact_secrets < "$spool" >> "$output_file"
+    elif [[ ! -s "$spool" ]]; then
         echo "[EXIT CODE: 0] Command produced no output: $redacted_cmd" >> "$output_file"
     else
-        echo "$output" >> "$output_file"
+        redact_secrets < "$spool" >> "$output_file"
     fi
+    rm -f "$spool" 2>/dev/null || true
+    should_mark "$output_file" "$pre" && mark_redacted "$output_file"
 }
 
 # Safe file copy with size check
@@ -197,10 +280,14 @@ safe_copy() {
 
     if [[ $file_size -gt $max_size ]]; then
         # Truncate large files, then redact private identifiers/secrets.
+        local _pt=0; [[ -f "${dest}/$(basename "$src").truncated" ]] && _pt=$(stat -c%s "${dest}/$(basename "$src").truncated" 2>/dev/null || echo 0)
         tail -c 50M "$src" 2>/dev/null | redact_secrets > "${dest}/$(basename "$src").truncated" 2>/dev/null || true
         echo "Original file size: $file_size bytes (truncated to last 50MB, redacted)" >> "${dest}/$(basename "$src").truncated"
+        should_mark "${dest}/$(basename "$src").truncated" "$_pt" && mark_redacted "${dest}/$(basename "$src").truncated"
     else
+        local _pc=0; [[ -f "${dest}/$(basename "$src")" ]] && _pc=$(stat -c%s "${dest}/$(basename "$src")" 2>/dev/null || echo 0)
         redact_secrets < "$src" > "${dest}/$(basename "$src")" 2>/dev/null || echo "Failed to copy: $src" > "${dest}/$(basename "$src").error"
+        should_mark "${dest}/$(basename "$src")" "$_pc" && mark_redacted "${dest}/$(basename "$src")"
     fi
 }
 
@@ -218,15 +305,22 @@ safe_copy() {
 # Patterns avoid gawk-only IGNORECASE so this works under Debian's mawk.
 redact_secrets() {
     awk '
-    BEGIN { inblock = 0 }
+    BEGIN { inblock = 0; blocklines = 0 }
     {
         if (inblock) {
             if ($0 ~ /-----END / || $0 ~ /^[ \t]*<\/(key|cert|ca|tls-crypt|tls-crypt-v2|tls-auth|static)>/) {
-                print $0; inblock = 0
-            } else {
-                print "[REDACTED]"
+                print $0; inblock = 0; blocklines = 0
+                next
             }
-            next
+            blocklines++
+            if (blocklines <= 200) { print "[REDACTED]"; next }
+            # audit 2026-08-19: an UNTERMINATED block used to redact every
+            # remaining line of the file. safe_copy produces exactly that
+            # shape routinely (tail -c 50M can start mid-key), so one
+            # truncated key destroyed the whole diagnostic tail instead of
+            # one secret. No real PEM or inline OpenVPN key is 200 lines.
+            print "[REDACTION: unterminated key block, line-by-line redaction resumed]"
+            inblock = 0; blocklines = 0
         }
         # Whole secret block already on ONE physical line (JSON-escaped with
         # literal \n, single-line .ovpn fragment, etc.): do NOT enter
@@ -239,10 +333,10 @@ redact_secrets() {
             print $0; next
         }
         if ($0 ~ /-----BEGIN ([A-Z0-9]+ )*PRIVATE KEY-----/ || $0 ~ /-----BEGIN OpenVPN Static key/) {
-            print $0; print "[REDACTED]"; inblock = 1; next
+            print $0; print "[REDACTED]"; inblock = 1; blocklines = 0; next
         }
         if ($0 ~ /^[ \t]*<(key|tls-crypt|tls-crypt-v2|tls-auth|static)>/) {
-            print $0; print "[REDACTED]"; inblock = 1; next
+            print $0; print "[REDACTED]"; inblock = 1; blocklines = 0; next
         }
         print $0
     }' | sed -E '
@@ -253,10 +347,247 @@ redact_secrets() {
         s/-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[^"]*-----END [A-Z0-9 ]*PRIVATE KEY-----/[REDACTED-KEY-BLOCK]/Ig
         s/-----BEGIN OpenVPN Static key[^"]*-----END OpenVPN Static key[A-Za-z0-9 ]*-----/[REDACTED-KEY-BLOCK]/Ig
         s#<(key|tls-crypt|tls-crypt-v2|tls-auth|static|cert|ca)>[^"]*</(key|tls-crypt|tls-crypt-v2|tls-auth|static|cert|ca)>#<\1>[REDACTED]</\1>#Ig
-        # uuid added: vmess/vless UUIDs are bearer credentials.
-        s/("?(pass|password|passwd|secret|psk|preshared[-_]?key|private[-_]?key|privkey|api[-_]?key|apikey|access[-_]?token|token|auth[-_]?token|access[-_]?key|secret[-_]?key|client[-_]?secret|wep-key[0-9]*|leap-password|private-key-password|pin|uuid|signature|sig|key)"?[[:space:]]*[:=][[:space:]]*"?)[^",}[:space:]]+/\1[REDACTED]/Ig
+        # Credential key/value. audit 2026-08-19: the value class used to be
+        # [^",}[:space:]]+, i.e. it stopped at the FIRST SPACE, so
+        #   password = correct horse battery staple
+        # published everything after "correct" and
+        #   {"password": "correct horse battery staple"}
+        # published everything after the first word of the quoted value. Any
+        # passphrase with a space in it leaked. The class now allows spaces
+        # and stops only at " { } , so a JSON/object boundary is still never
+        # crossed and the rest of the record stays readable.
+        # passphrase/master-password/recovery-code/mnemonic added 2026-08-19:
+        # the alternation carried "pass" but nothing that could match
+        # "passphrase: <value>", because after "pass" the regex requires
+        # a separator and finds "phrase". A bare "passphrase:" line leaked
+        # in full, in v1.5 and earlier. Longer alternatives are listed FIRST.
+        # authorization/cookie/session added: a Bearer or Basic header in a
+        # service log or a curl trace is a live credential and was not
+        # matched by any rule.
+        # audit 2026-08-19 round 2, inspector F4/F5. Two separate defects in
+        # the single rule this replaces.
+        #
+        # (a) NO LEFT WORD BOUNDARY. The alternation carries "key", "pass",
+        #     "pin", "sig" and "uuid", so "monkey: x" matched on "key" and
+        #     "bypass = false" matched on "pass", and each truncated its own
+        #     diagnostic line. Every key now needs a non-alphanumeric
+        #     character (or the line start) in front of it.
+        #
+        # (b) ONE VALUE CLASS CANNOT SERVE BOTH JOBS. Stopping at whitespace
+        #     leaks a passphrase containing a space; running to the line end
+        #     destroys "key=AAAA BBBB CCCC". The split is by KEY STRENGTH,
+        #     because that is what decides which error is acceptable:
+        #       passphrase|pass[-_]?phrase|master[-_]?password|recovery[-_]?code|seed[-_]?phrase|mnemonic|credential|private-key-password|leap-password|wep-key[0-9]*|preshared[-_]?key|private[-_]?key|privkey|api[-_]?key|apikey|secret[-_]?key|access[-_]?key|client[-_]?secret|access[-_]?token|refresh[-_]?token|session[-_]?token|auth[-_]?token|proxy-authorization|authorization|set-cookie|cookie|password|passwd|secret|token|psk|pass (password, passphrase, token, psk, authorization...)
+        #         the line is a credential line, so over-redaction costs
+        #         nothing and the value runs to the end. A comma no longer
+        #         terminates it, which is what published the tail of
+        #         "password = corr,ect horse".
+        #       signature|uuid|key|sig|pin (key, sig, pin, uuid, signature)
+        #         these appear in benign contexts constantly, so the value
+        #         stops at whitespace exactly as it did before.
+        #     A quoted value is handled first in both cases and may contain
+        #     anything except the closing quote.
+        s/(^|[^A-Za-z0-9])("?(passphrase|pass[-_]?phrase|master[-_]?password|recovery[-_]?code|seed[-_]?phrase|mnemonic|credential|private-key-password|leap-password|wep-key[0-9]*|preshared[-_]?key|private[-_]?key|privkey|api[-_]?key|apikey|secret[-_]?key|access[-_]?key|client[-_]?secret|access[-_]?token|refresh[-_]?token|session[-_]?token|auth[-_]?token|proxy-authorization|authorization|set-cookie|cookie|password|passwd|secret|token|psk|pass)"?[[:space:]]*[:=][[:space:]]*")[^"]*/\1\2[REDACTED]/Ig
+        s/(^|[^A-Za-z0-9])("?(passphrase|pass[-_]?phrase|master[-_]?password|recovery[-_]?code|seed[-_]?phrase|mnemonic|credential|private-key-password|leap-password|wep-key[0-9]*|preshared[-_]?key|private[-_]?key|privkey|api[-_]?key|apikey|secret[-_]?key|access[-_]?key|client[-_]?secret|access[-_]?token|refresh[-_]?token|session[-_]?token|auth[-_]?token|proxy-authorization|authorization|set-cookie|cookie|password|passwd|secret|token|psk|pass)"?[[:space:]]*[:=][[:space:]]*)([^"}[:space:]][^"}]*)/\1\2[REDACTED]/Ig
+        s/(^|[^A-Za-z0-9])("?(signature|uuid|key|sig|pin)"?[[:space:]]*[:=][[:space:]]*")[^"]*/\1\2[REDACTED]/Ig
+        s/(^|[^A-Za-z0-9])("?(signature|uuid|key|sig|pin)"?[[:space:]]*[:=][[:space:]]*)([^"{},[:space:]]+)/\1\2[REDACTED]/Ig
         s/((PrivateKey|PresharedKey|PublicKey)[[:space:]]*=[[:space:]]*)[A-Za-z0-9+/=]+/\1[REDACTED]/Ig
+        # `wg show` / `awg show` print the PEER public key on its own line. It is not a
+        # secret cryptographically, but it uniquely identifies WHICH server the user
+        # connects to, which is the thing a privacy tool must not ship in a bug report.
+        # Anchored and base64-terminated so the ordinary word "peer" is never touched.
+        s/^([[:space:]]*peer:[[:space:]]*)[A-Za-z0-9+/]+=/\1[REDACTED]/
         s/(auth-user-pass[[:space:]])[^"]*/\1[REDACTED]/Ig
+        # audit 2026-08-19 round 3, F21. Confirmed independently by
+        # claude-2071644a and claude-0ac69c58, with a live producer.
+        #
+        # EVERY credential rule above requires a `:` or `=` after the key
+        # name, because they were written for config files and JSON. An
+        # ARGV line is KEY <SPACE> VALUE by construction, so a command line
+        # captured by `ps auxww` (03-network, 05-vpn, 09-processes) or by
+        # `systemctl cat` walked straight through all of them:
+        #
+        #   --password=secret   caught by the key/value rules
+        #   --password secret   MISSED
+        #   microsocks -u kodachi -P Tr0ub4dor-3   MISSED, and this one is
+        #     emitted verbatim by routing-switch (commands/microsocks.rs,
+        #     `.arg("-u").arg(&username).arg("-P").arg(&password)`) and is
+        #     grepped INTO the bundle by the proxy-processes capture below.
+        #
+        # LONG FLAGS are safe to handle generically: the mandatory `--`
+        # prevents any collision with `mkdir -p`, `ps -p`, `cp -p`, `ssh -p`.
+        s/(^|[[:space:]])(--(username|password|passwd|passphrase|pass|preshared[-_]?key|private[-_]?key|privkey|client[-_]?secret|secret[-_]?key|access[-_]?key|access[-_]?token|refresh[-_]?token|session[-_]?token|auth[-_]?token|api[-_]?key|apikey|secret|token|psk|key)[[:space:]]+)[^[:space:]]+/\1\2[REDACTED]/Ig
+        # SHORT FLAGS CANNOT BE HANDLED GENERICALLY. A bare `-p`, `-k`, `-P`
+        # or `-u` means something different in almost every program, and
+        # redacting the token after them unconditionally would destroy
+        # `mkdir -p /path`, `ssh -p 22`, `curl -k https://...` and every
+        # port number in the bundle. So each is gated on the program that
+        # actually takes a secret there, and ONLY the flags that carry one:
+        # microsocks -p is the PORT and stays readable, -P is the password.
+        #
+        # F21 SECOND MEMBER, 2026-08-19 (claude-bd5ebed0). The trailing class used to be
+        # [^A-Za-z0-9_-], which EXCLUDES a hyphen, so the address did not match
+        #     sudo routing-switch microsocks-enable -u <user> -p <password>
+        # the Kodachi CLI that starts the proxy. That line IS captured, because the
+        # ps grep in this collector matches on the `microsocks` substring. Its password
+        # flag is also lowercase -p, which the raw binary uses for the PORT, so the two
+        # forms need different value predicates rather than one flag list.
+        # DISCRIMINATOR: a port is all digits, a password is not. `-p 9050` stays
+        # readable; `-p Xy7QpLm2Zr9TvBn4Ke1WaS6d` does not.
+        # EVERY RULE BELOW BINDS THE FLAG TO THE PROGRAM IN ONE MATCH. An earlier
+        # version used a sed ADDRESS plus a separate s command, which reads as
+        # "microsocks -P" and MEANS "any -P on any line that mentions microsocks".
+        # A sed address is scoped to the LINE, not to the command that owns the
+        # flag, so program-gating bounds WHICH LINES a rule considers and says
+        # nothing about WHICH TOKENS on them it rewrites. Measured on this host,
+        # that form destroyed real output through three separate gates:
+        #     find /var/lib/mysql -name "*.err" -print  ->  -p[REDACTED]
+        #     cp -pr /var/lib/mysql /backup             ->  -p[REDACTED]
+        #     sshpass -V && rsync -p file host:/dst     ->  the FILENAME destroyed
+        #     tar -kxf backup.tar -C /opt && which ss-local -> -k[REDACTED]
+        # A BRIDGE is what fixes it: the flag must FOLLOW the program name on the
+        # same line with no shell separator between them, so a second command on
+        # the line can no longer arm the first commands rule.
+        # THE BRIDGE MUST BE A TOKEN WALK, NOT A CHARACTER RUN. A permissive
+        # [^;&|]{0,150} bridge is greedy and POSIX takes leftmost-LONGEST, so it
+        # slides forward to the LAST occurrence of the flag on the line and /g
+        # then resumes past everything it swallowed. The secret sits INSIDE the
+        # bridge, the one region the rule is guaranteed never to rewrite:
+        #     sshpass -p SECRET ssh -p 2222 host  ->  the PORT was redacted and
+        #                                             the password shipped in clear
+        # That is the canonical sshpass invocation against a non-default port, not
+        # an edge case. Found by claude-2071644a, who applied the leftmost-longest
+        # argument below back to the bridge itself.
+        # So each bridge is a repetition over WHOLE TOKENS, and the token
+        # alternation cannot match a token that begins with the flag being bound.
+        # The walk therefore physically cannot step over the first such flag, and
+        # leftmost-longest has nowhere further to slide.
+        # Flags are split one per rule on purpose. A combined [Pu] class would
+        # match greedily to the LAST of the two and /g would resume past it, so
+        # the earlier flag would silently survive.
+        # The sshpass bridge additionally refuses -f, -e and -d, which are the
+        # three MUTUALLY EXCLUSIVE alternatives to -p (file, environment, file
+        # descriptor). A line carrying one of them has no sshpass password on it
+        # at all, so without this the walk crosses into the NEXT program and
+        # redacts its port: `sshpass -f /run/pw ssh -p 2222 host` lost the 2222.
+        # That is destruction rather than a leak, and narrowing here cannot
+        # create a leak because the excluded tokens exclude -p by definition.
+        # Residual raised by claude-2071644a, who judged it acceptable; it was
+        # three characters to close, so it is closed.
+        # THE CONTINUATION TOKEN ALSO STOPS AT `<` AND `>`. Without that, the walk
+        # eats a shell REDIRECT and leaves a dangling fragment:
+        #   -P My Pass > /var/log/ms.log 2>&1   ->   -P [REDACTED]&1
+        # No secret escapes, so this is destruction rather than a leak, but a
+        # bundle reading `[REDACTED]&1` tells an engineer nothing about where the
+        # daemon output went, and it looks like corruption. The exclusion is on the
+        # FIRST character of a continuation token only: excluding <> from the
+        # second class too would break a spaced password whose later word contains
+        # `>` (`-P My Pa>ss`), which is a real shape and is tested.
+        # Found by claude-2071644a, 2026-08-20.
+        # THE VALUE IS MULTI-TOKEN ON THE FOUR microsocks GATES AND SINGLE-TOKEN
+        # EVERYWHERE ELSE, and that asymmetry is load-bearing. A one-token value
+        # ([^[:space:]]+) leaks everything after the first SPACE in a password,
+        # and microsocks-enable takes `password: String` from clap with no charset
+        # restriction, so a space is accepted and never warned about. The four
+        # microsocks gates can swallow following NON-FLAG tokens safely because
+        # their producer always follows the secret with a flag:
+        #   microsocks.rs:192-199   -u user -P password -b 0.0.0.0 -p port
+        # sshpass does NOT get this: it is always followed by a COMMAND, so
+        # `sshpass -p SECRET ssh admin@host` would lose `ssh admin@host`.
+        # The ss/obfs family does NOT get it either, and the reason is now read
+        # rather than unknown: routing-switch starts ss-local with a CONFIG FILE
+        # (protocols/clients/shadowsocks.rs:200, CONFIG_ARG plus a path), so this
+        # product never emits `ss-local -k` at all and nothing establishes what
+        # follows the key on a hand-typed line. Found by claude-2071644a.
+        # KNOWN RESIDUAL, deliberate: a flag REPEATED on one command line is
+        # redacted only on its first occurrence, because /g resumes past the
+        # program name. Closing it needs a :label + t loop, whose termination
+        # guard would require rejecting values that begin with [ and would
+        # therefore open a new leak class. No producer here emits a duplicate
+        # flag; ss-local -k A ... -k B is a user error, not a shape we ship.
+        #
+        # mysql/mysqldump/mariadb was REMOVED outright rather than repaired:
+        # `mysql` is a directory name (/var/lib/mysql), a service name and a log
+        # path, so it is a common token by the same test, and this product has no
+        # mysql client producer at all (the only repo hit is this file).
+        # Found by claude-2071644a applying my own rule back to a rule I kept.
+        #
+        # microsocks daemon: -P is the password, -u the user, and -p is the PORT
+        # and must stay readable. microsocks.rs:192-197 is the producer.
+        s/((^|[^A-Za-z0-9_-])microsocks([[:space:]]+(-[^P;&|[:space:]][^;&|[:space:]]*|[^-;&|[:space:]][^;&|[:space:]]*|-))*[[:space:]]-P[[:space:]]+)[^[:space:]]+([[:space:]]+[^-<>;&|[:space:]][^;&|[:space:]]*)*/\1[REDACTED]/g
+        s/((^|[^A-Za-z0-9_-])microsocks([[:space:]]+(-[^u;&|[:space:]][^;&|[:space:]]*|[^-;&|[:space:]][^;&|[:space:]]*|-))*[[:space:]]-u[[:space:]]+)[^[:space:]]+([[:space:]]+[^-<>;&|[:space:]][^;&|[:space:]]*)*/\1[REDACTED]/g
+        s/((^|[^A-Za-z0-9_-])microsocks([[:space:]]+(-[^P;&|[:space:]][^;&|[:space:]]*|[^-;&|[:space:]][^;&|[:space:]]*|-))*[[:space:]]-P)[^][:space:]=-][^[:space:]]*/\1[REDACTED]/g
+        s/((^|[^A-Za-z0-9_-])microsocks([[:space:]]+(-[^u;&|[:space:]][^;&|[:space:]]*|[^-;&|[:space:]][^;&|[:space:]]*|-))*[[:space:]]-u)[^][:space:]=-][^[:space:]]*/\1[REDACTED]/g
+        # microsocks-enable, the Kodachi CLI that STARTS it, INVERTS the letters:
+        # main.rs:374-387 declares -u/--username, -p/--password and a LONG-ONLY
+        # --port, so lowercase -p is unambiguously the secret here and there is no
+        # short port flag to protect. Gated on the full name, so a daemon line
+        # (which never contains "microsocks-enable") can never reach this.
+        s/((^|[^A-Za-z0-9_-])microsocks-enable([[:space:]]+(-[^p;&|[:space:]][^;&|[:space:]]*|[^-;&|[:space:]][^;&|[:space:]]*|-))*[[:space:]]-p[[:space:]]+)[^[:space:]]+([[:space:]]+[^-<>;&|[:space:]][^;&|[:space:]]*)*/\1[REDACTED]/g
+        s/((^|[^A-Za-z0-9_-])microsocks-enable([[:space:]]+(-[^p;&|[:space:]][^;&|[:space:]]*|[^-;&|[:space:]][^;&|[:space:]]*|-))*[[:space:]]-p)[^][:space:]=-][^[:space:]]*/\1[REDACTED]/g
+        # -u/--username on the CLI too. The daemon rule above CANNOT reach this
+        # line: its bridge is a token walk that must begin at whitespace, and
+        # `microsocks` here is followed immediately by `-enable`, so the walk
+        # never starts. Under the earlier character-run bridge this line was
+        # covered by accident, which is why the pair had to be spelled out.
+        s/((^|[^A-Za-z0-9_-])microsocks-enable([[:space:]]+(-[^u;&|[:space:]][^;&|[:space:]]*|[^-;&|[:space:]][^;&|[:space:]]*|-))*[[:space:]]-u[[:space:]]+)[^[:space:]]+([[:space:]]+[^-<>;&|[:space:]][^;&|[:space:]]*)*/\1[REDACTED]/g
+        s/((^|[^A-Za-z0-9_-])microsocks-enable([[:space:]]+(-[^u;&|[:space:]][^;&|[:space:]]*|[^-;&|[:space:]][^;&|[:space:]]*|-))*[[:space:]]-u)[^][:space:]=-][^[:space:]]*/\1[REDACTED]/g
+        # shadowsocks / obfs family: -k is the key, -p is the PORT and stays.
+        s/((^|[^A-Za-z0-9_-])(ss-local|ss-redir|ss-server|ss-tunnel|obfs-local|obfs-server)([[:space:]]+(-[^k;&|[:space:]][^;&|[:space:]]*|[^-;&|[:space:]][^;&|[:space:]]*|-))*[[:space:]]-k[[:space:]]+)[^[:space:]]+/\1[REDACTED]/g
+        s/((^|[^A-Za-z0-9_-])(ss-local|ss-redir|ss-server|ss-tunnel|obfs-local|obfs-server)([[:space:]]+(-[^k;&|[:space:]][^;&|[:space:]]*|[^-;&|[:space:]][^;&|[:space:]]*|-))*[[:space:]]-k)[^][:space:]=-][^[:space:]]*/\1[REDACTED]/g
+        # sshpass -p, both spaced and attached.
+        s/((^|[^A-Za-z0-9_-])sshpass([[:space:]]+(-[^pfed;&|[:space:]][^;&|[:space:]]*|[^-;&|[:space:]][^;&|[:space:]]*|-))*[[:space:]]-p[[:space:]]+)[^[:space:]]+/\1[REDACTED]/g
+        s/((^|[^A-Za-z0-9_-])sshpass([[:space:]]+(-[^pfed;&|[:space:]][^;&|[:space:]]*|[^-;&|[:space:]][^;&|[:space:]]*|-))*[[:space:]]-p)[^][:space:]=-][^[:space:]]*/\1[REDACTED]/g
+        # The Kodachi CLI that STARTS microsocks is a SECOND member of this class
+        # and the daemon rule above cannot reach it: the trailing boundary excludes
+        # a hyphen, so `microsocks-enable` does not match `microsocks`. The two
+        # addresses are therefore disjoint, which is what makes this safe, because
+        # the flag meanings INVERT between them. Found by claude-bd5ebed0.
+        #   daemon:  microsocks        -P password   -p PORT
+        #   CLI:     microsocks-enable -p password   --port PORT  (long only)
+        # routing-switch/src/main.rs:374-387 declares -u/--username, -p/--password
+        # and a long-only --port, so lowercase -p here is unambiguously the secret
+        # and there is no short port flag to protect.
+        # audit 2026-08-19 round 4, F23. claude-2071644a measured the rules above
+        # against five argv grammars. Grammars 4 and 5 put the separator INSIDE one
+        # argv token (curl -u user:pass, smbclient -U user%pass, 7z -pSECRET, and the
+        # attached -PSECRET), so no whitespace-anchored rule can reach them.
+        #
+        # I WROTE RULES FOR ALL OF THEM AND THEN REMOVED FOUR, because a sed address is
+        # scoped to the LINE, not to the command that owns the flag. Measured against
+        # 40,565 real lines of ps auxww + journal on the dev host, a curl or a .zip
+        # ANYWHERE on a line armed the flag rule against every unrelated flag on it:
+        #     find /var -name "*.zip" -print    ->  -p[REDACTED]   (twice)
+        #     ls kodachi-debug.zip && pwd -P    ->  -P[REDACTED]
+        #     echo x > log.zip; cp -P /a /b     ->  the SOURCE PATH destroyed
+        #     curl https://x/a.zip; date -u +%Y ->  -u [REDACTED]
+        # find -print and a .zip filename are both routine in this bundle, and the
+        # collector writes its own .zip name into its own logs, so those rules would
+        # have corrupted real diagnostics on nearly every run. curl, smbclient, 7z and
+        # zip have no client-side producer in this product (the single curl case is
+        # server-side, in server-side-vps-setup-master-node-hosts/root/setup-scripts/
+        # optional/netdata_setup.sh), so they closed a grammar nothing here emits at
+        # the cost of destroying output everything here emits. Widening a rule to close
+        # a leak opens a destruction class, and when the leak has no producer the trade
+        # is strictly negative.
+        #
+        # WHAT STAYS is the ATTACHED form for the three programs that DO carry a secret
+        # on argv here, made deliberate rather than left to the accident of some other
+        # rule. Their gates are rare program names and they changed 0 of those same
+        # 40,565 lines. The negated class after the flag letter is what stops these
+        # re-matching the "-P [REDACTED]" the whitespace rules just produced.
+        #
+        # NOTE FOR THE NEXT EDITOR: this whole sed script is inside a SINGLE-QUOTED
+        # string, so an apostrophe in a comment (a possessive, a contraction) silently
+        # terminates it and everything below becomes shell. Keep comments apostrophe-free.
+        # Tor control-port credentials. The hashed form is offline-crackable
+        # and the plain form is a credential outright; torrc is collected.
+        s/((HashedControlPassword|ControlPassword)[[:space:]]+)[^[:space:]]+/\1[REDACTED]/Ig
+        # WiFi network names. The banner promises WiFi data is redacted, and a
+        # home SSID locates a user as precisely as a MAC does (wardriving
+        # databases are public). NM system-connections, wpa_supplicant.conf
+        # and iwconfig/iw output all carry them and none was redacted.
+        s/("?e?ssid"?[[:space:]]*[:=][[:space:]]*"?)[^"{},]*/\1[REDACTED-SSID]/Ig
         # Generic credential-in-URL for ANY scheme (the previous allowlist
         # missed mierus:// and any future proxy scheme). Only the userinfo
         # is redacted, preserving scheme+host so the bundle stays diagnostic
@@ -273,23 +604,149 @@ redact_secrets() {
         # a bundle with server records without exposing the full value.
         # These names do NOT overlap the full-redact rule above (no pass/key/
         # token substring), so a masked value is never re-redacted.
-        s#("?(hardware[-_]?id|hwid|machine[-_]?id|device[-_]?id|license|licence|serial([-_]?number)?|activation([-_]?code)?)"?[[:space:]]*[:=][[:space:]]*"?)([A-Za-z0-9][A-Za-z0-9+/._-]{3})[^",}[:space:]]*#\1\5[MASKED]#Ig
-        # Network identifiers are private in support bundles. MACs and IPv6
-        # are redacted everywhere; IPv4 redaction is SELECTIVE (below): a
-        # blanket rule gutted the very service logs this bundle exists for
-        # (gateways, 127.0.0.1 binds, DNS at 10.x) - see audit 2026-07-02.
+        s#("?(hardware[-_]?id|hwid|machine[-_]?id|device[-_]?id|license|licence|serial([-_]?number)?|activation([-_]?code)?)"?[[:space:]]*[:=][[:space:]]*"?)([A-Za-z0-9][A-Za-z0-9+/._-]{3})[^"{},]*#\1\5[MASKED]#Ig
+        # MAC addresses, colon form and the dash form ip/ethtool never emits
+        # but Windows-exported profiles and some firmware dumps do.
         s/([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}/[REDACTED-MAC]/Ig
-        s/([[:xdigit:]]{0,4}:){3,7}[[:xdigit:]]{0,4}(%[A-Za-z0-9_.-]+)?/[REDACTED-IPV6]/Ig
+        s/([[:xdigit:]]{2}-){5}[[:xdigit:]]{2}/[REDACTED-MAC]/Ig
     ' | awk '
-    # Selective IPv4 redaction: keep loopback/RFC1918/link-local/unspecified
-    # (privacy-safe, diagnostically essential); redact public/routable IPs.
-    # Invalid dotted quads (e.g. 4-part version numbers with octets >255)
-    # are left untouched.
+    # ---- Network identifiers -------------------------------------------
+    # Both families are SELECTIVE, for the reason recorded in the 2026-07-02
+    # audit: a blanket rule gutted the very service logs this bundle exists
+    # for. Loopback / RFC1918 / link-local / ULA are kept because Kodachi
+    # diagnostics are ABOUT them (127.0.0.1 binds, 10.x DNS, fe80:: leak
+    # checks); routable addresses are redacted.
+    #
+    # audit 2026-08-19, IPv6: the old single sed rule was
+    #   ([[:xdigit:]]{0,4}:){3,7}[[:xdigit:]]{0,4}
+    # whose {0,4} matched EMPTY groups, so any run of three colons with short
+    # fields between them was replaced. Measured casualties:
+    #   root:x:0:0:root:/root:/bin/bash  ->  root:x[REDACTED-IPV6]root:...
+    #   19000:0:99999:7:::               ->  ...:9[REDACTED-IPV6]
+    # i.e. passwd/shadow-shaped and any colon-delimited numeric record was
+    # corrupted, while ::1 and fe80:: (which are safe AND diagnostic) were
+    # thrown away. v6class() below parses the token properly instead.
+    function ishex(s,   i, c) {
+        if (length(s) > 4) return 0
+        for (i = 1; i <= length(s); i++) {
+            c = substr(s, i, 1)
+            if (index("0123456789abcdefABCDEF", c) == 0) return 0
+        }
+        return 1
+    }
+    # 0 = not an address (leave the text alone)
+    # 1 = address, privacy-safe and diagnostic (keep)
+    # 2 = address, routable (redact)
+    # netstat and ss print an IPv6 socket UNBRACKETED, as host:port. Read as a
+    # literal, "::1:9050" is a routable address and the Tor SOCKS listener,
+    # one of the most diagnostically valuable lines in the whole bundle, was
+    # replaced with a placeholder. The eight-hextet form is worse: a 5-digit
+    # port fails the 4-character hextet test, so the WHOLE token was rejected
+    # as "not an address" and a routable address survived (inspector F3).
+    #
+    # So: if the token ends in a decimal group, classify the part before it
+    # first. If that is a real address the tail was a port. If it is not, fall
+    # through and classify the token whole, which keeps 2001:db8::443 (a real
+    # address whose last hextet happens to be decimal) redacted.
+    function v6class(tok,   base, c) {
+        if (tok ~ /:[0-9]+$/) {
+            base = tok
+            sub(/:[0-9]+$/, "", base)
+            if (index(base, ":") > 0) {
+                c = v6core(base)
+                if (c != 0) return c
+            }
+        }
+        return v6core(tok)
+    }
+    function v6core(tok,   n, p, i, runs, inrun, rstart, rend, nonempty, first, low) {
+        if (index(tok, ":::") > 0) return 0
+        n = split(tok, p, ":")
+        if (n - 1 < 2) return 0
+        runs = 0; inrun = 0; rstart = 0; rend = 0; nonempty = 0; first = ""
+        for (i = 1; i <= n; i++) {
+            if (!ishex(p[i])) return 0
+            if (p[i] == "") {
+                if (!inrun) { runs++; inrun = 1; rstart = i }
+                rend = i
+            } else {
+                inrun = 0
+                nonempty++
+                if (first == "") first = p[i]
+            }
+        }
+        if (runs > 1) return 0
+        if (runs == 0) {
+            # no "::" compression, so it must be the full eight-hextet form.
+            # This is what keeps 16:04:31 (a timestamp) and 12:34:56:78 out.
+            if (n != 8) return 0
+        } else {
+            if (n > 9) return 0
+            if (nonempty > 7) return 0
+            # A "::" is TWO adjacent colons, which split() reports as one
+            # empty field in the middle and two at either end. A single
+            # stray leading/trailing colon (the passwd-line case) is not.
+            if (rstart == 1) { if (rend < 2) return 0 }
+            else if (rend == n) { if (rend - rstart < 1) return 0 }
+            else if (rstart != rend) return 0
+        }
+        if (nonempty == 0) return 1
+        low = tolower(first)
+        if (substr(tok, 1, 2) == "::") {
+            if (tok == "::1") return 1
+            if (low == "ffff") return 1
+            return 2
+        }
+        if (substr(low, 1, 3) == "fe8" || substr(low, 1, 3) == "fe9" || \
+            substr(low, 1, 3) == "fea" || substr(low, 1, 3) == "feb") return 1
+        if (substr(low, 1, 2) == "fc" || substr(low, 1, 2) == "fd") return 1
+        return 2
+    }
     {
+        # Cheap pre-filter: only lines that could hold an IPv6 literal pay for
+        # the tokeniser. A timestamp (two colons) never reaches it.
+        if ($0 ~ /::/ || $0 ~ /:[0-9A-Fa-f][0-9A-Fa-f]*:[0-9A-Fa-f][0-9A-Fa-f]*:[0-9A-Fa-f][0-9A-Fa-f]*:/) {
+            out = ""; rest = $0
+            while (match(rest, /[0-9A-Fa-f:]+(%[A-Za-z0-9_.-]+)?/)) {
+                tok   = substr(rest, RSTART, RLENGTH)
+                pre   = substr(rest, 1, RSTART - 1)
+                nxt   = substr(rest, RSTART + RLENGTH, 1)
+                rest  = substr(rest, RSTART + RLENGTH)
+                if (length(pre) > 0)      prv = substr(pre, length(pre), 1)
+                else if (length(out) > 0) prv = substr(out, length(out), 1)
+                else                      prv = ""
+                scope = ""
+                sp = index(tok, "%")
+                if (sp > 0) { scope = substr(tok, sp); tok = substr(tok, 1, sp - 1) }
+                # A C++/Rust/GLib symbol path has hex-ish text GLUED to the
+                # colons: std::bad_alloc, core::fmt::Error, standard::name,
+                # RunEvent::Exit. Two colons is enough for the classifier, so
+                # the tokeniser grabbed "d::na" out of "standard::name" and
+                # the first cut of this rule destroyed 2153 lines per 60,000
+                # of real syslog, none of them addresses (inspector F1).
+                #
+                # A real address is always delimited: space, tab, "/", "[",
+                # "]", "=", ",", quote, or the line edge. Requiring a
+                # non-alphanumeric neighbour on BOTH sides removes every one
+                # of those 2153 and costs nothing on an address.
+                if (prv ~ /[0-9A-Za-z_]/ || nxt ~ /[0-9A-Za-z_]/) {
+                    out = out pre tok scope
+                } else if (v6class(tok) == 2) {
+                    out = out pre "[REDACTED-IPV6]"
+                } else {
+                    out = out pre tok scope
+                }
+            }
+            $0 = out rest
+        }
+
+        if ($0 !~ /[0-9]\.[0-9]/) { print $0; next }
+
         out = ""; rest = $0
         while (match(rest, /[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/)) {
-            ip  = substr(rest, RSTART, RLENGTH)
-            pre = substr(rest, 1, RSTART - 1)
+            ip    = substr(rest, RSTART, RLENGTH)
+            pre   = substr(rest, 1, RSTART - 1)
+            after = substr(rest, RSTART + RLENGTH, 1)
             n = split(ip, o, ".")
             valid = (n == 4 && o[1] <= 255 && o[2] <= 255 && o[3] <= 255 && o[4] <= 255 && length(o[1]) <= 3 && length(o[2]) <= 3 && length(o[3]) <= 3 && length(o[4]) <= 3)
             priv = (o[1] == 10 || o[1] == 127 || o[1] == 0 || \
@@ -297,7 +754,46 @@ redact_secrets() {
                     (o[1] == 172 && o[2] >= 16 && o[2] <= 31) || \
                     (o[1] == 169 && o[2] == 254) || \
                     (o[1] == 255 && o[2] == 255))
-            out = out pre ((valid && !priv) ? "[REDACTED-IPV4]" : ip)
+            # audit 2026-08-19: a four-part VERSION is a valid dotted quad, so
+            # the collector was redacting the fields support reads first.
+            #   NIGHTLY_VERSION=9.8.4.183   ->  NIGHTLY_VERSION=[REDACTED-IPV4]
+            #   ii tor 0.4.8.12-1           ->  ii tor [REDACTED-IPV4]-1
+            # Three structural tells separate a version from an address: a
+            # version key introduces it, a letter runs straight into it
+            # (v9.8.4), or a Debian revision / fifth component follows it.
+            ctx  = out pre
+            tail = tolower(substr(ctx, length(ctx) - 39))
+            # audit 2026-08-19 round 2, inspector F2: the first cut of this
+            # guard had FOUR ways for a routable address to survive, and two
+            # of them are the commonest shapes in real logs.
+            #   after == "."   kept every address ending a sentence
+            #                  ("Connected to 203.0.113.5.") and every rDNS
+            #                  name ("203.0.113.5.static.example.net"),
+            #                  which sshd, mail and mtr emit constantly.
+            #   tail ~ [a-z]$  kept "v203.0.113.9".
+            #   a 40-character lookback for the keyword kept the address in
+            #                  "Version 9.8.4.183 build 203.0.113.5".
+            #   after == "-"   kept the first half of an nftables range
+            #                  "198.51.100.10-198.51.100.20".
+            # All four are gone. A privacy tool fails CLOSED: anything
+            # ambiguous is redacted, and a redacted version string is a
+            # cosmetic loss while a published address is not.
+            isver = 0
+            # (1) a version keyword IMMEDIATELY before, at most three
+            #     separator characters between it and the number. version,
+            #     release and revision are unambiguous so they may be
+            #     separated by a space; the weaker words must be glued on
+            #     with "=", ":" or a quote, which is what stops "build ".
+            if (tail ~ /(version|release|revision)[^0-9a-z]?[^0-9a-z]?[^0-9a-z]?$/) isver = 1
+            else if (tail ~ /(build|nightly|pack|kernel|firmware|uname)[=:"'"'"']$/) isver = 1
+            # (2) a Debian revision or vendor suffix follows (0.4.8.12-1,
+            #     6.12.94.1-amd64, 1.0.7.0-k), but NOT an address range,
+            #     which carries a second dotted quad after the separator.
+            if (!isver && (after == "-" || after == "+" || after == "~")) {
+                tl = substr(rest, RSTART + RLENGTH)
+                if (tl !~ /^[-+~][0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/) isver = 1
+            }
+            out = out pre ((valid && !priv && !isver) ? "[REDACTED-IPV4]" : ip)
             rest = substr(rest, RSTART + RLENGTH)
         }
         print out rest
@@ -319,7 +815,8 @@ safe_copy_redacted() {
     fi
     mkdir -p "$(dirname "$dest")" 2>/dev/null || true
 
-    local fsz
+    local fsz _pd=0
+    [[ -f "$dest" ]] && _pd=$(stat -c%s "$dest" 2>/dev/null || echo 0)
     fsz=$(stat -c%s "$src" 2>/dev/null || echo 0)
     if [[ $fsz -gt $max_size ]]; then
         tail -c 50M "$src" 2>/dev/null | redact_secrets > "$dest" 2>/dev/null || true
@@ -328,6 +825,7 @@ safe_copy_redacted() {
         redact_secrets < "$src" > "$dest" 2>/dev/null \
             || echo "Failed to copy (redacted): $src" > "${dest}.error"
     fi
+    should_mark "$dest" "$_pd" && mark_redacted "$dest"
 }
 
 # Run a command as the real (non-root) user with full graphical-session env so
@@ -342,7 +840,9 @@ safe_exec_user() {
     local output_file="$1"
     shift
     local cmd="$*"
-    local output rc
+    local output rc pre=0
+
+    [[ -f "$output_file" ]] && pre=$(stat -c%s "$output_file" 2>/dev/null || echo 0)
 
     if [[ -z "$REAL_UID" ]]; then
         echo "[SKIP] real user UID unknown for: $cmd" >> "$output_file"
@@ -377,6 +877,7 @@ safe_exec_user() {
     else
         echo "$output" >> "$output_file"
     fi
+    should_mark "$output_file" "$pre" && mark_redacted "$output_file"
 }
 
 # Copy a file owned by REAL_USER (e.g., ~/.xsession-errors). Falls back to
@@ -395,6 +896,9 @@ safe_copy_user() {
         return
     fi
 
+    local _pu=0
+    [[ -f "${dest}/$(basename "$src")" ]] && _pu=$(stat -c%s "${dest}/$(basename "$src")" 2>/dev/null || echo 0)
+
     if [[ "$(id -u)" == "0" ]]; then
         # Use sudo cat to preserve permissions / handle non-root home dirs, then redact.
         sudo -u "$REAL_USER" cat "$src" 2>/dev/null | redact_secrets > "${dest}/$(basename "$src")" 2>/dev/null \
@@ -403,6 +907,7 @@ safe_copy_user() {
         redact_secrets < "$src" > "${dest}/$(basename "$src")" 2>/dev/null \
             || echo "Failed to copy: $src" > "${dest}/$(basename "$src").error"
     fi
+    should_mark "${dest}/$(basename "$src")" "$_pu" && mark_redacted "${dest}/$(basename "$src")"
 }
 
 # Like safe_copy_user, but pipes the content through redact_secrets.
@@ -422,6 +927,9 @@ safe_copy_user_redacted() {
         return
     fi
 
+    local _pu=0
+    [[ -f "${dest}/$(basename "$src")" ]] && _pu=$(stat -c%s "${dest}/$(basename "$src")" 2>/dev/null || echo 0)
+
     if [[ "$(id -u)" == "0" ]]; then
         sudo -u "$REAL_USER" cat "$src" 2>/dev/null | redact_secrets \
             > "${dest}/$(basename "$src")" 2>/dev/null \
@@ -430,6 +938,7 @@ safe_copy_user_redacted() {
         redact_secrets < "$src" > "${dest}/$(basename "$src")" 2>/dev/null \
             || echo "Failed to copy: $src" > "${dest}/$(basename "$src").error"
     fi
+    should_mark "${dest}/$(basename "$src")" "$_pu" && mark_redacted "${dest}/$(basename "$src")"
 }
 
 # ---- Interactive category selection menu ----
@@ -438,7 +947,7 @@ show_menu() {
     clear 2>/dev/null || true
     echo -e "${GREEN}"
     echo "╔═══════════════════════════════════════════════════════════╗"
-    echo "║         KODACHI OS DEBUG COLLECTOR v1.5                  ║"
+    echo "║         KODACHI OS DEBUG COLLECTOR v1.6                  ║"
     echo "╚═══════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
     echo ""
@@ -500,10 +1009,17 @@ interactive_select() {
 show_banner() {
     echo -e "${GREEN}"
     echo "╔═══════════════════════════════════════════════════════════╗"
-    echo "║         KODACHI OS DEBUG COLLECTOR v1.5                  ║"
+    echo "║         KODACHI OS DEBUG COLLECTOR v1.6                  ║"
     echo "║    Comprehensive System Diagnostics Tool                 ║"
     echo "╚═══════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
+    echo "v1.6 (audit 2026-08-19): redaction hardened AND made non-destructive."
+    echo "Now redacted: passphrases containing spaces, Authorization/Cookie"
+    echo "headers, WiFi SSIDs, Tor HashedControlPassword, dash-form MACs."
+    echo "No longer destroyed: version strings, dpkg rows, /etc/passwd lines,"
+    echo "log timestamps, loopback/link-local/ULA IPv6. Large command output"
+    echo "streams to disk and is redacted once instead of two or three times."
+    echo ""
     echo "v1.5 (audit 2026-05-08): autostart Phase= summary table, dbus alias"
     echo "state, masked-services list, install-method detect (Calamares vs"
     echo "debian-installer), live xfce4-session pid strace/wchan, /etc/X11/"
@@ -887,7 +1403,11 @@ echo ""
 
 # Tor mode
 echo "Tor Status:"
-if systemctl is-active tor 2>/dev/null | grep -q "active"; then
+# tor@default.service, NOT tor.service: the plain unit is a Type=oneshot /bin/true
+# master that reports "active" with no Tor daemon running, so this test used to say
+# RUNNING on a box with no Tor at all , in a DEBUG COLLECTOR, whose whole job is to
+# tell the truth about a broken system.
+if systemctl is-active tor@default.service 2>/dev/null | grep -q "active"; then
     echo "  Tor service: RUNNING"
     # Check if system is fully torrified
     TOR_SOCKS=$(ss -tulnp 2>/dev/null | grep ":9050 " || true)
@@ -926,6 +1446,13 @@ WG_STATUS=$(wg show 2>/dev/null || true)
 if [[ -n "$WG_STATUS" ]]; then
     echo "  WireGuard:"
     echo "$WG_STATUS" | sed 's/^/    /'
+fi
+# AmneziaWG uses its own tool over a different netlink family, so `wg show`
+# reports nothing for an awg0 tunnel and the bundle would look VPN-less.
+AWG_STATUS=$(awg show 2>/dev/null || true)
+if [[ -n "$AWG_STATUS" ]]; then
+    echo "  AmneziaWG:"
+    echo "$AWG_STATUS" | sed 's/^/    /'
 fi
 echo ""
 
@@ -1006,7 +1533,8 @@ echo "  LUKS Encryption:    ${LUKS_ACTIVE}"
 echo "  Nuke Password:      ${NUKE_STATUS}"
 echo "  Root Filesystem:    ${ROOT_FS} (${ROOT_SOURCE})"
 echo "  Boot Mode:          $(if [[ -d /sys/firmware/efi ]]; then echo 'UEFI'; else echo 'Legacy BIOS'; fi)"
-echo "  Tor Running:        $(systemctl is-active tor 2>/dev/null || echo 'unknown')"
+# tor@default.service is the real daemon; tor.service is the /bin/true master.
+echo "  Tor Running:        $(systemctl is-active tor@default.service 2>/dev/null || echo 'unknown')"
 VPN_LABEL="NO"; [[ -n "${VPN_IFACES:-}" ]] && VPN_LABEL="YES"
 echo "  VPN Active:         ${VPN_LABEL}"
 echo "  DNSCrypt:           $(if pgrep -x dnscrypt-proxy &>/dev/null; then echo 'RUNNING'; else echo 'NOT RUNNING'; fi)"
@@ -1144,11 +1672,21 @@ safe_exec "$COLLECTION_DIR/01-system-boot/ordering-cycles.txt" \
 safe_copy "/var/log/syslog" "$COLLECTION_DIR/01-system-boot"
 safe_copy "/var/log/kern.log" "$COLLECTION_DIR/01-system-boot"
 safe_copy "/var/log/boot.log" "$COLLECTION_DIR/01-system-boot"
-# Copy auth.log but redact password/credential lines
+# auth.log. audit 2026-08-19: this was the LARGEST file in a real bundle
+# (32.5 MB on the measurement VM) and the only large capture that bypassed
+# redact_secrets completely. A four-key sed ran in its place, matching only
+# password=/credential=/secret=/token= in the `key=value` form, so an
+# `Authorization:` header, a `passphrase: <value>` echo, an SSID or a public
+# IP address in an sshd line reached the file verbatim. The final sweep
+# rescued it, so nothing leaked into the zip, but the file sat unredacted on
+# disk in the interim and was then rewritten a second time, which is two
+# full passes over the biggest file in the bundle.
+#
+# safe_copy_redacted applies the whole ruleset on the FIRST write, records
+# the result in the redaction manifest so the sweep does not repeat the
+# work, and gives auth.log the same size cap as every other copied log.
 if [[ -f "/var/log/auth.log" ]]; then
-    sed -E 's/(password|credential|secret|token)=[^ ]*/\1=[REDACTED]/gi' \
-        /var/log/auth.log > "$COLLECTION_DIR/01-system-boot/auth.log" 2>/dev/null || \
-        echo "Failed to copy auth.log" > "$COLLECTION_DIR/01-system-boot/auth.log.error"
+    safe_copy_redacted "/var/log/auth.log" "$COLLECTION_DIR/01-system-boot"
 fi
 safe_copy "/var/log/daemon.log" "$COLLECTION_DIR/01-system-boot"
 
@@ -1242,6 +1780,19 @@ safe_exec "$COLLECTION_DIR/03-network/resolv.conf.txt" "cat /etc/resolv.conf"
 safe_exec "$COLLECTION_DIR/03-network/iptables-filter.txt" "iptables -L -v -n"
 safe_exec "$COLLECTION_DIR/03-network/iptables-nat.txt" "iptables -t nat -L -v -n"
 safe_exec "$COLLECTION_DIR/03-network/nftables.txt" "nft list ruleset"
+# PERSISTED ruleset, not the live one. `nft list ruleset` shows what is loaded
+# NOW; this file is what gets reloaded at every boot. They diverge in exactly the
+# case that matters: torrify-system persists its fail-closed ruleset here on
+# purpose, and on releases whose tor-switch has no `boot-restore-torrified` verb
+# nothing restarts the Tor pool those rules point at, so the machine boots with
+# all traffic redirected to ports with no listener. `health-control
+# recover-internet` clears the LIVE ruleset and never rewrites this file, so the
+# black hole returns on the next boot and a live-only capture cannot see why.
+# Field case 2026-08-19 (dedicated-server user, release binaries): diagnosed from
+# source because the bundle carried no copy of this file.
+safe_copy "/etc/nftables.conf" "$COLLECTION_DIR/03-network"
+safe_copy "/etc/nftables.conf.kodachi-baseline" "$COLLECTION_DIR/03-network"
+safe_exec "$COLLECTION_DIR/03-network/nftables-boot-units.txt" "systemctl status nftables kodachi-firewall-restore kodachi-tor-pool-boot --no-pager -l"
 safe_exec "$COLLECTION_DIR/03-network/listening-ports.txt" "ss -tulnp"
 safe_exec "$COLLECTION_DIR/03-network/socket-stats.txt" "ss -s"
 
@@ -1263,8 +1814,14 @@ fi
 
 # WireGuard status (redact private/preshared keys)
 if command -v wg &> /dev/null; then
-    wg show all 2>/dev/null | sed -E 's/(private key|preshared key): .*/\1: [REDACTED]/g' \
+    wg show all 2>/dev/null | sed -E 's/(private key|preshared key): .*/\1: [REDACTED]/g' | redact_secrets \
         > "$COLLECTION_DIR/03-network/wireguard-show.txt" 2>/dev/null || true
+fi
+
+# AmneziaWG status, same redaction. Separate tool, separate netlink family.
+if command -v awg &> /dev/null; then
+    awg show all 2>/dev/null | sed -E 's/(private key|preshared key): .*/\1: [REDACTED]/g' | redact_secrets \
+        > "$COLLECTION_DIR/03-network/amneziawg-show.txt" 2>/dev/null || true
 fi
 
 # NetworkManager dispatcher scripts (list only, don't copy contents)
@@ -1347,6 +1904,69 @@ if [[ -f "/etc/tor/torrc" ]]; then
         echo "Could not read torrc" > "$COLLECTION_DIR/04-tor/torrc.txt"
 fi
 
+# ---------------------------------------------------------------------------
+# tor-switch INSTANCE POOL (added 2026-08-16 after user "mattrim"'s bundle)
+#
+# The bundle above could not answer "why did the pool exit 1". Everything the
+# collector gathered described tor@default and /etc/tor/torrc, while the six
+# failing instances live under /etc/tor/kodachi_tor_data/<tag>/ and log through
+# a path nothing here captured. The tor-switch log that DOES name the reason
+# rotates in roughly three hours under dashboard polling, so it was already
+# gone. Collect the instance state directly instead of hoping for the log.
+# ---------------------------------------------------------------------------
+if [[ -d /etc/tor/kodachi_tor_data ]]; then
+    mkdir -p "$COLLECTION_DIR/04-tor/instances"
+
+    # Permissions and ownership: Tor refuses any DataDirectory where
+    # mode & 0077 != 0 ("needs to be chmod 0700") and exits 1. Without this
+    # listing that failure mode is undiagnosable from a bundle.
+    safe_exec "$COLLECTION_DIR/04-tor/instances/dir-permissions.txt" \
+        "stat -c '%a %U:%G %n' /etc/tor/kodachi_tor_data /etc/tor/kodachi_tor_data/*/ 2>/dev/null"
+
+    # Same question for the main daemon's data dir, which is the other
+    # documented exit-1 cause ("/var/lib/tor is not owned by this user").
+    safe_exec "$COLLECTION_DIR/04-tor/instances/main-datadir-permissions.txt" \
+        "stat -c '%a %U:%G %n' /var/lib/tor /var/log/tor /run/tor 2>/dev/null"
+
+    # What systemd-tmpfiles would do to that tree on the next boot. A recursive
+    # rule here can re-break every instance after a reboot.
+    safe_exec "$COLLECTION_DIR/04-tor/instances/tmpfiles-dryrun.txt" \
+        "systemd-tmpfiles --create --dry-run /etc/tmpfiles.d/kodachi-tor.conf 2>&1"
+
+    # Per-instance torrc + torrc.custom, redacted like the main torrc above.
+    for _inst_dir in /etc/tor/kodachi_tor_data/*/; do
+        [[ -d "$_inst_dir" ]] || continue
+        _inst_tag="$(basename "$_inst_dir")"
+        for _cfg in torrc torrc.custom; do
+            [[ -f "$_inst_dir/$_cfg" ]] || continue
+            grep -v -E "(Bridge |ServerTransport|Cookie|Password|HiddenService|ClientOnionAuth)" \
+                "$_inst_dir/$_cfg" 2>/dev/null \
+                | sed -E 's/(HashedControlPassword ).*/\1[REDACTED]/g' \
+                > "$COLLECTION_DIR/04-tor/instances/${_inst_tag}.${_cfg}.txt" 2>/dev/null || true
+        done
+        # Directory listing only: never copy keys/ or the control auth cookie.
+        ls -la "$_inst_dir" \
+            > "$COLLECTION_DIR/04-tor/instances/${_inst_tag}.listing.txt" 2>&1 || true
+    done
+
+    # Which instance ports are actually bound right now. "Configured but no
+    # listener" is the signature of a pool that never came up.
+    safe_exec "$COLLECTION_DIR/04-tor/instances/listening-ports.txt" \
+        "ss -ltnp 2>/dev/null | grep -E ':(90[0-9][0-9]|1[0-9]{4})' || echo 'no tor instance ports listening'"
+
+    # Live tor processes with their -f torrc path, which names the instance.
+    safe_exec "$COLLECTION_DIR/04-tor/instances/processes.txt" \
+        "ps -eo pid,user,etime,args | grep -E '[t]or ' || echo 'no tor processes'"
+fi
+
+# AppArmor / audit denials. auditd is enabled on Kodachi, so kernel MAC denials
+# land in /var/log/audit/audit.log and NEVER in the journal. A bundle that only
+# carries journalctl shows 0 denials even when a profile is actively blocking.
+safe_exec "$COLLECTION_DIR/04-tor/apparmor-denials.txt" \
+    "{ ausearch -m AVC,USER_AVC -ts today 2>/dev/null || grep -h 'apparmor=\"DENIED\"' /var/log/audit/audit.log 2>/dev/null | tail -200 || echo 'no audit log readable'; }"
+safe_exec "$COLLECTION_DIR/04-tor/apparmor-tor-profile.txt" \
+    "{ aa-status 2>/dev/null | grep -i tor; echo '--- profile mode ---'; systemctl show tor@default -p AppArmorProfile --no-pager 2>/dev/null; }"
+
 fi # end CATEGORY 4
 
 # ============================================================================
@@ -1362,8 +1982,15 @@ safe_exec "$COLLECTION_DIR/05-vpn/openvpn-service-status.txt" "systemctl status 
 # WireGuard service and interface status
 safe_exec "$COLLECTION_DIR/05-vpn/wireguard-service-status.txt" "systemctl status wg-quick* --no-pager 2>/dev/null || echo 'no wg-quick service'"
 if command -v wg &> /dev/null; then
-    wg show all 2>/dev/null | sed -E 's/(private key|preshared key): .*/\1: [REDACTED]/g' \
+    wg show all 2>/dev/null | sed -E 's/(private key|preshared key): .*/\1: [REDACTED]/g' | redact_secrets \
         > "$COLLECTION_DIR/05-vpn/wireguard-detail.txt" 2>/dev/null || true
+fi
+
+# AmneziaWG service and interface status.
+safe_exec "$COLLECTION_DIR/05-vpn/amneziawg-service-status.txt" "systemctl status awg-quick* --no-pager 2>/dev/null || echo 'no awg-quick service'"
+if command -v awg &> /dev/null; then
+    awg show all 2>/dev/null | sed -E 's/(private key|preshared key): .*/\1: [REDACTED]/g' | redact_secrets \
+        > "$COLLECTION_DIR/05-vpn/amneziawg-detail.txt" 2>/dev/null || true
 fi
 
 # Proxy tunnel processes (tun2socks, xray, hysteria, shadowsocks)
@@ -1569,7 +2196,7 @@ for hooks_pattern in "/opt/kodachi/dashboard/hooks" "${REAL_HOME}/dashboard/hook
     done
 done
 
-# Tauri dashboard app-side logs/state (~/.local/share, ~/.config): the GUI
+# Native dashboard app-side logs/state (~/.local/share, ~/.config): the GUI
 # shell writes WebKit/renderer diagnostics outside hooks/logs.
 mkdir -p "$COLLECTION_DIR/06-kodachi/dashboard-app"
 for dapp_dir in "$REAL_HOME/.local/share/kodachi-dashboard" "$REAL_HOME/.local/share/cloud.kodachi.dashboard" "$REAL_HOME/.config/kodachi-dashboard"; do
@@ -1844,6 +2471,12 @@ if sudo -u "$REAL_USER" test -d "$REAL_HOME/.config/xfce4" 2>/dev/null; then
         rel="${f#${REAL_HOME}/.config/xfce4/}"
         target="$COLLECTION_DIR/08-display-desktop/xfce-config/files/$rel"
         mkdir -p "$(dirname "$target")"
+        # shellcheck disable=SC2024
+        # SC2024 warns that sudo does not affect the redirect. That is exactly
+        # what is wanted here and is not a defect: the READ must drop to the
+        # desktop user so a root-only file is never pulled in, while the WRITE
+        # goes to the staging tree, which only root can write. Swapping to
+        # "| sudo tee" as the check suggests would invert both halves.
         sudo -u "$REAL_USER" cat "$f" > "$target" 2>/dev/null || true
     done
 fi
@@ -2111,9 +2744,22 @@ if [[ -n "$XFCE_PIDS" ]]; then
         ppath="$COLLECTION_DIR/08-display-desktop/user-session/xfce4-session-pid-inspect/pid-${pid}"
         mkdir -p "$ppath"
         # /proc snapshots, read once, no syscall trace
+        # audit 2026-08-19, F22. `cmdline` and `environ` are NUL-SEPARATED, not
+        # newline-separated, so a raw `cat` writes one enormous unbroken line.
+        # Two consequences, and the second is the one that matters: the file is
+        # unreadable, AND every redaction rule in this script is line-oriented
+        # and space-anchored, so neither the write-time filter nor the final
+        # sweep can see a `KEY=VALUE` pair or an argv flag inside it. The
+        # shipped bundle carried the whole XFCE session environment verbatim
+        # with zero redaction markers. Translating the separator first makes
+        # both files readable and, more importantly, redactable.
         for f in status stat wchan stack syscall io comm cmdline environ limits; do
             if [[ -r "/proc/$pid/$f" ]]; then
-                cat "/proc/$pid/$f" 2>/dev/null > "$ppath/$f.txt" || true
+                case "$f" in
+                    cmdline) tr '\0' ' '  < "/proc/$pid/$f" 2>/dev/null | redact_secrets > "$ppath/$f.txt" || true ;;
+                    environ) tr '\0' '\n' < "/proc/$pid/$f" 2>/dev/null | redact_secrets > "$ppath/$f.txt" || true ;;
+                    *)       cat "/proc/$pid/$f" 2>/dev/null > "$ppath/$f.txt" || true ;;
+                esac
             fi
         done
         # File descriptors, see what's open (sockets, files, pipes).
@@ -2126,11 +2772,10 @@ if [[ -n "$XFCE_PIDS" ]]; then
         # alive for under 300 s (so we ONLY capture stalls during the post-login
         # window, never disturb a long-running healthy desktop).
         if command -v strace >/dev/null 2>&1; then
-            session_age=$(awk -v pid="$pid" -v now="$(date +%s)" '
-                BEGIN { uptime = -1 }
-                /^btime/ { btime = $2 }
-                END { print btime }
-            ' /proc/stat)
+            # The session_age assignment that used to sit here computed
+            # /proc/stat btime and was never read (shellcheck SC2034); the
+            # age arithmetic below uses /proc/uptime and the process start
+            # jiffies instead, which is what the 300 s window actually tests.
             start_jiffies=$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null)
             hertz=$(getconf CLK_TCK 2>/dev/null || echo 100)
             uptime=$(awk '{print int($1)}' /proc/uptime 2>/dev/null)
@@ -2157,8 +2802,14 @@ for pname in lightdm startxfce4 ssh-agent; do
     for pid in $pids; do
         ppath="$COLLECTION_DIR/08-display-desktop/user-session/${pname}-pid-${pid}"
         mkdir -p "$ppath"
+        # F22, same NUL-separator problem as the xfce4-session capture above.
         for f in status stat wchan stack syscall comm cmdline; do
-            [[ -r "/proc/$pid/$f" ]] && cat "/proc/$pid/$f" 2>/dev/null > "$ppath/$f.txt" || true
+            [[ -r "/proc/$pid/$f" ]] || continue
+            if [[ "$f" == "cmdline" ]]; then
+                tr '\0' ' ' < "/proc/$pid/$f" 2>/dev/null | redact_secrets > "$ppath/$f.txt" || true
+            else
+                cat "/proc/$pid/$f" 2>/dev/null > "$ppath/$f.txt" || true
+            fi
         done
         ls -la "/proc/$pid/fd/" 2>/dev/null > "$ppath/fd-listing.txt" || true
     done
@@ -2214,7 +2865,7 @@ safe_exec "$COLLECTION_DIR/10-security-permissions/getenforce.txt" "getenforce"
 safe_exec "$COLLECTION_DIR/10-security-permissions/aa-status.txt" "aa-status"
 
 # Kernel hardening sysctl values (critical for security scoring debug)
-safe_exec "$COLLECTION_DIR/10-security-permissions/sysctl-kernel.txt" "sysctl kernel.kptr_restrict kernel.dmesg_restrict kernel.unprivileged_bpf_disabled kernel.yama.ptrace_scope kernel.randomize_va_space kernel.kexec_load_disabled kernel.sysrq kernel.perf_event_paranoid fs.protected_symlinks fs.protected_hardlinks net.ipv4.tcp_syncookies net.ipv4.ip_forward net.ipv6.conf.all.disable_ipv6 2>/dev/null"
+safe_exec "$COLLECTION_DIR/10-security-permissions/sysctl-kernel.txt" "sysctl kernel.kptr_restrict kernel.dmesg_restrict kernel.unprivileged_bpf_disabled kernel.yama.ptrace_scope kernel.randomize_va_space kernel.kexec_load_disabled kernel.sysrq kernel.perf_event_paranoid net.core.bpf_jit_harden fs.protected_symlinks fs.protected_hardlinks net.ipv4.tcp_syncookies net.ipv4.ip_forward net.ipv6.conf.all.disable_ipv6 2>/dev/null"
 
 # sysctl.d drop-in configs
 if [[ -d "/etc/sysctl.d" ]]; then
@@ -2369,17 +3020,92 @@ mkdir -p "$COLLECTION_DIR/00-metadata"
 # redactor immediately before archiving so no raw IP/MAC/secret can bypass
 # individual safe_copy/safe_exec call sites.
 final_redaction_sweep() {
-    local file tmp
+    local file tmp sz swept=0 skipped=0 nontext=0 empty=0 total=0
+    declare -A ALREADY=()
+    if [[ -f "$REDACTED_MANIFEST" ]]; then
+        while IFS=$'\t' read -r sz file; do
+            [[ -n "$file" ]] && ALREADY["$file"]="$sz"
+        done < "$REDACTED_MANIFEST"
+    fi
+
     while IFS= read -r -d '' file; do
         [[ -f "$file" ]] || continue
-        if LC_ALL=C grep -Iq . "$file" 2>/dev/null; then
-            tmp="${file}.redact.$$"
-            if redact_secrets < "$file" > "$tmp" 2>/dev/null; then
-                cat "$tmp" > "$file" 2>/dev/null || true
-            fi
-            rm -f "$tmp" 2>/dev/null || true
+
+        # CLASSIFY BY FILE PROPERTY FIRST, BEFORE THE MANIFEST SHORT-CIRCUIT.
+        # `grep -Iq .` is false for a BINARY file and equally false for an
+        # EMPTY one, so both classes fall past the sweep and would otherwise
+        # vanish from the arithmetic entirely. A report that says "every file"
+        # while its own gate skipped hundreds is an overstated claim, and this
+        # script exists to be trusted about exactly that.
+        #
+        # THE ORDERING MATTERS AND I GOT IT WRONG ONCE. With the manifest
+        # `continue` placed above this block, these two counters only saw files
+        # that were NOT in the manifest, so a real bundle reported "not text: 1"
+        # and then NAMED 255 non-text files in the next paragraph. Independently
+        # re-derived over that bundle: 25 empty, 260 non-text, 861 text.
+        # Classifying first makes the four populations mutually exclusive and
+        # exhaustive, so the printed total can be checked against a plain
+        # `find "$COLLECTION_DIR" -type f | wc -l`. There is no behavioural
+        # change: a binary or empty file is never swept under either ordering.
+        # Measured 2026-08-19.
+        if [[ ! -s "$file" ]]; then
+            empty=$((empty + 1))
+            continue
         fi
+        if ! LC_ALL=C grep -Iq . "$file" 2>/dev/null; then
+            nontext=$((nontext + 1))
+            continue
+        fi
+
+        # Text and non-empty from here down.
+        #
+        # Redacted at write time AND untouched since: a second pass over it
+        # cannot change a byte, and these are the largest files in the bundle.
+        # Fail-closed: if the size moved, something was appended raw
+        # afterwards, and the file is swept normally.
+        if [[ -n "${ALREADY[$file]:-}" ]]; then
+            sz=$(stat -c%s "$file" 2>/dev/null || echo -1)
+            if [[ "$sz" == "${ALREADY[$file]}" ]]; then
+                skipped=$((skipped + 1))
+                continue
+            fi
+        fi
+
+        tmp="${file}.redact.$$"
+        if redact_secrets < "$file" > "$tmp" 2>/dev/null; then
+            cat "$tmp" > "$file" 2>/dev/null || true
+        fi
+        rm -f "$tmp" 2>/dev/null || true
+        swept=$((swept + 1))
     done < <(find "$COLLECTION_DIR" -type f -print0 2>/dev/null)
+
+    total=$((skipped + swept + nontext + empty))
+    {
+        echo "Final redaction sweep"
+        echo "  text, redacted at write time and unchanged:     $skipped"
+        echo "  text, swept by the final pass:                  $swept"
+        echo "  empty, nothing to redact:                       $empty"
+        echo "  not text, never passed through the redactor:    $nontext"
+        echo "  ------------------------------------------------------"
+        echo "  files examined:                                 $total"
+        echo ""
+        echo "EVERY TEXT FILE in this bundle passed through redact_secrets at"
+        echo "least once. A skipped file is one whose size is byte-identical to"
+        echo "the size recorded immediately after it was redacted."
+        echo ""
+        echo "The non-text files above were NOT redacted, because the redactor"
+        echo "is line-based and would corrupt them. They are signature blobs,"
+        echo "PNG flag icons, lock files and the like. If you are reviewing this"
+        echo "bundle before sharing it, they are the files no automatic pass has"
+        echo "read:"
+        if (( nontext )); then
+            while IFS= read -r -d '' file; do
+                [[ -s "$file" ]] || continue
+                LC_ALL=C grep -Iq . "$file" 2>/dev/null && continue
+                echo "    ${file#"$COLLECTION_DIR"/}"
+            done < <(find "$COLLECTION_DIR" -type f -print0 2>/dev/null) | sort
+        fi
+    } > "$COLLECTION_DIR/00-metadata/redaction-sweep.txt" 2>/dev/null || true
 }
 
 final_redaction_sweep
@@ -2426,9 +3152,19 @@ if [[ -f "$ZIP_FILE" ]]; then
     echo -e "${YELLOW}--- Quick System Info ---${NC}"
     # We already cleaned up COLLECTION_DIR, so re-read from the zip isn't practical.
     # Instead, re-detect the key values quickly:
+    # /etc/kodachi-version is a multi-line ASCII BANNER, so cat-ing it here
+    # printed the whole banner inside a one-line summary box. The metadata
+    # section at the top of this script already parses the scalar correctly
+    # (grep -oP 'Version:'); this copy did not, and the two disagreed.
     _ver="unknown"
-    if [[ -f "/etc/kodachi-version" ]]; then _ver=$(cat /etc/kodachi-version 2>/dev/null || echo "unknown"); fi
-    if [[ -f "/etc/kodachi_version" ]]; then _ver=$(cat /etc/kodachi_version 2>/dev/null || echo "unknown"); fi
+    for _vf in /etc/kodachi-version /etc/kodachi_version; do
+        [[ -f "$_vf" ]] || continue
+        _vl=$(grep -oP '^\s*Version:\s*\K[0-9][0-9A-Za-z.+-]*' "$_vf" 2>/dev/null | head -1)
+        if [[ -z "$_vl" ]]; then
+            _vl=$(grep -oE '[0-9]+\.[0-9]+[0-9A-Za-z.+-]*' "$_vf" 2>/dev/null | head -1)
+        fi
+        [[ -n "$_vl" ]] && _ver="$_vl"
+    done
     if [[ "$_ver" == "unknown" ]]; then
         for _bm in /opt/*/dashboard/hooks/config/build-meta.json; do
             if [[ -f "$_bm" ]]; then
@@ -2454,7 +3190,8 @@ if [[ -f "$ZIP_FILE" ]]; then
     echo -e "  System:      ${BLUE}${_type}${NC}"
     echo -e "  LUKS:        ${BLUE}${_luks}${NC}"
     echo -e "  Nuke:        ${BLUE}${_nuke}${NC}"
-    echo -e "  Tor:         ${BLUE}$(systemctl is-active tor 2>/dev/null || echo 'unknown')${NC}"
+    # tor@default.service is the real daemon; tor.service is the /bin/true master.
+    echo -e "  Tor:         ${BLUE}$(systemctl is-active tor@default.service 2>/dev/null || echo 'unknown')${NC}"
     echo ""
 fi
 

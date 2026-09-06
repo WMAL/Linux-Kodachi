@@ -56,7 +56,8 @@
 #   --minimal                    Install critical packages, networking, and proxy tools
 #   --full                       Install all packages including optional ones (default)
 #   --interactive                Interactive category-based installation with prompts
-#   --proxy-only                 Install only proxy tools (v2ray, xray, hysteria2, mieru)
+#   --proxy-only                 Install only proxy tools (v2ray, xray, hysteria2, mieru,
+#                                ck-client, amneziawg-tools)
 #   --auto                       Automatic mode - answer yes to all prompts (default)
 #   --no-auto                    Disable automatic mode - require user confirmation
 #   --forcegui, --force-gui      Force installation of GUI packages on terminal-based systems
@@ -71,6 +72,30 @@
 
 # Strict mode - will be disabled for interactive mode
 set -eo pipefail
+
+# shellcheck disable=SC2155
+# SC2155 ("declare and assign separately to avoid masking return values") is
+# DELIBERATELY not applied in this file, and the reason is `set -e` two lines up.
+#
+# The 2026-09-03 audit counted 47 of these across the two public installers (L08) and
+# correctly called it maintainability evidence rather than proof of 47 runtime
+# failures. Splitting them is not a no-op here: `local x=$(cmd)` currently takes its
+# exit status from `local`, which always succeeds, so under `set -eo pipefail` the
+# split version ABORTS THE INSTALLER wherever the command legitimately returns
+# non-zero. Two measured examples out of the 46 in this file:
+#
+#   local ufw_status=$(ufw status 2>/dev/null | grep -i "^Status:" | awk ...)
+#     the very next line is `if [[ "$ufw_status" == "active" ]]`, so EMPTY is the
+#     normal "ufw absent or inactive" path. Split, every machine without ufw aborts.
+#
+#   local other_packages=$(dpkg -l | grep -i "^ii" | grep -E "(kicksecure|whonix)" | wc -l)
+#     the pipeline ENDS in `wc -l`, which always succeeds, so there is no status to
+#     mask at all and the warning is a false positive for its own stated purpose.
+#
+# So the correct repair is per-site judgement, not a mechanical sweep, and a mechanical
+# sweep of a script every user runs as root to install Kodachi would trade a lint count
+# for real installation failures. Anyone revisiting this: fix a site only when an empty
+# result is a BUG rather than the documented "not present" answer.
 umask 022
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
 
@@ -133,7 +158,10 @@ resolve_kodachi_public_version() {
         fi
     fi
 
-    echo "9.0.1"
+    # No hardcoded fallback. This value is PRINTED TO THE USER as the release line,
+    # so a stale literal is a wrong statement rather than a harmless default. An empty
+    # string is handled by the caller, which simply omits the line.
+    echo ""
 }
 
 KODACHI_PUBLIC_VERSION="$(resolve_kodachi_public_version)"
@@ -581,12 +609,48 @@ run_dns_switch_command() {
 
     [[ -n "$dns_switch_binary" ]] || return 1
 
+    # BOUND THE CALL. This runs from the kodachi-hooks-core postinst, where
+    # systemd-resolved is often still starting, so dns-switch probes resolvers
+    # that cannot answer yet and logs "none of the test domains resolved via
+    # resolvectl". Measured 2026-07-30 on a fresh Debian 13 apt install: the
+    # unbounded call sat for ~4 minutes and was the single largest contributor
+    # to install wall-clock. There was no timeout at all before this.
+    #
+    # A failure here is NOT fatal: every caller falls back to apply_fallback_dns
+    # (or the built-in list), and AutoShield/boot re-applies encrypted DNS later.
+    # So capping it trades a slow best-effort attempt for a fast one, and the
+    # timeout is only reached when DNS is not yet answering anyway.
+    #
+    # PROVENANCE, 2026-09-04: this block existed ONLY in the GENERATED
+    # kodachi-system-setup.sh and never in this file, i.e. somebody hand-edited the
+    # generated library, which its own header forbids. `dns_switch_timeout` was
+    # present 2x there and 0x here. The next person to follow that header's own
+    # instruction and re-run installers/extract-system-setup.py would have silently
+    # DELETED this hardening. Moving it to the real source is what makes the
+    # generator's "parity by construction" claim true again.
+    local dns_switch_timeout="${KODACHI_DNS_SWITCH_TIMEOUT:-45}"
+    local timeout_bin=""
+    command -v timeout >/dev/null 2>&1 && timeout_bin="timeout ${dns_switch_timeout}"
+
     if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
-        "$dns_switch_binary" "$@"
+        ${timeout_bin} "$dns_switch_binary" "$@"
         return $?
     fi
 
-    sudo "$dns_switch_binary" "$@"
+    # ORDER: `timeout N sudo BIN`, never `sudo timeout N BIN`.
+    # The sudoers grants this project writes are PER-PATH
+    # (`%sudo ALL=(ALL) NOPASSWD: $dashboard_dir/$binary`), and there is no grant
+    # for /usr/bin/timeout. `sudo timeout ...` therefore asks sudo to run
+    # /usr/bin/timeout, which matches no rule, so the NOPASSWD grant for the
+    # dns-switch binary stops applying and the call prompts or fails. Putting
+    # timeout OUTSIDE sudo keeps the grant matching the binary it was written for,
+    # and the timeout still bounds the whole thing because killing the sudo parent
+    # takes the child with it.
+    if [[ -n "$timeout_bin" ]]; then
+        timeout "$dns_switch_timeout" sudo "$dns_switch_binary" "$@"
+    else
+        sudo "$dns_switch_binary" "$@"
+    fi
 }
 
 # Function to apply fallback DNS servers (mimics dns-switch fix-dns behavior)
@@ -1171,9 +1235,15 @@ configure_kodachi_sudoers() {
         fi
     done
 
-    # Remove duplicates and sort
-    IFS=$'\n' binaries=($(printf '%s\n' "${binaries[@]}" | sort -u))
-    unset IFS
+    # Remove duplicates and sort.
+    # mapfile, not IFS + unquoted $(...) (audit 2026-09-03, L08 / SC2207). Setting
+    # IFS to a newline stops WORD splitting but does nothing about GLOB expansion, so a
+    # binary whose name contained *, ? or [ would be expanded against the filesystem
+    # before it ever reached the sudoers list. No shipped binary name has those
+    # characters today, which is why this has never bitten, but the array is built from
+    # a directory walk a few lines above and the next name added is not required to ask
+    # permission. mapfile splits on newlines only and never globs.
+    mapfile -t binaries < <(printf '%s\n' "${binaries[@]}" | sort -u)
 
     print_info "Found ${#binaries[@]} Kodachi binaries to configure"
 
@@ -1287,9 +1357,13 @@ HEADER
     # kodachi-soc: EXACT ARGV ONLY, never a blanket grant on the binary.
     # The SOC snapshot genuinely needs root (it reads /proc, runs getcap -r /,
     # debsums, dpkg --verify and journalctl), but it needs exactly ONE subcommand.
-    # Enumerate ALL FOUR forms the dashboard can produce -- bare, --json,
-    # --json-pretty and --json-human, per services.rs's output-format mapping --
+    # Enumerate ALL FIVE forms the dashboard and the GTK/rofi menu can produce
+    # -- bare, --json, --json-pretty and --json-human per services.rs's
+    # output-format mapping, plus --text, which the `SOC Snapshot` registry row
+    # uses so the output pane gets readable prose instead of 10k lines of JSON --
     # so nothing else about this binary is reachable as root without a password.
+    # --text is a FORMATTING flag on the same subcommand and grants no new
+    # capability: it reads exactly what the other four read.
     # --json-human was missed on the first pass and is not hypothetical: it is a
     # first-class output choice in islands/favorites and islands/command-builder.
     # Omitting it does not fail safe, it fails CONFUSING: sudo -n matches no rule,
@@ -1307,11 +1381,13 @@ HEADER
             echo "%sudo ALL=(ALL) NOPASSWD: $dashboard_dir/kodachi-soc snapshot --json"
             echo "%sudo ALL=(ALL) NOPASSWD: $dashboard_dir/kodachi-soc snapshot --json-pretty"
             echo "%sudo ALL=(ALL) NOPASSWD: $dashboard_dir/kodachi-soc snapshot --json-human"
+            echo "%sudo ALL=(ALL) NOPASSWD: $dashboard_dir/kodachi-soc snapshot --text"
         fi
         echo "%sudo ALL=(ALL) NOPASSWD: /usr/local/bin/kodachi-soc snapshot"
         echo "%sudo ALL=(ALL) NOPASSWD: /usr/local/bin/kodachi-soc snapshot --json"
         echo "%sudo ALL=(ALL) NOPASSWD: /usr/local/bin/kodachi-soc snapshot --json-pretty"
         echo "%sudo ALL=(ALL) NOPASSWD: /usr/local/bin/kodachi-soc snapshot --json-human"
+        echo "%sudo ALL=(ALL) NOPASSWD: /usr/local/bin/kodachi-soc snapshot --text"
     } >> "$sudoers_file"
 
     # Install the fixed-argv port-scan helper that the sudoers rule below grants.
@@ -1422,10 +1498,37 @@ HEADER
 %sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables-save -t *
 
 # ============================================================
-# WireGuard Status (read-only monitoring)
+# WireGuard and AmneziaWG Status (read-only monitoring)
 # ============================================================
+# THE TRAILING `*` USED TO GRANT PASSWORDLESS READ OF THE PRIVATE KEY, so this
+# block was not read-only despite its heading. sudoers matches the arguments as
+# ONE string, and `private-key` is a `show` subcommand, so `/usr/bin/wg show *`
+# admitted `wg show wg0 private-key` and `wg show all dump`, whose first dump
+# field IS the private key. Any member of %sudo could read the tunnel key with
+# no password and no prompt.
+#
+# Nothing needed it. Swept 2026-08-20 over every .sh/.rs/.ts/.svelte/.py/.php in
+# the tree: the ONLY sudo-mediated caller that ships is
+# usr/share/kodachi/conky/scripts/unified-runtime-detector.sh:312, which runs
+# exactly `sudo -n awg show interfaces`. Every other reader (routing-switch
+# network/state.rs, tor-switch firewall.rs detect_vpn_endpoints, health-control)
+# uses `Command::new("wg")` with no sudo at all, and already falls back to
+# `ip link show type wireguard` when it is not root.
+#
+# Update 2026-09-01: commit 1442564f4 retired unified-runtime-detector.sh with
+# the other orphan conky producers, so since that date NOTHING that ships
+# invokes these grants through sudo. The lines stay because they are read-only
+# exact matches; removing them is a separate decision, not taken here.
+#
+# Enumerated rather than wildcarded. Every line below is an EXACT match, so
+# `wg show all dump` and `wg show <if> private-key` no longer match anything.
+# Adding a field here later means adding that field, never restoring the `*`.
 %sudo ALL=(ALL) NOPASSWD: /usr/bin/wg show
-%sudo ALL=(ALL) NOPASSWD: /usr/bin/wg show *
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/wg show all
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/wg show interfaces
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/awg show
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/awg show all
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/awg show interfaces
 
 # ============================================================
 # UFW Management (enable/disable firewall and boot persistence)
@@ -1664,18 +1767,56 @@ ensure_ai_model_path_compatibility() {
         local dev_parent="$hooks_root/rust/kodachi-ai"
         local dev_models="$dev_parent/models"
 
-        if [[ -d "$prod_models" ]] && [[ ! -e "$dev_models" ]]; then
+        # `[[ ! -e ]]` IS TRUE FOR A DANGLING SYMLINK, AND `|| true` THEN DELETES
+        # THE EVIDENCE. The guard used to be `[[ ! -e "$dev_models" ]]` alone, so a
+        # broken link took the repair arm, `ln -s` failed with "File exists", the
+        # `|| true` ate it, and the `[[ -e ]]` confirmation was still false. The
+        # function did nothing, said nothing, and `fixed_count` stayed 0, so the
+        # summary reported "already compatible" for the one location that was
+        # broken. Measured with a control in the same run by claude-2071644a,
+        # 2026-08-20: clean run prints "Model path linked" and fixed_count=1;
+        # dangling link prints NOTHING and fixed_count=0.
+        #
+        # AN ERROR SUPPRESSOR DOES NOT REMOVE A DEFECT, IT REMOVES THE EVIDENCE OF
+        # ONE, which is why this quiet member of the class was harder to find than
+        # the loud ones that abort under `set -o errexit`. So the dangling state
+        # gets its own arm that REPAIRS it, and every arm now says so when the
+        # link could not be created.
+        if [[ -d "$prod_models" ]] && [[ -L "$dev_models" ]] && [[ ! -e "$dev_models" ]]; then
+            ln -sfn ../../models "$dev_models" 2>/dev/null || true
+            if [[ -e "$dev_models" ]]; then
+                print_info "Model path relinked (the link was dangling): $dev_models -> ../../models"
+                fixed_count=$((fixed_count + 1))
+            else
+                print_warning "Model path is a DANGLING SYMLINK and could not be repaired: $dev_models -> $(readlink "$dev_models" 2>/dev/null || echo '?')"
+            fi
+        elif [[ -d "$prod_models" ]] && [[ ! -e "$dev_models" ]] && [[ ! -L "$dev_models" ]]; then
             mkdir -p "$dev_parent"
             ln -s ../../models "$dev_models" 2>/dev/null || true
             if [[ -e "$dev_models" ]]; then
                 print_info "Model path linked: $dev_models -> ../../models"
                 fixed_count=$((fixed_count + 1))
+            else
+                print_warning "Model path could not be linked: $dev_models -> ../../models"
             fi
-        elif [[ -d "$dev_models" ]] && [[ ! -e "$prod_models" ]]; then
+        elif [[ -d "$dev_models" ]] && [[ -L "$prod_models" ]] && [[ ! -e "$prod_models" ]]; then
+            # The SAME defect on the mirror arm. Fixing one of two adjacent
+            # near-identical arms is how a class survives its own fix, because the
+            # function then READS as repaired.
+            ln -sfn rust/kodachi-ai/models "$prod_models" 2>/dev/null || true
+            if [[ -e "$prod_models" ]]; then
+                print_info "Model path relinked (the link was dangling): $prod_models -> rust/kodachi-ai/models"
+                fixed_count=$((fixed_count + 1))
+            else
+                print_warning "Model path is a DANGLING SYMLINK and could not be repaired: $prod_models -> $(readlink "$prod_models" 2>/dev/null || echo '?')"
+            fi
+        elif [[ -d "$dev_models" ]] && [[ ! -e "$prod_models" ]] && [[ ! -L "$prod_models" ]]; then
             ln -s rust/kodachi-ai/models "$prod_models" 2>/dev/null || true
             if [[ -e "$prod_models" ]]; then
                 print_info "Model path linked: $prod_models -> rust/kodachi-ai/models"
                 fixed_count=$((fixed_count + 1))
+            else
+                print_warning "Model path could not be linked: $prod_models -> rust/kodachi-ai/models"
             fi
         fi
     done
@@ -1943,22 +2084,30 @@ ConditionPathExists=%t/kodachi-session-token.json
 [Service]
 Type=oneshot
 ExecStart=/bin/bash -c '\
+  mkdir -p "%h/.config/kodachi/conky/data" 2>/dev/null || true; \
+  exec 9>"%h/.config/kodachi/conky/data/.focus-alert-refresh.lock" 2>/dev/null || exit 0; \
+  flock -n 9 || exit 0; \
+  resolved_bin="$(command -v conky-status 2>/dev/null || true)"; \
   for bin in \
-    /opt/kodachi/dashboard/hooks/conky-status \
+    "$resolved_bin" \
+    /usr/local/bin/conky-status \
     "%h/k900/dashboard/hooks/conky-status" \
     "%h/dashboard/hooks/conky-status" \
-    /usr/local/bin/conky-status; do \
-    [ -x "$bin" ] && exec "$bin" snapshot --refresh --quiet --max-parallel 1 --timeout-ms 7000 2>/dev/null; \
+    /opt/kodachi/dashboard/hooks/conky-status; do \
+    [ -n "$bin" ] || continue; \
+    [ -x "$bin" ] || continue; \
+    "$bin" --version >/dev/null 2>&1 || continue; \
+    exec "$bin" snapshot --refresh --quiet; \
   done; \
   exit 0'
-TimeoutSec=130
-TimeoutStopSec=5
+TimeoutSec=90
+TimeoutStopSec=10
 StandardOutput=null
 StandardError=journal
 Nice=15
 IOSchedulingClass=idle
 KillMode=process
-SendSIGKILL=no
+SendSIGKILL=yes
 # Memory guard: prevent snapshot refresh from starving the desktop session.
 MemoryHigh=200M
 MemoryMax=300M
@@ -1981,8 +2130,8 @@ Description=Kodachi Conky Snapshot Refresh Timer
 
 [Timer]
 OnActiveSec=240
-OnUnitActiveSec=120
-RandomizedDelaySec=30
+OnUnitActiveSec=90
+RandomizedDelaySec=15
 Persistent=false
 AccuracySec=1s
 
@@ -2009,13 +2158,18 @@ EOF
 [Unit]
 Description=Kodachi Conky Watchdog
 After=graphical-session.target
+Wants=graphical-session.target
 
 [Service]
 Type=simple
+ExecStartPre=/bin/sleep 5
 ExecStart=%h/.config/kodachi/conky/scripts/conky-watchdog.sh
-Restart=always
+ExecStop=-/usr/bin/pkill -x conky
+ExecStopPost=-/usr/bin/pkill -9 -x conky
+Restart=on-failure
 RestartSec=3
-Environment=DISPLAY=:0
+KillMode=mixed
+TimeoutStopSec=5
 Environment=XAUTHORITY=%h/.Xauthority
 
 [Install]
@@ -2759,12 +2913,12 @@ setup_logging() {
 # Version configuration
 # Fallbacks only — overridden at runtime by resolve_mieru_release_metadata /
 # resolve_latest_github_release_version (latest upstream). Kept current.
-MIERU_VERSION="3.33.0"
-HYSTERIA2_VERSION="2.9.2"
+MIERU_VERSION="3.36.0"
+HYSTERIA2_VERSION="2.12.2"
 V2RAY_PLUGIN_VERSION="1.3.2"
 # Fallback only — overridden at runtime by resolve_dnscrypt_release_metadata
 # (latest upstream). Kept current to match the ISO cache freshness system.
-DNSCRYPT_VERSION="2.1.16"
+DNSCRYPT_VERSION="2.1.18"
 QRENCODE_VERSION="4.1.1"
 KLOAK_VERSION="0.2"
 
@@ -3089,7 +3243,14 @@ SECURITY_PACKAGES="ufw macchanger firejail apparmor apparmor-utils apparmor-prof
 PRIVACY_PACKAGES="dnsutils bind9-dnsutils systemd-resolved"
 
 # Advanced - Specialized tools and utilities (non-GUI)
-ADVANCED_PACKAGES="jq git build-essential libxcb1-dev libxcb-xkb-dev rng-tools-debian haveged ccze yamllint smartmontools lm-sensors hdparm htop iotop vnstat efibootmgr rfkill ethtool lsb-release pciutils restic"
+# fwupd added 2026-09-02: it is the producer behind the Firmware & Platform panel in the
+# Cairo Dock Status window and the dashboard's Vitals island. `health-control
+# firmware-security-check` shells out to `fwupdtool security` for the Host Security Interface
+# checks, so without this package both surfaces render "unreadable" with a correct reason and
+# the user has no way to know it is one package away. The ISO already declares fwupd in
+# terminal.list.chroot; this covers the OTHER install path, the documented
+# `curl -sSL .../kodachi-deps-install.sh | sudo bash` onto an existing Debian.
+ADVANCED_PACKAGES="jq git build-essential libxcb1-dev libxcb-xkb-dev rng-tools-debian haveged ccze yamllint smartmontools lm-sensors hdparm htop iotop vnstat efibootmgr fwupd rfkill ethtool lsb-release pciutils restic"
 
 # Monitoring - System and network monitoring tools for dashboard
 MONITORING_PACKAGES="btop iftop nethogs ncdu nload iperf3 speedtest-cli"
@@ -4315,7 +4476,10 @@ echo ""
 
 print_info "Installation mode: $INSTALL_MODE"
 print_info "Run mode: $KODACHI_RUN_MODE"
-print_info "Release policy line: $KODACHI_PUBLIC_VERSION"
+# Only print the line when it actually resolved. resolve_kodachi_public_version()
+# returns an empty string rather than a stale literal, so an unconditional print
+# would emit "Release policy line: " with nothing after it.
+[[ -n "$KODACHI_PUBLIC_VERSION" ]] && print_info "Release policy line: $KODACHI_PUBLIC_VERSION"
 if [[ "$AUTO_YES" == "true" ]]; then
     print_info "Auto mode enabled: All prompts will default to YES"
 fi
@@ -5350,6 +5514,181 @@ install_hysteria2() {
     fi
 }
 
+# Function to install ck-client (Cloak transport client for OpenVPN-over-Cloak).
+# Pinned to the Cloak v2.12.0 release asset and verified by sha256, because this
+# binary is the OUTER transport for a VPN and a substituted binary would defeat the
+# whole camouflage layer.
+install_cloak_client() {
+    print_step "Checking cloak-client (ck-client) installation..."
+
+    # Already-installed check FIRST: the arch check used to run before it, so an
+    # unsupported arch printed a warning even on a machine that already had ck-client.
+    if command -v ck-client >/dev/null 2>&1; then
+        print_success "ck-client is already installed"
+        return 0
+    fi
+
+    # Kodachi's own signed package FIRST, exactly like install_xray and install_v2ray do.
+    # It is verified by the repo GPG key, so it beats the pinned-but-unsigned GitHub asset
+    # below on provenance, and it is also the only path that gives apt a record of the
+    # binary, so a later `apt upgrade` can move it.
+    #
+    # kodachi-cloak-CLIENT, not kodachi-cloak. The published kodachi-cloak deb ships
+    # ck-SERVER, which is the VPS half: installing it on a desktop yields no ck-client and
+    # openvpn-cloak still cannot start. The client package is new as of 2026-08-25
+    # (installers/vendor-thirdparty.sh), pinned to the same Cloak release as the server.
+    if kodachi_try_packaged_install "kodachi-cloak-client" "ck-client"; then
+        return 0
+    fi
+
+    # x86_64 ONLY, on purpose. The pinned want_sha below is the sha256 of the linux-AMD64
+    # asset, so the previous `aarch64) arch="arm64"` arm built the arm64 asset URL and then
+    # compared it against the amd64 hash: a GUARANTEED "sha256 MISMATCH" on every aarch64
+    # run, i.e. code that claimed to support an architecture it could never install on.
+    # Fail-closed was never in question; the defect was the false alarm and the false claim.
+    # Adding arm64 back means pinning its OWN hash, not widening this case.
+    local arch=""
+    case $(uname -m) in
+        x86_64) arch="amd64" ;;
+        *)
+            print_warning "Cloak ck-client has no pinned prebuilt binary for $(uname -m); skipping"
+            return 0
+            ;;
+    esac
+
+    # Cloak v2.12.0 linux-amd64 ck-client, sha256 pinned in proposal.md.
+    local version="2.12.0"
+    local want_sha="ceabde7e13cf0e9dd7f53f811d6f24c1246755911b06aa40fb541041016348e3"
+    local asset="ck-client-linux-${arch}-v${version}"
+    local url="https://github.com/cbeuw/Cloak/releases/download/v${version}/${asset}"
+    # mktemp, not /tmp/<name>-$$: this runs as root and $$ is predictable, so a
+    # world-writable /tmp gives a window between the sha256 check and the mv.
+    local tmp=""
+    tmp="$(mktemp -t ck-client.dl.XXXXXX)"
+
+    echo "Downloading ck-client v${version}..."
+    if kodachi_download_first "$url" "$tmp"; then
+        local got_sha=""
+        got_sha="$(sha256sum "$tmp" | cut -d' ' -f1)"
+        if [[ "$got_sha" == "$want_sha" ]]; then
+            mv -f "$tmp" /usr/local/bin/ck-client
+            chmod 755 /usr/local/bin/ck-client
+            print_success "ck-client installed (sha256 verified)"
+        else
+            print_error "ck-client sha256 MISMATCH: got $got_sha, want $want_sha"
+            rm -f "$tmp" 2>/dev/null || true
+        fi
+    else
+        print_error "Failed to download ck-client"
+        rm -f "$tmp" 2>/dev/null || true
+    fi
+}
+
+# Function to install the AmneziaWG KERNEL MODULE via Kodachi's signed DKMS package.
+#
+# Deliberately best-effort and never fatal. The tools and the module are separable: awg can
+# be present and useful for inspecting configuration on a machine whose kernel cannot build
+# the module (no headers for the running kernel, a container, an unsupported architecture).
+# The deb's own postinst is tolerant for the same reason, so a failure here costs one
+# protocol and never leaves dpkg half-configured.
+#
+# There is no source fallback on purpose. Building an out-of-tree kernel module from an
+# unpinned clone as root is a strictly worse operation than the userland build the gate
+# below already refuses, so if the signed package is unavailable the module is simply
+# absent and the caller says so.
+install_amneziawg_module() {
+    if [[ -d /sys/module/amneziawg ]] || modinfo amneziawg >/dev/null 2>&1; then
+        print_success "amneziawg kernel module already available"
+        return 0
+    fi
+
+    # No verify command: the module is built by the package's postinst against the running
+    # kernel, so success is not observable as a binary on PATH. Report what actually
+    # happened instead of asserting on a command that will never exist.
+    if kodachi_try_packaged_install "kodachi-amneziawg-dkms" ""; then
+        if modinfo amneziawg >/dev/null 2>&1; then
+            print_success "amneziawg kernel module built and installed by DKMS"
+        else
+            print_warning "kodachi-amneziawg-dkms installed but the module did not build"
+            print_info "install linux-headers-\$(uname -r) and dwarves, then: dkms install -m amneziawg -v 1.0.0"
+        fi
+        return 0
+    fi
+
+    print_warning "amneziawg kernel module unavailable (kodachi-amneziawg-dkms not installable)"
+    return 0
+}
+
+# Function to install amneziawg-tools (awg, awg-quick) from source.
+# The kernel module itself is a separate concern (DKMS / apt repo); these are the
+# userland tools that drive an awg0 interface once the module is loaded.
+install_amneziawg_tools() {
+    print_step "Checking amneziawg-tools installation..."
+
+    if command -v awg >/dev/null 2>&1 && command -v awg-quick >/dev/null 2>&1; then
+        print_success "amneziawg-tools already installed"
+        return 0
+    fi
+
+    # Kodachi's own signed packages FIRST, and this is the path that now carries AmneziaWG
+    # on a normal install.
+    #
+    # WHAT THIS FIXES. The source build below is gated behind
+    # KODACHI_ALLOW_UNPINNED_UPSTREAM=1 and is therefore OFF by default, correctly, because
+    # it clones a moving branch and runs `make install` as root. The consequence nobody had
+    # written down is that a default bash install produced NO awg at all, while the
+    # dashboard went on offering AmneziaWG as a protocol. Measured 2026-08-25 on a clean
+    # Debian 13 box installed from the channel: awg, awg-quick and ck-client all absent.
+    #
+    # The packaged path has none of the properties that gate exists to refuse: the two debs
+    # are built from COMMIT-PINNED sources by installers/build-amneziawg-debs.sh, and apt
+    # verifies the repo GPG signature before unpacking anything. So it runs unconditionally
+    # and the gate below stays exactly as strict as it was for the source fallback.
+    install_amneziawg_module
+    if kodachi_try_packaged_install "kodachi-amneziawg-tools" "awg"; then
+        return 0
+    fi
+
+    # UNPINNED UPSTREAM, so it is gated exactly like every sibling in this file.
+    #
+    # The build below clones the DEFAULT BRANCH of a third-party GitHub repo with no tag,
+    # no commit pin, no hash and no signature, then runs `make install` AS ROOT after
+    # silently apt-installing build-essential. That is precisely the class
+    # kodachi_upstream_unpinned_allowed() was written for (see its comment above), and it
+    # was the only unpinned path in this file with no gate in front of it. It reached the
+    # public download copy on 2026-08-19 when the five shipping copies were union-merged,
+    # so the gate goes in before anyone runs it from there.
+    #
+    # SKIP-AND-CONTINUE with return 0, not `return 1`: awg/awg-quick are optional userland
+    # tools and a refusal must not abort the caller, which goes on to install kloak and the
+    # rest. Same reasoning as the second gate in install_v2ray().
+    if ! kodachi_upstream_unpinned_allowed; then
+        print_warning "Skipping the UNPINNED amneziawg-tools source build: it clones the default"
+        print_info "branch of github.com/amnezia-vpn/amneziawg-tools with no tag, hash or signature"
+        print_info "and runs 'make install' as root. awg and awg-quick will be unavailable."
+        print_info "To build it anyway, re-run with: KODACHI_ALLOW_UNPINNED_UPSTREAM=1"
+        return 0
+    fi
+
+    if ! command -v make >/dev/null 2>&1 || ! command -v gcc >/dev/null 2>&1; then
+        apt-get install -y -qq --no-install-recommends build-essential >/dev/null 2>&1 || true
+    fi
+
+    local tmp=""
+    tmp="$(mktemp -d)"
+    echo "Cloning and building amneziawg-tools..."
+    if git clone --depth 1 -q https://github.com/amnezia-vpn/amneziawg-tools.git "$tmp/tools" 2>/dev/null; then
+        if ( cd "$tmp/tools/src" && make -j"$(nproc)" >/dev/null 2>&1 && make install >/dev/null 2>&1 ); then
+            print_success "amneziawg-tools installed (awg, awg-quick)"
+        else
+            print_warning "amneziawg-tools build failed (awg unavailable)"
+        fi
+    else
+        print_warning "Failed to clone amneziawg-tools (awg unavailable)"
+    fi
+    rm -rf "$tmp"
+}
+
 # Function to install kloak (keystroke anonymization)
 install_kloak() {
     print_step "Checking kloak installation..."
@@ -5513,7 +5852,58 @@ setup_kloak_service() {
 
 # Function to create kloak systemd service file
 create_kloak_service_file() {
-    cat > /etc/systemd/system/kloak.service << 'EOF'
+    # THIS UNIT MUST MATCH health-control's TEMPLATE (kloak_integration.rs,
+    # install_kloak_service). It previously did not, and the divergence was
+    # reachable: this installer writes /etc/systemd/system/kloak.service and
+    # then prints "use 'systemctl start kloak' to activate", so a user who
+    # follows that instruction gets THIS unit, never health-control's. Before
+    # this change that meant an unhardened kloak with no input device.
+    #
+    # Two things were wrong and both are fixed here:
+    #
+    # 1. ExecStart had NO ARGUMENTS, so kloak auto-detected a keyboard, failed
+    #    with "Unable to find a keyboard. Specify which input device to use with
+    #    the -r parameter" on machines that plainly have one, and looped under
+    #    Restart=on-failure. The device is machine-specific, so the installer
+    #    cannot hardcode it: it now detects the same way health-control does,
+    #    a device whose Handlers carry BOTH kbd and leds, which excludes Power
+    #    Button and PC Speaker.
+    #
+    # 2. The hardening set was WEAKER than health-control's: it had no
+    #    DevicePolicy, and no ProtectKernelLogs, ProtectClock, ProtectHostname,
+    #    RestrictSUIDSGID, RestrictNamespaces, LockPersonality,
+    #    MemoryDenyWriteExecute or SystemCallArchitectures. Starting kloak
+    #    outside the dashboard therefore ran it with less isolation than the
+    #    dashboard applies, silently.
+    #
+    # DeviceAllow=char-input, NOT /dev/input/*. systemd does not glob there: it
+    # takes a device node path or a char-/block- group, so the glob would match
+    # nothing and grant no input device at all, failing at runtime with EPERM
+    # while the same command by hand succeeds. Measured 2026-08-18.
+    local kloak_device
+    kloak_device="$(awk '
+        /^N: Name=/ { name = $0 }
+        /^H: Handlers=/ {
+            if ($0 ~ /kbd/ && $0 ~ /leds/ &&
+                name !~ /Power Button|Sleep Button|PC Speaker|Video Bus|Mouse/) {
+                # Strip the directive prefix first: the event node can be the FIRST
+                # handler, and it is then glued to "Handlers=" and matches nothing.
+                handlers = $0; sub(/^H: Handlers=/, "", handlers);
+                n = split(handlers, hf, " ");
+                for (i = 1; i <= n; i++) if (hf[i] ~ /^event[0-9]+$/) { print "/dev/input/" hf[i]; exit }
+            }
+        }
+    ' /proc/bus/input/devices 2>/dev/null)"
+
+    local kloak_exec="/usr/local/bin/kloak"
+    if [ -n "$kloak_device" ] && [ -e "$kloak_device" ]; then
+        kloak_exec="/usr/local/bin/kloak -r $kloak_device"
+        print_info "kloak will read from $kloak_device"
+    else
+        print_warning "No keyboard found for kloak; the service will not start until one is set with 'health-control kloak-configure --device /dev/input/eventN'"
+    fi
+
+    cat > /etc/systemd/system/kloak.service << EOF
 [Unit]
 Description=Kloak - Keystroke Anonymization
 Documentation=https://github.com/vmonaco/kloak
@@ -5521,20 +5911,34 @@ After=multi-user.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/kloak
+ExecStart=$kloak_exec
 Restart=on-failure
 RestartSec=5
 User=root
 Group=root
+UMask=0077
 
-# Security settings
+# Security settings. Kept in step with health-control's template on purpose:
+# starting kloak outside the dashboard must not be less protected than starting
+# it from the dashboard.
 NoNewPrivileges=true
+PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-PrivateTmp=true
 ProtectKernelTunables=true
 ProtectKernelModules=true
+ProtectKernelLogs=true
 ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+DevicePolicy=closed
+DeviceAllow=char-input rw
+DeviceAllow=/dev/uinput rw
 
 [Install]
 WantedBy=multi-user.target
@@ -6259,18 +6663,61 @@ install_pihole() {
     # does. There is also an offline copy inside the ISO at
     # /opt/kodachi-offline-packages/pihole/pihole-installer.sh for the no-network
     # case; both are preferred over upstream.
-    if [[ "${KODACHI_PIHOLE_PACKAGE_CONTEXT:-0}" != "1" ]] && \
-       kodachi_try_packaged_install "kodachi-pihole" "pihole"; then
+    # KODACHI_PIHOLE_PACKAGE_CONTEXT=1 means we are ALREADY executing inside the
+    # kodachi-pihole postinst, so running `apt-get install kodachi-pihole` here
+    # would recurse. Skipping it is correct. What was NOT correct is what the old
+    # code did next: `&&` short-circuits, control falls straight into the block
+    # below, and it reported "the packaged path (kodachi-pihole) failed" for a path
+    # that was never attempted, then returned 1.
+    #
+    # MEASURED 2026-09-04 on the 10.0.1 beta live ISO (VM 192.168.104.224):
+    # Pi-hole was fully installed and working (kodachi-pihole 10.0.1-6 from the beta
+    # channel, /usr/bin/pihole-FTL 28703537 bytes, /etc/pihole/ populated, all of it
+    # placed by the offline-cache path in live-build hook 0012), and yet
+    # /var/log/kodachi-pihole-install.log recorded
+    #   "Pi-hole not installed: the packaged path (kodachi-pihole) failed."
+    # and the caller then logged "its installer did not complete on this system".
+    # A successful install was reported as a failure on every single build.
+    local packaged_skipped=false
+    if [[ "${KODACHI_PIHOLE_PACKAGE_CONTEXT:-0}" == "1" ]]; then
+        packaged_skipped=true
+        print_info "Packaged path skipped by design: already running inside the kodachi-pihole package (avoiding apt recursion)"
+    elif kodachi_try_packaged_install "kodachi-pihole" "pihole"; then
+        configure_pihole_port
+        ensure_dns_stable_after_change "Pi-hole availability" || return 1
+        return 0
+    fi
+
+    # RE-CHECK before declaring anything failed. Pi-hole has more than one producer:
+    # live-build hook 0012-install-pihole.hook.chroot installs it from the offline
+    # cache during the ISO build, so by the time this function runs the binaries can
+    # already be in place. Declaring failure without looking is what produced the
+    # false log line above.
+    if pihole_runtime_installed; then
+        print_success "Pi-hole is present (installed by the offline-cache path); nothing to do"
         configure_pihole_port
         ensure_dns_stable_after_change "Pi-hole availability" || return 1
         return 0
     fi
 
     if ! kodachi_upstream_unpinned_allowed; then
-        print_error "Pi-hole not installed: the packaged path (kodachi-pihole) failed."
+        if [[ "$packaged_skipped" == true ]]; then
+            # Accurate wording: nothing FAILED here. This is the plain
+            # `apt install kodachi-pihole` case on an already-installed system,
+            # where the ISO's offline cache (/opt/kodachi-offline-packages/pihole)
+            # does not exist, so this path has no pinned payload to install from.
+            print_info "Pi-hole not installed: this system has no offline Pi-hole payload and the packaged"
+            print_info "path is the one already running, so there is nothing further to try here."
+        else
+            print_error "Pi-hole not installed: the packaged path (kodachi-pihole) failed."
+        fi
         print_info "https://install.pi-hole.net serves an unversioned script that would be executed"
         print_info "as root with no verifiable integrity check, so it is disabled by default."
         print_info "To use it anyway, re-run with: KODACHI_ALLOW_UNPINNED_UPSTREAM=1"
+        # Pi-hole is an optional, disabled-by-default component. A deliberate skip is
+        # not an error, so it must not be reported to the caller as one; a genuine
+        # packaged-path failure still is.
+        [[ "$packaged_skipped" == true ]] && return 0
         return 1
     fi
 
@@ -6634,6 +7081,8 @@ if [[ "$INSTALL_MODE" == "proxy" ]]; then
     install_xray
     install_hysteria2
     install_mieru
+    install_cloak_client
+    install_amneziawg_tools
 
 elif [[ "$INSTALL_MODE" == "interactive" ]]; then
     print_highlight "Interactive Category-Based Installation"
@@ -6839,7 +7288,10 @@ elif [[ "$INSTALL_MODE" == "interactive" ]]; then
         REPLY="yes"
     else
         # FIXED: Simple working input method (stdin already redirected via exec)
-        echo -n "Do you want to install proxy tools (v2ray, xray, hysteria2, mieru)? (YES/no) [default: yes]: "
+        # The list here MUST name everything the yes-path installs. It named four while the
+        # branch below called six, so the user consented to four and got two more, one of
+        # which builds third-party source as root. An inspector caught it 2026-08-19.
+        echo -n "Do you want to install proxy tools (v2ray, xray, hysteria2, mieru, ck-client, amneziawg-tools)? (YES/no) [default: yes]: "
         read -r REPLY
         # Default to YES if empty
         if [[ -z "$REPLY" ]]; then
@@ -6852,12 +7304,16 @@ elif [[ "$INSTALL_MODE" == "interactive" ]]; then
         install_xray
         install_hysteria2
         install_mieru
+        install_cloak_client
+        install_amneziawg_tools
     else
         print_info "To install proxy tools manually:"
         echo "  • v2ray: https://github.com/v2fly/v2ray-core"
         echo "  • xray: bash -c \"\$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)\" @ install"
         echo "  • hysteria2: Download from https://github.com/apernet/hysteria/releases"
         echo "  • mieru: Download .deb from https://github.com/enfein/mieru/releases"
+        echo "  • ck-client: Download from https://github.com/cbeuw/Cloak/releases"
+        echo "  • amneziawg-tools: https://github.com/amnezia-vpn/amneziawg-tools"
     fi
     
     # Advanced security tools (keystroke anonymization)
@@ -7516,8 +7972,15 @@ echo ""
 
 # Detect if running in chroot environment (live-build)
 is_chroot_environment() {
-    # Check for live-build indicator files (definitive)
-    if [ -f "/.debian-live-build" ] || [ -f "/tmp/live-build-chroot" ]; then
+    # Check for live-build indicator files (definitive).
+    # LB_BASE is live-build's own environment variable and is included because the
+    # marker files are not guaranteed to exist yet: /tmp/live-build-chroot is
+    # created by the first chroot hook, and anything invoked before that would
+    # otherwise fall through to the /proc heuristic below, which CANNOT answer
+    # correctly in a chroot (live-build bind-mounts the host's /proc, so
+    # /proc/1/cmdline is the BUILD HOST's systemd). That fall-through is what made
+    # every chroot-gated branch take the non-chroot path in the 10.0.0-beta build.
+    if [ -f "/.debian-live-build" ] || [ -f "/tmp/live-build-chroot" ] || [ -n "${LB_BASE:-}" ]; then
         return 0
     fi
     # Check if PID 1 is a normal init system — if so, we are NOT in chroot
