@@ -27,10 +27,10 @@ Failover VPN, Tor routing, DNSCrypt, a kill switch and anti-forensic tooling, pr
 >
 > ```bash
 > curl -fsSL https://kodachi.cloud/repo-beta/setup.sh | sudo sh
-> sudo apt update && sudo apt install --allow-downgrades kodachi/beta
+> sudo apt update && sudo apt install kodachi
 > ```
 >
-> Supported releases, the full instructions and the two commands that put you back on stable: **[kodachi.cloud/downloads](https://kodachi.cloud/downloads/)**
+> Already running Kodachi from the stable channel? Switching is a different pair of commands, because APT will not move an installed package to beta on its own. Those, the supported releases, and the two commands that put you back on stable are all on the **[Downloads Center](https://kodachi.cloud/downloads/)**.
 
 ---
 
