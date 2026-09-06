@@ -54,9 +54,7 @@ Everything lives on the **[Downloads Center](https://kodachi.cloud/downloads/)**
 
 Kodachi 10 is the next major release, built on the Kodachi 9 foundation: new capabilities, wider feature coverage, and performance and security work across the whole stack (binaries, terminal edition, desktop edition, AI layer, cloud platform).
 
-**You can run it today.** The 10.x packages ship on the beta channel and are open to anyone who wants to test them. Kodachi 9 remains the stable release and is what the Desktop and Terminal ISOs install. Beta is a package channel only, there is no beta ISO, and it is rebuilt often, so run it somewhere a break costs you nothing. Setup, supported releases and the route back to stable are on the **[Downloads Center](https://kodachi.cloud/downloads/)**.
-
-There is no fixed date for the stable Kodachi 10 release. Roadmap items, previews and changelogs are published here and on the [landing page](https://kodachi.cloud/) as they land.
+The packages are live now, on the beta channel; the banner at the top of this page has the two commands. There is no fixed date for the **stable** Kodachi 10 release. Roadmap items, previews and changelogs are published here and on the [landing page](https://kodachi.cloud/) as they land.
 
 **Feature requests and feedback shape what ships**, and a bug report from a beta tester is the most useful thing anyone can send right now. Open an [issue](https://github.com/WMAL/kodachios/issues) or bring it to [Discord](https://discord.gg/KEFErEx).
 
