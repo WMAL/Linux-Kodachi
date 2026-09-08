@@ -502,7 +502,7 @@ if [[ -z "$INSTALL_PATH" ]]; then
             "/opt/kodachi" "/opt/kodachi/dashboard" "/opt/kodachi/dashboard/hooks"; then
             print_success "Created /opt/kodachi/ staging tree for $(whoami)"
         else
-            print_warning "Could not create /opt/kodachi/ — falling back to home directory"
+            print_warning "Could not create /opt/kodachi/, falling back to home directory"
             INSTALL_PATH="$(get_fallback_hooks_dir)"
         fi
     elif [[ ! -w "/opt/kodachi/dashboard/hooks" ]]; then
@@ -513,7 +513,7 @@ if [[ -z "$INSTALL_PATH" ]]; then
             "/opt/kodachi" "/opt/kodachi/dashboard" "/opt/kodachi/dashboard/hooks"; then
             print_success "Prepared /opt/kodachi/ staging tree"
         else
-            print_warning "Cannot write to /opt/kodachi/ — falling back to home directory"
+            print_warning "Cannot write to /opt/kodachi/, falling back to home directory"
             INSTALL_PATH="$(get_fallback_hooks_dir)"
         fi
     fi
@@ -640,29 +640,78 @@ download_pack_file() {
 verify_signature() {
     local binary_path="$1"
     local signature_dir="$2"
-    local binary_name=""
-    local sig_file=""
-    local pub_key=""
 
-    binary_name="$(basename -- "$binary_path")"
-    sig_file="$signature_dir/${binary_name}_v${KODACHI_VERSION}.sig"
-    pub_key="$signature_dir/../config/signkeys/public_key_v${KODACHI_VERSION}.pem"
-
-    if [[ ! -f "$sig_file" || -L "$sig_file" ]]; then
-        return 1
-    fi
-    if [[ ! -f "$pub_key" || -L "$pub_key" ]]; then
-        return 1
-    fi
-
-    if /usr/bin/openssl dgst -sha256 -verify "$pub_key" \
-        -signature "$sig_file" "$binary_path" &>/dev/null; then
-        return 0
-    fi
-    return 1
+    resolve_signature_file "$binary_path" "$signature_dir" >/dev/null
 }
 
 # BEGIN KODACHI AUTH TRUST INSTALL FUNCTIONS
+# Emit every detached signature the PACKER may have written for this binary, most likely first.
+#
+# THE PRODUCER AND THIS CONSUMER DISAGREED ABOUT THE FILENAME, AND IT COST A CUSTOMER EVERY
+# TUNNELLED PROTOCOL. pack-kodachi.sh:575-593 names a signature "<binary>_v<THE BINARY'S OWN
+# VERSION>.sig" and only falls back to the release stamp, with an explicit comment that this
+# "handles external binaries like oniux/zeroclaw whose versions differ from the package version".
+# This consumer built "<binary>_v${KODACHI_VERSION}.sig" and nothing else, so any binary signed
+# under its own upstream version failed the `-f` test, was reported as "signature verification
+# FAILED" and was SKIPPED by the `continue` in deploy_verified_package_binaries.
+#
+# Measured 2026-09-08 against the live stable tarball kodachi-binaries-v9.0.1.tar.gz: 28 binaries,
+# 28 signature files, and exactly ONE mismatch, tun2socks-linux-amd64, shipped as
+# tun2socks-linux-amd64_v2.6.0.sig while the installer looked for _v9.0.1.sig. So every stable
+# tarball install has been missing tun2socks, and with it hysteria2, all four xray protocols,
+# shadowsocks, v2ray and mieru, which are the six clients that spawn it. WireGuard was unaffected
+# because it uses a kernel wg0 interface and never touches tun2socks, which is exactly the
+# asymmetry the reporting customer described.
+#
+# THIS DOES NOT WEAKEN VERIFICATION. The public key stays the pinned public_key_v${KODACHI_VERSION}.pem
+# and the openssl check is untouched; only which .sig FILE is offered to it changes. Renaming a
+# file buys an attacker nothing, because the bytes must still verify under the release key.
+# Confirmed on the shipped artifact: tun2socks-linux-amd64_v2.6.0.sig verifies "Verified OK"
+# against public_key_v9.0.1.pem, with routing-switch_v9.0.1.sig as a positive control.
+#
+# The glob-and-verify idiom is not new here: stage_existing_binary_trust() below already does
+# exactly this for the legacy path, in this same file.
+emit_signature_candidates() {
+    local signature_dir="$1"
+    local binary_name="$2"
+    local candidate=""
+
+    candidate="$signature_dir/${binary_name}_v${KODACHI_VERSION}.sig"
+    if [[ -f "$candidate" && ! -L "$candidate" ]]; then
+        printf '%s\n' "$candidate"
+    fi
+    while IFS= read -r -d '' candidate; do
+        [[ "$candidate" == "$signature_dir/${binary_name}_v${KODACHI_VERSION}.sig" ]] && continue
+        printf '%s\n' "$candidate"
+    done < <(
+        find "$signature_dir" -maxdepth 1 -type f \
+            -name "${binary_name}_v*.sig" ! -name "*.sig.info" -print0 2>/dev/null | sort -zV
+    )
+}
+
+# The single signature filename to stage for this binary, or non-zero if none verifies.
+resolve_signature_file() {
+    local binary_path="$1"
+    local signature_dir="$2"
+    local binary_name=""
+    local pub_key=""
+    local candidate=""
+
+    binary_name="$(basename -- "$binary_path")"
+    pub_key="$signature_dir/../config/signkeys/public_key_v${KODACHI_VERSION}.pem"
+    [[ -f "$pub_key" && ! -L "$pub_key" ]] || return 1
+
+    while IFS= read -r candidate; do
+        [[ -n "$candidate" ]] || continue
+        if /usr/bin/openssl dgst -sha256 -verify "$pub_key" \
+            -signature "$candidate" "$binary_path" &>/dev/null; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done < <(emit_signature_candidates "$signature_dir" "$binary_name")
+    return 1
+}
+
 atomic_install_root_file() {
     local source_file="$1"
     local destination_file="$2"
@@ -781,7 +830,13 @@ stage_normal_binary_trust() {
         fi
 
         binary_source="$EXTRACT_DIR/binaries/$binary_name"
-        signature_source="$EXTRACT_DIR/signatures/${binary_name}_v${KODACHI_VERSION}.sig"
+        # Same producer/consumer filename disagreement as verify_signature above: a binary signed
+        # under its own upstream version (tun2socks-linux-amd64_v2.6.0.sig) is not named after the
+        # release stamp, so a hardcoded name would stage nothing and abort the install.
+        if ! signature_source="$(resolve_signature_file "$binary_source" "$EXTRACT_DIR/signatures")"; then
+            print_error "Cannot resolve a verifying detached signature: $binary_name"
+            return 1
+        fi
         staged_binary="$AUTH_TRUST_STAGE_DIR/normal-${binary_name}.binary"
         staged_signature="$AUTH_TRUST_STAGE_DIR/normal-${binary_name}.sig"
 
@@ -801,7 +856,11 @@ stage_normal_binary_trust() {
 
         STAGED_NORMAL_BINARY_FILES+=("$staged_binary")
         STAGED_NORMAL_SIGNATURE_FILES+=("$staged_signature")
-        STAGED_NORMAL_SIGNATURE_NAMES+=("${binary_name}_v${KODACHI_VERSION}.sig")
+        # Record the name the signature ACTUALLY has, so the installed auth-trust store matches
+        # the package. Writing the release-stamp name for a binary signed under its own version
+        # would put a file in auth-trust/signatures that no later verifier can find, recreating
+        # this defect one layer down.
+        STAGED_NORMAL_SIGNATURE_NAMES+=("$(basename -- "$signature_source")")
     done
 }
 
@@ -1339,7 +1398,7 @@ stop_permission_guard_if_running() {
             fi
         fi
 
-        # Non-sudo stop failed — try with interactive sudo (prompts for password)
+        # Non-sudo stop failed, try with interactive sudo (prompts for password)
         print_step "Requires sudo privileges to stop daemon..."
         if sudo "$pg_binary" --stop-daemon &>/dev/null; then
             sleep 2  # Wait for daemon to fully stop
@@ -2100,10 +2159,10 @@ if [[ -d "$EXTRACT_DIR/others" ]]; then
         if [[ -n "$REAL_SITE_DIR" ]]; then
             if [[ -e "$CANONICAL_SITE_INDEX" ]]; then
                 # A canonical install (real dir or prior symlink) already
-                # resolves — leave it untouched.
+                # resolves, leave it untouched.
                 site_bridged=true
             elif [[ ! -e "$CANONICAL_SITE_DIR" || -L "$CANONICAL_SITE_DIR" ]]; then
-                # Path is free or a replaceable symlink — safe to (re)link.
+                # Path is free or a replaceable symlink, safe to (re)link.
                 if mkdir -p "$CANONICAL_HOOKS_DIR/others" 2>/dev/null \
                     && ln -sfn "$REAL_SITE_DIR" "$CANONICAL_SITE_DIR" 2>/dev/null; then
                     site_bridged=true
@@ -2172,7 +2231,7 @@ fi
 # Plus the empty parent dirs <hooks>/kodachi-ai/ and <hooks>/rust/kodachi-ai/.
 #
 # Audit (2026-05-20) confirmed no Rust binary or shell script actually depends
-# on those nested paths — ai-engine's resolve_models_dir() walks parents and
+# on those nested paths, ai-engine's resolve_models_dir() walks parents and
 # tries env overrides + canonical /opt/kodachi/dashboard/hooks/models, so the
 # single <hooks>/models layout is sufficient. The compat dirs were dead code.
 #
@@ -2190,15 +2249,15 @@ prune_legacy_compat_model_dirs() {
         "$INSTALL_PATH/rust/kodachi-ai/models"
     do
         if [[ -L "$target" ]]; then
-            # Old-style symlink — silent remove, no space to reclaim.
+            # Old-style symlink, silent remove, no space to reclaim.
             rm -f "$target" 2>/dev/null || true
         elif [[ -d "$target" ]]; then
-            # Real dir with accumulated duplicate ONNX/GGUF — reclaim space.
+            # Real dir with accumulated duplicate ONNX/GGUF, reclaim space.
             size=$(du -sb "$target" 2>/dev/null | awk '{print $1}')
             [[ -n "$size" ]] && reclaimed_bytes=$((reclaimed_bytes + size))
             rm -rf "$target" 2>/dev/null || true
         elif [[ -e "$target" ]]; then
-            # Unexpected file at this path — remove to keep tree clean.
+            # Unexpected file at this path, remove to keep tree clean.
             rm -f "$target" 2>/dev/null || true
         fi
     done
@@ -2490,11 +2549,11 @@ EOF
     if [[ -f "$snapshot_service_source" ]]; then
         cp -f "$snapshot_service_source" "$snapshot_service_file"
     else
-        # Fallback heredoc — only used if $snapshot_service_source is missing.
+        # Fallback heredoc, only used if $snapshot_service_source is missing.
         # Kept in sync with the canonical
         # /usr/share/kodachi/conky/systemd/conky-snapshot-refresh.service
         # (audit 2026-05-08: Requisite= refuses activation if graphical-
-        # session.target is not active — required to prevent the service
+        # session.target is not active, required to prevent the service
         # firing during the xfce4-session bring-up window).
         #
         # IMPORTANT: terminator is QUOTED ('EOF') so the inner /bin/bash -c
@@ -2538,7 +2597,7 @@ EOF
     if [[ -f "$snapshot_timer_source" ]]; then
         cp -f "$snapshot_timer_source" "$snapshot_timer_file"
     else
-        # Fallback heredoc — only used if $snapshot_timer_source is missing.
+        # Fallback heredoc, only used if $snapshot_timer_source is missing.
         # Kept in sync with the canonical
         # /usr/share/kodachi/conky/systemd/conky-snapshot-refresh.timer
         # (audit 2026-05-08, macOS-Ventura bundle: raised OnActiveSec from
@@ -2562,7 +2621,7 @@ EOF
     fi
 
     chmod 644 "$snapshot_service_file" "$snapshot_timer_file"
-    # Want the timer from graphical-session.target, NOT default.target — the
+    # Want the timer from graphical-session.target, NOT default.target, the
     # service is Requisite=graphical-session.target and a default.target want
     # creates a shutdown ordering cycle. Clear any stale default.target want.
     rm -f "$wants_dir/conky-snapshot-refresh.timer" 2>/dev/null || true
@@ -2647,7 +2706,7 @@ XML
         if grep -q 'name="use_compositing"' "$xfconf_file"; then
             sed -i 's|\(<property name="use_compositing"[^/]*value="\)false\("[^/]*/>\)|\1true\2|' "$xfconf_file"
         elif grep -q '<property name="general"[^>]*/>' "$xfconf_file"; then
-            # Self-closing general tag with no children — expand into open/close
+            # Self-closing general tag with no children, expand into open/close
             # form and insert use_compositing as the new child. Without this branch,
             # the open-tag branch below would match the self-closing form and insert
             # use_compositing as a SIBLING of general (still inside channel), so
@@ -2688,10 +2747,10 @@ install_conky_fonts() {
     # renders in the wrong theme. Two delivery paths in priority order:
     #
     #   1) Tarball-bundled Impact.ttf at $EXTRACT_DIR/fonts/msttcorefonts/Impact.ttf
-    #      — works offline, written by pack-kodachi.sh from the same overlay
+    #     , works offline, written by pack-kodachi.sh from the same overlay
     #      file the ISO build ships.
     #   2) apt-get install -y ttf-mscorefonts-installer with the EULA
-    #      preseeded via debconf — fallback for older tarballs that don't
+    #      preseeded via debconf, fallback for older tarballs that don't
     #      bundle the .ttf yet OR when copy fails for any reason.
     #
     # Silent skip on systems without sudo / apt is fine; the deps installer
@@ -2937,7 +2996,7 @@ setup_dashboard_autostart() {
     # Create the launcher script if missing, or refresh it when an older copy
     # (pre-seeded by the ISO or a prior install) lacks the broadened
     # GPU-driver detection (nouveau / legacy radeon + NVIDIA proprietary).
-    # Refresh marker is GPU_NEEDS_FALLBACK — older launchers used the
+    # Refresh marker is GPU_NEEDS_FALLBACK, older launchers used the
     # narrower NVIDIA_PROPRIETARY token and get rewritten on next install.
     local launcher_script="/usr/local/bin/kodachi-dashboard-launcher"
     if [[ ! -f "$launcher_script" ]] || ! grep -q 'GPU_NEEDS_FALLBACK' "$launcher_script" 2>/dev/null || ! grep -q 'DASHBOARD_BIN=' "$launcher_script" 2>/dev/null || ! grep -q 'ALLOW_MULTI' "$launcher_script" 2>/dev/null; then
@@ -3190,7 +3249,7 @@ LAUNCHER_EOF
 
     mkdir -p "$autostart_dir"
     # NOTE: Using unquoted EOF so variables expand to full absolute paths.
-    # This is intentional — the autostart MUST contain the resolved path, not a variable.
+    # This is intentional, the autostart MUST contain the resolved path, not a variable.
     cat > "$autostart_file" << EOF
 [Desktop Entry]
 Type=Application
@@ -3387,7 +3446,7 @@ EOF
     mark_desktop_file_trusted "$DESKTOP_DIR/kodachi-binaries.desktop"
     update_thunar_root_actions
 
-    # 3. Kodachi AutoShield is RETIRED as a standalone app — it is now a tab on
+    # 3. Kodachi AutoShield is RETIRED as a standalone app, it is now a tab on
     #    the dashboard startup screen (after Mobile). Remove any stale standalone
     #    launcher so no dead "AutoShield" shortcut points at the removed app.
     rm -f "$DESKTOP_DIR/kodachi-autoshield.desktop" 2>/dev/null || true

@@ -63,6 +63,7 @@ The beta **Desktop (XFCE) ISO** and the beta **packages** are both live now: dow
 | | |
 |---|---|
 | Live changelog | [kodachi.cloud/docs/changelog.html](https://kodachi.cloud/docs/changelog.html) ([raw](https://kodachi.cloud/apps/os/CHANGELOG.md)) |
+| Install and shell scripts | [Kodachi-10](Kodachi-10) , the five current scripts, kept in step with the source of truth |
 | R&D history | [Kodachi-9/v9-behind-scenes-progress](Kodachi-9/v9-behind-scenes-progress) |
 
 ---

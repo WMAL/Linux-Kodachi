@@ -239,11 +239,11 @@ enable_xfce_compositor_for_user() {
 </channel>
 XML
     else
-        # File exists — patch or insert the use_compositing property.
+        # File exists, patch or insert the use_compositing property.
         if grep -q 'name="use_compositing"' "$xfconf_file"; then
             sed -i 's|\(<property name="use_compositing"[^/]*value="\)false\("[^/]*/>\)|\1true\2|' "$xfconf_file"
         elif grep -q '<property name="general"[^>]*/>' "$xfconf_file"; then
-            # Self-closing general tag with no children — expand into open/close
+            # Self-closing general tag with no children, expand into open/close
             # form and insert use_compositing as the new child. Without this branch,
             # the open-tag branch below would match the self-closing form and insert
             # use_compositing as a SIBLING of general (still inside channel), so
@@ -477,7 +477,7 @@ point_resolv_conf_to_dnscrypt() {
     rm -f /etc/resolv.conf 2>/dev/null || true
     {
         printf '# Kodachi DNSCrypt-only resolver (managed by kodachi-deps-install.sh)\n'
-        printf '# /etc/systemd/resolved.conf is intentionally NOT used —\n'
+        printf '# /etc/systemd/resolved.conf is intentionally NOT used -\n'
         printf '# systemd-resolved is masked. dnscrypt-proxy on 127.0.0.1\n'
         printf '# is the sole resolver. Override at runtime via:\n'
         printf '#   sudo dns-switch <command>\n'
@@ -546,7 +546,7 @@ write_kodachi_resolved_profile() {
     # confuses dns-switch status output. Skip the write entirely and let
     # /etc/resolv.conf -> 127.0.0.1 (DNSCrypt) own resolution.
     if systemd_resolved_is_masked; then
-        print_info "systemd-resolved is masked (DNSCrypt-only arch) — skipping resolved.conf write for profile '${profile}'"
+        print_info "systemd-resolved is masked (DNSCrypt-only arch), skipping resolved.conf write for profile '${profile}'"
         return 0
     fi
 
@@ -661,14 +661,14 @@ apply_fallback_dns() {
     # there's nothing to restart and the resolved runtime files don't apply.
     # Point /etc/resolv.conf directly at DNSCrypt-proxy and we're done.
     if systemd_resolved_is_masked; then
-        print_info "systemd-resolved masked — applying DNSCrypt-only fallback"
+        print_info "systemd-resolved masked, applying DNSCrypt-only fallback"
         # Make sure dnscrypt-proxy is up; if not, fall back to plain DNS
         # at the resolver file so the system is still usable.
         if systemctl is-active --quiet dnscrypt-proxy 2>/dev/null; then
             point_resolv_conf_to_dnscrypt
             print_success "Fallback applied: /etc/resolv.conf -> 127.0.0.1 (DNSCrypt)"
         else
-            print_warning "dnscrypt-proxy is not active — writing plain DNS to /etc/resolv.conf as last resort"
+            print_warning "dnscrypt-proxy is not active, writing plain DNS to /etc/resolv.conf as last resort"
             chattr -i /etc/resolv.conf 2>/dev/null || true
             rm -f /etc/resolv.conf 2>/dev/null || true
             write_nameserver_file /etc/resolv.conf "emergency fallback (dnscrypt-proxy down)" "$KODACHI_PRIMARY_DNS"
@@ -845,8 +845,106 @@ recover_dns_with_fallback_then_random() {
     return 1
 }
 
+# DEFINED HERE, EARLY, AND THE POSITION IS LOAD-BEARING.
+# This script is LINEAR: no main dispatcher, it runs top to bottom to `exit 0`. A
+# bash function does not exist until its definition has been EXECUTED, so a helper
+# defined near the end is NOT callable from anything that runs before it.
+# This helper used to live at ~line 8012 while its consumers run from ~4491 and
+# ~6880, so every early call returned 127 "command not found", the guard took the
+# false branch, and the chroot-gated code paths silently behaved as if they were on
+# a live system while adding "command not found" noise to the build log.
+# If you move this, move it EARLIER, never later, and never past line ~848.
+is_chroot_environment() {
+    # Check for live-build indicator files.
+    #
+    # CORRECTED 2026-09-07, MEASURED: two of these three signals are DEAD, and the
+    # comment that used to sit here was wrong about why they were included.
+    #   /.debian-live-build   NO CREATOR anywhere in this tree. Every occurrence is a
+    #                         reader. Same shape as /.live-build-stamp, also dead.
+    #   LB_BASE               NOT live-build's variable, which is what the old comment
+    #                         claimed. Installed live-build 1:20250505+deb13u1 has
+    #                         LB_BASE in 0 of 74 files under /usr/lib/live/, against
+    #                         LB_DISTRIBUTION in 9 as a positive control. Nothing in
+    #                         this tree exports it either; all ~14 hits are readers.
+    #   /tmp/live-build-chroot  THE ONLY WORKING SIGNAL. Created by
+    #                         hooks/live/0000-noninteractive-environment.hook.chroot:53
+    # They are kept because a future live-build or hook may set them and a dead
+    # signal costs nothing, but do NOT rely on the first two.
+    if [ -f "/.debian-live-build" ] || [ -f "/tmp/live-build-chroot" ] || [ -n "${LB_BASE:-}" ]; then
+        return 0
+    fi
+
+    # ischroot BEFORE the /proc/1/cmdline heuristic, and this ORDER IS THE FIX.
+    #
+    # Inside a live-build chroot, /proc is the BUILD HOST's, bind-mounted. So
+    # /proc/1/cmdline is the host's systemd, the heuristic below returns 1 ("not a
+    # chroot"), and everything after it, including the ischroot probe that used to
+    # live at the bottom, was UNREACHABLE in precisely the case it existed for. With
+    # the marker file above being the only live arm-1 signal, every chroot guard in
+    # this script was resting on hook 0000 running before hook 9999 rather than on
+    # anything about the environment. That is the same defect class as the sudoers
+    # guard whose four signals all came from the caller.
+    #
+    # ischroot is correct here where the heuristic is not, because it compares
+    # /proc/1/ROOT with /, not /proc/1/cmdline: under the host bind-mount those
+    # genuinely differ. Verified in a real chroot: rc=0 inside, rc=1 on the host.
+    #
+    # Only rc=0 is acted on, and that is deliberate. rc=1 and rc=2 ("cannot tell")
+    # fall THROUGH to the existing logic unchanged, so this can only ever ADD chroot
+    # detection and can never remove any answer the function already gave. The
+    # residual risk is an ischroot false positive on a real machine, and it fails
+    # SAFE: the guards it feeds then skip creating a credential or a backup, rather
+    # than creating a shared one.
+    if command -v ischroot >/dev/null 2>&1; then
+        ischroot >/dev/null 2>&1 && return 0
+    fi
+    # Check if PID 1 is a normal init system, if so, we are NOT in chroot
+    # This check MUST come before the inode check because the inode comparison
+    # gives false positives on VMware VMs and some kernel versions
+    if [ -f /proc/1/cmdline ]; then
+        local init_cmd
+        init_cmd=$(tr '\0' ' ' < /proc/1/cmdline 2>/dev/null)
+        if [[ "$init_cmd" =~ (systemd|init|/sbin/init) ]]; then
+            # PID 1 is a real init system, definitely not a chroot
+            return 1
+        fi
+    fi
+    # Use ischroot if available (Debian standard tool)
+    if command -v ischroot >/dev/null 2>&1; then
+        if ischroot; then
+            return 0
+        else
+            return 1
+        fi
+    fi
+    # Fallback: compare root inode (can false-positive on VMs, so check last)
+    if [ "$(stat -c %d:%i / 2>/dev/null)" != "$(stat -c %d:%i /proc/1/root 2>/dev/null)" ]; then
+        return 0
+    fi
+    return 1
+}
+
 ensure_dns_stable_after_change() {
     local operation="${1:-DNS change}"
+
+    # A BUILD CHROOT HAS NO RUNTIME DNS TO STABILISE, so do not try.
+    #
+    # live-build gives the chroot a deliberately STATIC /etc/resolv.conf and this
+    # same installer announces it: "Chroot environment detected - keeping static
+    # resolv.conf for build". Running the recovery chain there produced five
+    # Kodachi-owned lines in the 2026-09-06 final-release log, including a bare
+    # `Error:` from dns-switch, which was RIGHT to refuse: rewriting resolv.conf
+    # while the build depends on it is exactly what its guard exists to prevent.
+    #
+    # Gated INSIDE the function rather than at the 15 call sites, so no caller can
+    # be missed and none of them needs to learn about chroots.
+    #
+    # This is not silencing a failure. On a real system nothing changes: the
+    # condition is false and the full recovery chain runs as before.
+    if is_chroot_environment; then
+        print_info "Chroot build: skipping runtime DNS stabilisation after ${operation} (the build's static resolv.conf is authoritative here)"
+        return 0
+    fi
 
     if dns_resolution_working; then
         print_success "DNS stable after ${operation}"
@@ -1153,7 +1251,7 @@ configure_kodachi_sudoers() {
         "conky-status"
         "oniux"
         "kodachi-dashboard"
-        # [AUTOSHIELD-RETIRED 2026-06-01] standalone GUI app merged into dashboard tab — no longer shipped
+        # [AUTOSHIELD-RETIRED 2026-06-01] standalone GUI app merged into dashboard tab, no longer shipped
         # "kodachi-autoshield"
         "global-launcher"
         "workflow-manager"
@@ -1282,12 +1380,46 @@ configure_kodachi_sudoers() {
     if [[ -n "${KODACHI_LIVE_BUILD:-}" ]] || [[ -n "${LB_CHROOT:-}" ]] || \
        [[ -f /.live-build-stamp ]] || [[ -f /var/lib/dpkg/info/.live-build-stamp ]]; then
         _in_build_chroot=1
+    elif is_chroot_environment; then
+        # is_chroot_environment() (:857) rather than a raw ischroot, because this file
+        # already defines it above every call site and it is strictly stronger: it
+        # checks PID 1 first, THEN ischroot, THEN a root-inode comparison, and it also
+        # consults /tmp/live-build-chroot which 0000-noninteractive-environment.hook
+        # creates, so it is right in the case where bare ischroot returns 2.
+        # Worth stating explicitly because a /proc-based detector has already lied in
+        # this exact chroot before (a 2026-09-01 ledger row records is_chroot_environment
+        # reading not-a-chroot because /proc was the host bind-mount). ischroot is safe
+        # here for a reason that is not obvious: it reads /proc/1/ROOT, not
+        # /proc/1/cmdline, and under that bind-mount the root comparison is what makes
+        # it CORRECT rather than what breaks it. Verified in a real chroot: rc=0 inside,
+        # rc=1 on the host.
+        # MEASURED 2026-09-07 on the 10.0.2 build 11 medium, reported by
+        # claude-265d92b3: it shipped kodachi-binaries.backup.1788758859 anyway,
+        # and a fresh one regenerated on every build.
+        #
+        # All four signals above are set by the CALLER, and a release ISO no longer
+        # has that caller. 9999-zzz-kodachi-install.hook.chroot:592 takes the
+        # KODACHI_INSTALLED_VIA_APT branch and SKIPS this script entirely; the
+        # export at :635 lives in the elif that a beta/apt build never reaches. The
+        # kodachi deb's postinst then runs the generated kodachi-system-setup.sh
+        # extract, which carries this block and inherits none of the four. So the
+        # guard was correct and simply never saw a true on the build that ships.
+        # (Two of the four were always dead: nothing in the tree creates
+        # /.live-build-stamp.)
+        #
+        # ischroot asks the ENVIRONMENT rather than the caller, so it holds on every
+        # path including a postinst. Exit codes: 0 = in a chroot, 1 = not, 2 = cannot
+        # tell. Only an explicit 0 counts, because treating "cannot tell" as a chroot
+        # would skip the backup on a real user's machine, which is the failure that
+        # actually costs something. Same instrument and same reasoning as the chroot
+        # guard in kodachi-apt-presnapshot (e89b4d29a).
+        _in_build_chroot=1
     fi
     if [[ -f "$sudoers_file" && "$_in_build_chroot" -eq 0 ]]; then
         print_info "Backing up existing sudoers file (keeping latest only)..."
         cp "$sudoers_file" "${sudoers_file}.backup.$(date +%s)"
     elif [[ "$_in_build_chroot" -eq 1 ]]; then
-        print_info "Live-build chroot detected — skipping sudoers backup creation"
+        print_info "Live-build chroot detected, skipping sudoers backup creation"
     fi
 
     # Create the kodachi-binaries sudoers file with ALL binaries for BOTH paths
@@ -1578,7 +1710,7 @@ HEADER
 
 # ============================================================
 # Autostart manager (GUI enable/disable of system units)
-# SECURITY NOTE: intentionally broad (any unit name) — the dashboard
+# SECURITY NOTE: intentionally broad (any unit name), the dashboard
 # startup manager discovers units dynamically. Members of %sudo can
 # already run the signed Kodachi root binaries passwordlessly.
 # ============================================================
@@ -1588,14 +1720,14 @@ HEADER
 %sudo ALL=(ALL) NOPASSWD: /bin/systemctl disable *
 
 # ============================================================
-# Binary (re)install drain — terminate root-owned holders
+# Binary (re)install drain, terminate root-owned holders
 # (kodachi-binary-install.sh; lsof already whitelisted above).
 # ============================================================
 %sudo ALL=(ALL) NOPASSWD: /usr/bin/kill
 %sudo ALL=(ALL) NOPASSWD: /bin/kill
 
 # ============================================================
-# Port scans (rofi Network menu) — via a fixed-argv helper, never bare nmap.
+# Port scans (rofi Network menu), via a fixed-argv helper, never bare nmap.
 #
 # WHAT WAS HERE BEFORE, and why it did not do what its comment claimed:
 #   %sudo ALL=(ALL) NOPASSWD: /usr/bin/nmap -F *
@@ -1628,7 +1760,7 @@ HEADER
 %sudo ALL=(ALL) NOPASSWD: /usr/bin/traceroute.db -m 20 *
 
 # ============================================================
-# Docker read-only inspection (rofi Utilities — optional package)
+# Docker read-only inspection (rofi Utilities, optional package)
 # ============================================================
 %sudo ALL=(ALL) NOPASSWD: /usr/bin/docker ps
 %sudo ALL=(ALL) NOPASSWD: /usr/bin/docker ps *
@@ -1714,7 +1846,16 @@ configure_emergency_shortcut_input_access() {
     fi
 
     if [[ -z "$actual_user" ]] || [[ "$actual_user" == "root" ]] || [[ ! "$actual_user" =~ ^[a-zA-Z0-9_-]+$ ]]; then
-        print_warning "Could not determine the desktop user. Skipping input-group setup."
+        # In a build chroot the desktop account does not exist yet: live-config
+        # creates it at first boot. So "no desktop user" is the EXPECTED state
+        # there and not a warning, exactly like the Pi-hole skip-versus-failure
+        # distinction fixed on 2026-09-04. On a real system it stays a warning,
+        # because there it means something actually went wrong.
+        if is_chroot_environment; then
+            print_info "Chroot build: no desktop user yet (live-config creates it at first boot); input groups are applied then"
+        else
+            print_warning "Could not determine the desktop user. Skipping input-group setup."
+        fi
         return 0
     fi
 
@@ -1741,7 +1882,7 @@ configure_emergency_shortcut_input_access() {
 # Prod layout: <hooks>/models                     (binaries deployed flat to /opt/kodachi)
 #
 # Audited 2026-05-20: ai-engine::resolve_models_dir candidates do NOT include
-# rust/kodachi-ai/models — production binaries at /opt/kodachi/dashboard/hooks/
+# rust/kodachi-ai/models, production binaries at /opt/kodachi/dashboard/hooks/
 # resolve <hooks>/models directly via base_dir.join("models"). Creating the
 # compat symlink in /opt/kodachi/ ADDS the rust/kodachi-ai/ tree to the live
 # ISO for no functional reason. So /opt/kodachi/dashboard/hooks is intentionally
@@ -1867,7 +2008,7 @@ cleanup_legacy_autostart_entries_for_user() {
 
 # Install Conky assets and autostart profile for the real desktop user
 # Stop Conky safely before updating its files to prevent CPU spike / freeze.
-# Must run as root — targets the specified non-root user's processes.
+# Must run as root, targets the specified non-root user's processes.
 # The watchdog service is stopped first so it doesn't restart Conky mid-update.
 # Conky will be restarted automatically by the enable --now call later.
 safe_stop_conky_for_update() {
@@ -1966,7 +2107,7 @@ install_kodachi_conky_for_user() {
     #
     # Enabled-check: we use the on-disk symlink under default.target.wants
     # rather than `systemctl --user is-enabled`, because the latter needs a
-    # live user D-Bus and XDG_RUNTIME_DIR — neither of which is threaded
+    # live user D-Bus and XDG_RUNTIME_DIR, neither of which is threaded
     # through `runuser` from a sudo-root deps-install context. The symlink
     # IS what `systemctl --user enable` creates; root can read it; no bus
     # required.
@@ -2061,11 +2202,11 @@ install_kodachi_conky_for_user() {
         if [[ -f "$snapshot_service_source" ]]; then
             cp -f "$snapshot_service_source" "$snapshot_service_file"
         else
-            # Fallback heredoc — only used if $snapshot_service_source is missing.
+            # Fallback heredoc, only used if $snapshot_service_source is missing.
             # Kept in sync with the canonical
             # /usr/share/kodachi/conky/systemd/conky-snapshot-refresh.service
             # (audit 2026-05-08: Requisite= refuses activation if graphical-
-            # session.target is not active — required to prevent the service
+            # session.target is not active, required to prevent the service
             # firing during the xfce4-session bring-up window).
             #
             # IMPORTANT: terminator is QUOTED ('EOF') so the inner /bin/bash -c
@@ -2117,7 +2258,7 @@ EOF
         if [[ -f "$snapshot_timer_source" ]]; then
             cp -f "$snapshot_timer_source" "$snapshot_timer_file"
         else
-            # Fallback heredoc — only used if $snapshot_timer_source is missing.
+            # Fallback heredoc, only used if $snapshot_timer_source is missing.
             # Kept in sync with the canonical
             # /usr/share/kodachi/conky/systemd/conky-snapshot-refresh.timer
             # (audit 2026-05-08, macOS-Ventura bundle: raised OnActiveSec from
@@ -2141,7 +2282,7 @@ EOF
         fi
 
         chmod 644 "$snapshot_service_file" "$snapshot_timer_file"
-        # Want the timer from graphical-session.target, NOT default.target — the
+        # Want the timer from graphical-session.target, NOT default.target, the
         # service is Requisite=graphical-session.target and a default.target want
         # creates a shutdown ordering cycle. Clear any stale default.target want.
         rm -f "$wants_dir/conky-snapshot-refresh.timer" 2>/dev/null || true
@@ -2484,7 +2625,7 @@ setup_dashboard_autostart() {
     #
     # We match the literal canonical Exec line that both binary installer
     # (kodachi-binary-install.sh:2305) and deps installer itself (line 2032)
-    # write — `Exec=/usr/local/bin/kodachi-dashboard-launcher`. Using
+    # write, `Exec=/usr/local/bin/kodachi-dashboard-launcher`. Using
     # parse-then-test-x failed open when the launcher script was missing
     # at check time even though the autostart entry was canonical; literal
     # match avoids that parsing failure mode entirely and sidesteps the
@@ -2524,7 +2665,7 @@ setup_dashboard_autostart() {
     # Create the launcher script if missing, or refresh it when an older copy
     # (pre-seeded by the ISO or a prior install) lacks the broadened
     # GPU-driver detection (nouveau / legacy radeon + NVIDIA proprietary).
-    # Refresh marker is GPU_NEEDS_FALLBACK — older launchers used the
+    # Refresh marker is GPU_NEEDS_FALLBACK, older launchers used the
     # narrower NVIDIA_PROPRIETARY token and get rewritten on next install.
     local launcher_script="/usr/local/bin/kodachi-dashboard-launcher"
     if [[ ! -f "$launcher_script" ]] || ! grep -q 'GPU_NEEDS_FALLBACK' "$launcher_script" 2>/dev/null || ! grep -q 'DASHBOARD_BIN=' "$launcher_script" 2>/dev/null; then
@@ -2568,7 +2709,7 @@ if [ -f /proc/driver/nvidia/version ] || \
     GPU_IS_NVIDIA_PROPRIETARY=true
 fi
 
-# 2. Nouveau (open-source NVIDIA, Mesa) — catches older NVIDIA chips
+# 2. Nouveau (open-source NVIDIA, Mesa), catches older NVIDIA chips
 #    (e.g. GTX 770 / Kepler) whose Nouveau GBM/EGL silently breaks
 #    WebKitGTK DMABUF init, producing a black dashboard window.
 if lsmod 2>/dev/null | grep -qE '^nouveau[[:space:]]'; then
@@ -2588,7 +2729,7 @@ if [ "$GPU_NEEDS_FALLBACK" = "true" ]; then
     export WEBKIT_DISABLE_COMPOSITING_MODE=1
 fi
 
-# LIBGL_ALWAYS_SOFTWARE is Mesa-only — NVIDIA proprietary GL ignores it.
+# LIBGL_ALWAYS_SOFTWARE is Mesa-only, NVIDIA proprietary GL ignores it.
 if [ "$GPU_IS_MESA_DRIVER" = "true" ]; then
     export LIBGL_ALWAYS_SOFTWARE=1
 fi
@@ -2643,7 +2784,7 @@ LAUNCHER_EOF
 
     mkdir -p "$autostart_dir"
     # NOTE: Using unquoted EOF so variables expand to full absolute paths.
-    # This is intentional — the autostart MUST contain the resolved path, not a variable.
+    # This is intentional, the autostart MUST contain the resolved path, not a variable.
     cat > "$autostart_file" << EOF
 [Desktop Entry]
 Type=Application
@@ -2739,7 +2880,7 @@ create_welcome_desktop_shortcut() {
         return 0
     fi
 
-    # AutoShield is RETIRED as a standalone app — it is now a tab on the
+    # AutoShield is RETIRED as a standalone app, it is now a tab on the
     # dashboard startup screen (after Mobile). Remove any stale per-user launcher
     # instead of creating one; continue to (re)create the dashboard menu entry.
     rm -f "$desktop_dir/kodachi-autoshield.desktop" 2>/dev/null || true
@@ -2911,12 +3052,12 @@ setup_logging() {
 }
 
 # Version configuration
-# Fallbacks only — overridden at runtime by resolve_mieru_release_metadata /
+# Fallbacks only, overridden at runtime by resolve_mieru_release_metadata /
 # resolve_latest_github_release_version (latest upstream). Kept current.
 MIERU_VERSION="3.36.0"
 HYSTERIA2_VERSION="2.12.2"
 V2RAY_PLUGIN_VERSION="1.3.2"
-# Fallback only — overridden at runtime by resolve_dnscrypt_release_metadata
+# Fallback only, overridden at runtime by resolve_dnscrypt_release_metadata
 # (latest upstream). Kept current to match the ISO cache freshness system.
 DNSCRYPT_VERSION="2.1.18"
 QRENCODE_VERSION="4.1.1"
@@ -3603,10 +3744,10 @@ configure_systemd_resolved() {
                 print_success "DNS is working correctly"
                 return 0
             fi
-            print_warning "DNS test failed but DNSCrypt is up — likely transient, continuing"
+            print_warning "DNS test failed but DNSCrypt is up, likely transient, continuing"
             return 0
         else
-            print_warning "dnscrypt-proxy not responsive — applying emergency fallback"
+            print_warning "dnscrypt-proxy not responsive, applying emergency fallback"
             apply_fallback_dns
             return 0
         fi
@@ -4134,7 +4275,7 @@ fi
 # single call protects every autoremove run below.
 print_step "Protecting Kodachi runtime-critical packages from autoremove..."
 if ! command -v chattr >/dev/null 2>&1 || ! dpkg -s e2fsprogs >/dev/null 2>&1; then
-    print_info "e2fsprogs (chattr/lsattr) missing — installing; required by the DNS-leak immutable lock"
+    print_info "e2fsprogs (chattr/lsattr) missing, installing; required by the DNS-leak immutable lock"
     apt-get install -y e2fsprogs 2>&1 | tail -3 || true
 fi
 # e2fsprogs is the proven-critical one (chattr/lsattr for the resolv.conf immutable lock).
@@ -4353,8 +4494,18 @@ mkdir -p /opt/kodachi/dashboard/hooks/others
 # create IPs cache directory" on early-boot debug-collector runs because
 # its create_dir_all call landed before /opt/kodachi/dashboard/hooks was
 # writable by the desktop user. Creating these here lets the runtime allowlist
-# cover them in one pass. Permissions tighten to 0700 at runtime via
-# ip-fetch's set_permissions call (see dashboard/hooks/rust/ip-fetch/src/cache/mod.rs).
+# cover them in one pass.
+#
+# GREP FOR THE THIRD STRING TOO. Since the no-follow hardening the same lockout
+# can surface one step earlier as "Failed to open cache directory", raised by
+# health-control's open_dir_no_follow, so a boot-log sweep for only the two
+# older wordings returns a false clean.
+#
+# Permissions tighten to 0700 at runtime through an O_NOFOLLOW descriptor
+# (fchmod, not the old path-based set_permissions, which followed symlinks as
+# root): see dashboard/hooks/rust/ip-fetch/src/cache/mod.rs chmod_dir_no_follow
+# and dashboard/hooks/rust/health-control/src/single_flight_cache.rs
+# narrow_to_owner_only.
 mkdir -p /opt/kodachi/dashboard/hooks/cache/ip-fetch/ips
 mkdir -p /opt/kodachi/dashboard/hooks/logs
 mkdir -p /opt/kodachi/dashboard/hooks/results
@@ -5304,7 +5455,7 @@ install_v2ray() {
 #
 # 2026-05-26 (Bug Q): prefer the cached binary from
 # `/opt/kodachi-offline-packages/external-proxy-binaries-cache/Xray-linux-64.zip`
-# (populated by build-iso.sh::ensure_latest_proxy_binaries_cache) — that
+# (populated by build-iso.sh::ensure_latest_proxy_binaries_cache), that
 # cache is checked against upstream every refresh build, so the ISO is
 # never more than one ISO cycle out of date. Fall back to the upstream
 # curl|bash installer only when the cache is absent (network install on
@@ -6362,12 +6513,30 @@ generate_pihole_setupvars() {
     print_info "Using interface: $interface"
     print_info "Using IPv4: $ipv4_address"
 
-    # Generate random web password
-    local web_password=$(generate_pihole_password)
-
-    # Double-hash the password for Pi-hole (SHA256 twice with newline)
-    local hashed_password=$(printf "%s" "$web_password" | sha256sum | awk '{print $1}')
-    hashed_password=$(printf "%s" "$hashed_password" | sha256sum | awk '{print $1}')
+    # NEVER BAKE A SHARED ADMIN CREDENTIAL INTO THE IMAGE.
+    #
+    # This used to generate a random password unconditionally. The design is right
+    # and the PLACE was wrong: inside the live-build chroot there is no per-user
+    # install, so the one random value was frozen into the squashfs and every
+    # person who downloaded the ISO shared a single Pi-hole admin password. BOTH
+    # halves shipped: the double-hash in setupVars.conf and the PLAINTEXT in
+    # /etc/pihole/.webpassword_initial. Random is not unique when the randomness
+    # happens once, upstream of everybody. Found on the 10.0.2 medium by
+    # claude-265d92b3.
+    #
+    # In a chroot it ships UNSET. An empty WEBPASSWORD is Pi-hole's own "no
+    # password configured" state, so the first real activation sets one normally.
+    # On a real machine the behaviour is unchanged.
+    local web_password=""
+    local hashed_password=""
+    if is_chroot_environment; then
+        print_info "Build chroot detected, shipping Pi-hole with NO admin password (set on first activation)"
+    else
+        web_password=$(generate_pihole_password)
+        # Double-hash the password for Pi-hole (SHA256 twice with newline)
+        hashed_password=$(printf "%s" "$web_password" | sha256sum | awk '{print $1}')
+        hashed_password=$(printf "%s" "$hashed_password" | sha256sum | awk '{print $1}')
+    fi
 
     # Create setupVars.conf with all required settings
     cat > /etc/pihole/setupVars.conf <<EOF
@@ -6395,9 +6564,16 @@ EOF
 
     if [[ -f /etc/pihole/setupVars.conf ]]; then
         print_success "Pi-hole configuration created at /etc/pihole/setupVars.conf"
-        print_info "Web password: $web_password (save this!)"
-        echo "$web_password" > /etc/pihole/.webpassword_initial
-        chmod 600 /etc/pihole/.webpassword_initial
+        # Only ever record a password that actually EXISTS. In the build chroot
+        # web_password is empty by design, and writing the file anyway would put a
+        # shared secret straight back into the image through the other door.
+        if [[ -n "$web_password" ]]; then
+            print_info "Web password: $web_password (save this!)"
+            echo "$web_password" > /etc/pihole/.webpassword_initial
+            chmod 600 /etc/pihole/.webpassword_initial
+        else
+            print_info "No Pi-hole admin password set; one is created on first activation"
+        fi
         return 0
     else
         print_error "Failed to create Pi-hole configuration"
@@ -6654,7 +6830,17 @@ install_pihole() {
         return 0
     fi
 
-    echo "Pi-hole is not installed. Installing now..."
+    # Per live-ISO log audit 2026-09-06 (10.0.1 build 8): this line was
+    # unconditional, so /var/log/kodachi-pihole-install.log on the shipped ISO
+    # opened with "Pi-hole is not installed. Installing now..." and then closed
+    # with "there is nothing further to try here", having installed nothing. The
+    # outcome was correct; only the announcement was false. Announce what this
+    # run will actually do, which is already decided by the package context.
+    if [[ "${KODACHI_PIHOLE_PACKAGE_CONTEXT:-0}" == "1" ]]; then
+        echo "Pi-hole runtime not detected yet; already running inside the kodachi-pihole package."
+    else
+        echo "Pi-hole is not installed. Installing now..."
+    fi
     echo ""
 
     # Kodachi's own signed package first. kodachi-pihole is published in the
@@ -7971,43 +8157,6 @@ print_info "Stopping unnecessary services and processes for security..."
 echo ""
 
 # Detect if running in chroot environment (live-build)
-is_chroot_environment() {
-    # Check for live-build indicator files (definitive).
-    # LB_BASE is live-build's own environment variable and is included because the
-    # marker files are not guaranteed to exist yet: /tmp/live-build-chroot is
-    # created by the first chroot hook, and anything invoked before that would
-    # otherwise fall through to the /proc heuristic below, which CANNOT answer
-    # correctly in a chroot (live-build bind-mounts the host's /proc, so
-    # /proc/1/cmdline is the BUILD HOST's systemd). That fall-through is what made
-    # every chroot-gated branch take the non-chroot path in the 10.0.0-beta build.
-    if [ -f "/.debian-live-build" ] || [ -f "/tmp/live-build-chroot" ] || [ -n "${LB_BASE:-}" ]; then
-        return 0
-    fi
-    # Check if PID 1 is a normal init system — if so, we are NOT in chroot
-    # This check MUST come before the inode check because the inode comparison
-    # gives false positives on VMware VMs and some kernel versions
-    if [ -f /proc/1/cmdline ]; then
-        local init_cmd
-        init_cmd=$(tr '\0' ' ' < /proc/1/cmdline 2>/dev/null)
-        if [[ "$init_cmd" =~ (systemd|init|/sbin/init) ]]; then
-            # PID 1 is a real init system — definitely not a chroot
-            return 1
-        fi
-    fi
-    # Use ischroot if available (Debian standard tool)
-    if command -v ischroot >/dev/null 2>&1; then
-        if ischroot; then
-            return 0
-        else
-            return 1
-        fi
-    fi
-    # Fallback: compare root inode (can false-positive on VMs, so check last)
-    if [ "$(stat -c %d:%i / 2>/dev/null)" != "$(stat -c %d:%i /proc/1/root 2>/dev/null)" ]; then
-        return 0
-    fi
-    return 1
-}
 
 # Function to stop, disable service and kill processes (chroot-aware)
 apt_parity_system_cleanup() {
@@ -8857,7 +9006,7 @@ elif [[ -f "$ROFI_ACTIONS_TARGET" ]]; then
     chown root:root "$ROFI_ACTIONS_TARGET" 2>/dev/null || true
     print_info "Kodachi rofi actions already present at $ROFI_ACTIONS_TARGET"
 else
-    print_warning "Kodachi rofi actions source not found — skipping launcher deployment"
+    print_warning "Kodachi rofi actions source not found, skipping launcher deployment"
 fi
 
 ROFI_LIB_TARGET="/usr/local/lib/kodachi-rofi"
@@ -8868,7 +9017,7 @@ if [[ -d "$ROFI_LIB_TARGET" ]]; then
     chown -R root:root "$ROFI_LIB_TARGET" 2>/dev/null || true
     print_success "Kodachi rofi library permissions normalized: $ROFI_LIB_TARGET"
 else
-    print_warning "Kodachi rofi library directory not found — skipping permission normalization"
+    print_warning "Kodachi rofi library directory not found, skipping permission normalization"
 fi
 
 echo ""
@@ -8879,7 +9028,7 @@ echo ""
 # Create .desktop files in /usr/share/applications/ so Kodachi apps appear in
 # the XFCE Whisker menu (and any XDG-compliant application launcher).
 # This runs as root (deps script) so we can write to system directories.
-# Not gated behind GUI detection — harmless on headless systems.
+# Not gated behind GUI detection, harmless on headless systems.
 print_step "Installing Whisker menu entries..."
 
 WHISKER_APPS_DIR="/usr/share/applications"
@@ -8935,7 +9084,7 @@ MENUEOF
 
     print_success "Whisker menu entries installed: kodachi-dashboard, kodachi-rofi-actions"
 else
-    print_warning "Directory $WHISKER_APPS_DIR not found — skipping Whisker menu entries"
+    print_warning "Directory $WHISKER_APPS_DIR not found, skipping Whisker menu entries"
 fi
 
 echo ""
@@ -9274,8 +9423,18 @@ if [[ "$PIHOLE_KEEP" == "true" ]] && systemctl is-active --quiet pihole-FTL 2>/d
     fi
     
     # Generate and set new password
-    print_info "Generating new Pi-hole web interface password..."
-    if command -v pihole &>/dev/null; then
+    #
+    # SECOND CREDENTIAL SITE, GUARDED FOR THE SAME REASON AS THE setupVars.conf ONE.
+    # Found while self-auditing the first fix: this path calls `pihole setpassword`
+    # and then PRINTS the password to stdout. In a build chroot that would bake a
+    # shared credential into the image a second way AND write it into the build log,
+    # which is the worse of the two because the log is not even inside the image
+    # where anyone would think to look for it.
+    # Guarded rather than removed: on a real machine this is correct behaviour and
+    # the user needs to see the password once.
+    if is_chroot_environment; then
+        print_info "Build chroot detected, not generating a Pi-hole web password (set on first activation)"
+    elif command -v pihole &>/dev/null; then
         # Generate random password and set it with confirmation
         new_pihole_password=$(generate_pihole_password)
         if [[ -n "$new_pihole_password" ]]; then
@@ -9692,7 +9851,7 @@ echo ""
 # ============================================================================
 # PRE-CREATE KODACHI-CLAW CONFIG DIRECTORY
 # ============================================================================
-# [CLAW-ARCHIVED 2026-05-18] kodachi-claw retired — ~/.kodachi-claw pre-creation
+# [CLAW-ARCHIVED 2026-05-18] kodachi-claw retired, ~/.kodachi-claw pre-creation
 # disabled. Original block preserved verbatim below (inert).
 : <<'CLAW_ARCHIVED_BLOCK'
 if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
