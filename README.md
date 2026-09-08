@@ -63,7 +63,7 @@ The beta **Desktop (XFCE) ISO** and the beta **packages** are both live now: dow
 | | |
 |---|---|
 | Live changelog | [kodachi.cloud/docs/changelog.html](https://kodachi.cloud/docs/changelog.html) ([raw](https://kodachi.cloud/apps/os/CHANGELOG.md)) |
-| Install and shell scripts | [Kodachi-OS-10-beta](Kodachi-OS-10-beta) , the five current scripts, kept in step with the source of truth |
+| What ships in the open | [Kodachi-OS-10-beta/open](Kodachi-OS-10-beta/open) , 222 files: the installer scripts, all 122 workflow profiles, the dock command surface, the Thunar actions, the conky collectors and the AppArmor profile. Everything there already ships in the ISO as plaintext |
 | R&D history | [Kodachi-OS-9-stable/v9-behind-scenes-progress](Kodachi-OS-9-stable/v9-behind-scenes-progress) |
 
 ---
