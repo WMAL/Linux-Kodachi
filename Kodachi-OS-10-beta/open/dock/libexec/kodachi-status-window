@@ -130,7 +130,7 @@ textview.report-plain text selection {{
 # ── EVERY DESTINATION IN THE RAIL GETS ITS OWN MARK ───────────────────────
 #
 # Operator, 2026-09-04: "ech item shoudl have its unqiue icon ! what the [expletive]
-# is this", and on the standalone pool window "fuckinghave tor icon or somethng
+# is this", and on the standalone pool window "[expletive] tor icon or somethng
 # better !". He is right: build() called win.section(title) with no icon, so
 # every destination fell back to the process mark and the rail read as eight
 # copies of the same badge.

@@ -2054,7 +2054,7 @@ def native_presentation(key):
 # ── THE ACTION COLUMN IS A COLUMN, SO IT MUST NOT MOVE ─────────────────────
 #
 # Operator, 2026-09-04, pointing at one row in a list of nine: "all buttons to
-# be aligned the same ... why this one is fuckign occuard ! review all gtk and
+# be aligned the same ... why this one is [expletive] occuard ! review all gtk and
 # mae sure things are aligned".
 #
 # He is right and the cause is mechanical. Each row packs the state pill first
