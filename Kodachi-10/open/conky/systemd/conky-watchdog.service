@@ -1,0 +1,26 @@
+[Unit]
+Description=Kodachi Conky Watchdog
+After=graphical-session.target
+Wants=graphical-session.target
+
+[Service]
+Type=simple
+# Let the desktop settle before conky starts spawning subprocesses.
+ExecStartPre=/bin/sleep 5
+ExecStart=%h/.config/kodachi/conky/scripts/conky-watchdog.sh
+# DO NOT use conky-launcher.sh --stop here, it calls
+# systemctl --user stop conky-watchdog.service (itself), creating a deadlock.
+# Instead kill conky directly; the watchdog's SIGTERM trap handles the rest.
+ExecStop=-/usr/bin/pkill -x conky
+ExecStopPost=-/usr/bin/pkill -9 -x conky
+Restart=on-failure
+RestartSec=3
+# mixed: SIGTERM to main PID, SIGKILL to remaining cgroup processes after timeout.
+KillMode=mixed
+TimeoutStopSec=5
+# Memory limits removed: throttling creates a death spiral where 49 execi
+# processes slow down, pile up, and consume MORE memory than without limits.
+Environment=XAUTHORITY=%h/.Xauthority
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,45 @@
+{
+  "schema_version": "1.1",
+  "id": "torrify-balance-iptables-weighted",
+  "name": "torrify-balance-iptables-weighted",
+  "description": "Load-balanced Tor torrification with iptables using WEIGHTED algorithm: Distributes traffic based on instance weight/priority for prioritized routing.",
+  "metadata": {
+    "created": "2025-10-30T00:00:00Z",
+    "modified": "2025-10-30T00:00:00Z",
+    "version": "1.0"
+  },
+  "global_settings": {
+    "kill_policy": "stop",
+    "continue_policy": false,
+    "max_log_size": 10485760,
+    "default_timeout": 300,
+    "working_dir": "."
+  },
+  "includes": [
+    "base-tor-load-balance"
+  ],
+  "parameters": {
+    "firewall": {
+      "type": "choice",
+      "description": "Firewall backend",
+      "options": [
+        "iptables",
+        "nftables"
+      ],
+      "default": "iptables",
+      "required": false
+    },
+    "balancing_mode": {
+      "type": "choice",
+      "description": "Load balancing algorithm",
+      "options": [
+        "consistent-hashing",
+        "round-robin",
+        "weighted"
+      ],
+      "default": "weighted",
+      "required": false
+    }
+  },
+  "steps": []
+}

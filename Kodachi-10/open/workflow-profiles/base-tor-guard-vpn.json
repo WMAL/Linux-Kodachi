@@ -1,0 +1,143 @@
+{
+  "schema_version": "1.1",
+  "id": "base-tor-guard-vpn",
+  "name": "base-tor-guard-vpn",
+  "description": "Base profile: Tor/VPN conflict guard - prevents VPN connections while system is torrified. Include this before VPN connection attempts to avoid conflicts.",
+  "metadata": {
+    "created": "2025-10-22T00:00:00Z",
+    "modified": "2025-10-22T00:00:00Z",
+    "version": "1.0"
+  },
+  "global_settings": {
+    "kill_policy": "stop",
+    "continue_policy": true,
+    "max_log_size": 10485760,
+    "default_timeout": 60,
+    "working_dir": "."
+  },
+  "steps": [
+    {
+      "id": 1,
+      "type": "command",
+      "cmd": "echo '=== TOR STATUS CHECK ==='",
+      "description": "Run the typed workflow command 'echo '=== TOR STATUS CHECK ===''.",
+      "condition": {
+        "type": "always"
+      },
+      "timeout": 10,
+      "confirm": false,
+      "nice_level": 0,
+      "cell_store": "anonymity",
+      "score_impact": 0,
+      "colonyops_safety": {
+        "danger_level": "safe",
+        "requires_auth": false,
+        "needs_sudo": false,
+        "execution_kind": "typed-arbitrary-workflow",
+        "destructive": false,
+        "workflow_safe": true,
+        "shell_safe": true,
+        "confirm_copy": "",
+        "rollback_hint": "Review the step result and restore the prior state before continuing if the command changed system state."
+      },
+      "command_id": "workflow.argv.echo.0c2bb12894e3e127",
+      "argv": [
+        "echo",
+        "=== TOR STATUS CHECK ==="
+      ]
+    },
+    {
+      "id": 2,
+      "type": "command",
+      "cmd": "ip-fetch check-tor",
+      "description": "Check if connection is using Tor network",
+      "condition": {
+        "type": "always"
+      },
+      "timeout": 120,
+      "confirm": false,
+      "nice_level": 0,
+      "cell_store": "anonymity",
+      "score_impact": 1,
+      "colonyops_safety": {
+        "danger_level": "safe",
+        "requires_auth": false,
+        "needs_sudo": false,
+        "execution_kind": "tauri-service",
+        "destructive": false,
+        "workflow_safe": true,
+        "shell_safe": true,
+        "confirm_copy": "",
+        "rollback_hint": "Re-run the matching status command and restore the prior configuration if needed."
+      },
+      "command_id": "rust.ip-fetch.check-tor",
+      "argv": [
+        "/opt/kodachi/dashboard/hooks/ip-fetch",
+        "check-tor"
+      ]
+    },
+    {
+      "id": 3,
+      "type": "command",
+      "cmd": "echo '⚠️  ERROR: System is currently torrified. Cannot connect to VPN while torrified. Solution: run detorrify first (sudo workflow-manager run detorrify-complete-verify)'",
+      "description": "Run the typed workflow command 'echo '⚠️  ERROR: System is currently torrified. Cannot connect to VPN while torrified. Solution: run detorrify first (sudo workflow-manager run detorrify-complete-verify)''.",
+      "condition": {
+        "type": "if_state",
+        "state": "torrify",
+        "expect": true
+      },
+      "timeout": 10,
+      "confirm": false,
+      "nice_level": 0,
+      "cell_store": "anonymity",
+      "score_impact": 0,
+      "colonyops_safety": {
+        "danger_level": "safe",
+        "requires_auth": false,
+        "needs_sudo": false,
+        "execution_kind": "typed-arbitrary-workflow",
+        "destructive": false,
+        "workflow_safe": true,
+        "shell_safe": true,
+        "confirm_copy": "",
+        "rollback_hint": "Review the step result and restore the prior state before continuing if the command changed system state."
+      },
+      "command_id": "workflow.argv.echo.40545bd011ddb15e",
+      "argv": [
+        "echo",
+        "⚠️  ERROR: System is currently torrified. Cannot connect to VPN while torrified. Solution: run detorrify first (sudo workflow-manager run detorrify-complete-verify)"
+      ]
+    },
+    {
+      "id": 4,
+      "type": "command",
+      "cmd": "false",
+      "description": "Run the typed workflow command 'false'.",
+      "condition": {
+        "type": "if_state",
+        "state": "torrify",
+        "expect": true
+      },
+      "timeout": 10,
+      "confirm": false,
+      "nice_level": 0,
+      "cell_store": "info",
+      "score_impact": 0,
+      "colonyops_safety": {
+        "danger_level": "safe",
+        "requires_auth": false,
+        "needs_sudo": false,
+        "execution_kind": "typed-arbitrary-workflow",
+        "destructive": false,
+        "workflow_safe": true,
+        "shell_safe": true,
+        "confirm_copy": "",
+        "rollback_hint": "Review the step result and restore the prior state before continuing if the command changed system state."
+      },
+      "command_id": "workflow.argv.false.0496d069424ef34e",
+      "argv": [
+        "false"
+      ]
+    }
+  ]
+}

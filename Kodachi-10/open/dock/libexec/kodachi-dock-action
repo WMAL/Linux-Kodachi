@@ -1,0 +1,1380 @@
+#!/usr/bin/env bash
+# Kodachi Dock Control - Action Runner
+#
+# SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.1
+# Copyright (c) 2013-2026 Warith Al Maawali
+#
+# This file is part of Kodachi OS.
+# For full license terms, see LICENSE.md or visit:
+# https://kodachi.cloud/docs/license.html
+#
+# Commercial or organizational use requires a written license.
+# Contact: warith@digi77.com
+#
+# Description:
+# Runs one Cairo Dock action cell. Reuses the shared Kodachi Treasure action
+# registry (ACTION_ROWS from menu-actions.sh) so the dock and the rofi menus can
+# never disagree about what a label means, and reads per-action dock metadata
+# from dock-actions.tsv.
+#
+# For each run it takes a single-flight lock, authenticates BEFORE an auth-gated
+# command rather than after, enforces the action's own declared timeout, and
+# reports the result as a desktop notification carrying either the payload the
+# user acts on (for example the new public IP after a connect) or the failing
+# command's own error text.
+#
+# It never bypasses the in-binary authentication gate implemented by
+# auth_shared::verify_authenticated_with_status. It can only ensure the session
+# is authenticated first, and it fails closed when that is not possible.
+#
+# Author: Warith Al Maawali
+# Version: <lab-host>
+# Last updated: 2026-08-16
+
+set -uo pipefail
+
+# ── Shared helpers ────────────────────────────────────────────
+# Only lib.sh is sourced, for command_exists(), notify_message() and APP_TITLE.
+#
+# menu-actions.sh is deliberately NOT sourced, even though it would hand us
+# ACTION_ROWS and get_action_record() for free. That path was measured on a
+# Kodachi 9 VM on 2026-08-16 at 10.3 s wall and 3.2 s CPU for a single action:
+# mapfile pulls 587 rows into a bash array and get_action_record() then walks it
+# with one `IFS=$'\t' read` per row. A dock click has to feel immediate, so the
+# registry is queried with one awk pass over the file instead. The file is the
+# same file the rofi menus use, so the two surfaces still cannot disagree.
+ROFI_LIB_DIR="${ROFI_LIB_DIR:-/usr/local/lib/kodachi-rofi}"
+DOCK_REGISTRY="${DOCK_REGISTRY:-${ROFI_LIB_DIR}/menu-actions.sh}"
+# shellcheck source=lib.sh
+source "${ROFI_LIB_DIR}/lib.sh"
+
+# ── Registry Lookup ───────────────────────────────────────────
+# The registry is a tab separated table inside a `mapfile <<'EOF'` heredoc:
+#   Category  Label  confirm  handler  command
+# A row is identified by its first two fields; the command field is last and is
+# allowed to contain anything, including further tabs.
+
+get_action_record() {
+    local wanted_category="${1:-}"
+    local wanted_label="${2:-}"
+    local record
+
+    record="$(awk -F'\t' -v c="$wanted_category" -v l="$wanted_label" '
+        NF >= 5 && $1 == c && $2 == l { print; exit }
+    ' "$DOCK_REGISTRY")"
+
+    [[ -n "$record" ]] || return 1
+    printf '%s\n' "$record"
+}
+
+# ── Dock Configuration ────────────────────────────────────────
+DOCK_SIDECAR="${DOCK_SIDECAR:-${ROFI_LIB_DIR}/dock-actions.tsv}"
+# Rows carrying this Category are group dividers written into the sub-docks by
+# kodachi-dock-build. They have no registry row and no command, so --check must
+# not demand one and --list must not offer one.
+DOCK_SEPARATOR_CATEGORY="_SEP_"
+# Rows carrying this Category open a GTK command window instead of running a
+# registry action. kodachi-dock-build writes `Exec=kodachi-command-window
+# <Label>` for them, so like separators they have no registry row and --check
+# must not demand one. Without this, --check exited 1 on a correctly built dock
+# and the mandatory gate could never pass.
+DOCK_WINDOW_CATEGORY="_WINDOW_"
+# Rows carrying this Category launch an ORDINARY APPLICATION. Their Exec is
+# carried verbatim in the Payload column rather than resolved from the registry,
+# because a desktop program has no (Category, Label) identity in menu-actions.sh
+# and inventing 71 of them would ship GUI-only rows onto the headless terminal
+# image. Like separators and windows, --check must not demand a registry row.
+DOCK_LAUNCH_CATEGORY="_LAUNCH_"
+# The sub-dock layout, resolved EXACTLY as kodachi-dock-build resolves it. It was
+# hardcoded in three places here while the build honoured DOCK_SHARE_DIR, so
+# pointing the build at another tree left the gates validating a file the build
+# had never written, and they went green on a stale or absent layout.
+DOCK_SHARE_DIR="${DOCK_SHARE_DIR:-/usr/local/share/kodachi/dock}"
+DOCK_LAYOUT="${DOCK_LAYOUT:-${DOCK_SHARE_DIR}/dock-layout.tsv}"
+# The notification icon is the Kodachi mark, at the largest size installed.
+# kodachi32.png is 32 pixels and 766 bytes; a notification bubble renders its
+# icon at roughly 48, so the small file was being upscaled and looked soft next
+# to every other notification on the desktop. First existing path wins, so an
+# image that ships only the small set still gets a branded notification.
+resolve_dock_icon() {
+    local candidate
+    for candidate in \
+        /usr/share/kodachi/dock/icons/kodachi-green-128.png \
+        /usr/share/icons/kodachi/Kodachi_Green_big.png \
+        /usr/share/icons/kodachi/kodachi128.png \
+        /usr/share/icons/kodachi/kodachi64.png \
+        /usr/share/icons/kodachi/kodachi32.png; do
+        [[ -r "$candidate" ]] && { printf '%s' "$candidate"; return 0; }
+    done
+    printf '%s' "/usr/share/icons/kodachi/kodachi32.png"
+}
+DOCK_ICON="${DOCK_ICON:-$(resolve_dock_icon)}"
+DOCK_DEFAULT_TIMEOUT="${DOCK_DEFAULT_TIMEOUT:-300}"
+DOCK_IP_TIMEOUT="${DOCK_IP_TIMEOUT:-45}"
+# A cell declaring a timeout at or below this is the read-only tier (status,
+# show, list, check). Those skip the "starting..." notification: see the note at
+# the call site.
+DOCK_QUIET_START_MAX_TIMEOUT="${DOCK_QUIET_START_MAX_TIMEOUT:-60}"
+
+DOCK_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/kodachi-dock"
+if ! mkdir -p "$DOCK_RUNTIME_DIR" 2>/dev/null; then
+    DOCK_RUNTIME_DIR="${TMPDIR:-/tmp}"
+fi
+
+# ── Notification Helpers ──────────────────────────────────────
+# health-control owns the Kodachi-branded notifier, carries the sound policy and
+# is already covered by the NOPASSWD rules. lib.sh notify_message() is the
+# fallback for the live phase, before the binaries are deployed.
+
+# A notification is a small box, not a terminal.
+#
+# xfce4-notifyd grows the bubble to fit its LONGEST LINE instead of wrapping it.
+# Kodachi CLIs print wide: `tor-switch tor-status` emits a 105 character line
+# (measured on the test VM 2026-08-17, "Tor service is running (PID: ...) -
+# Memory: ... - Since: ..."), which produced a notification wider than a third of
+# a 3440px screen, sitting on top of the conky panels and pushed off its corner.
+# Several cells at once then tiled at different widths and the whole corner
+# looked broken.
+#
+# So every body is wrapped at a fixed width and capped at a fixed number of
+# lines before it is handed to any notifier. Control characters are stripped in
+# the same pass: a stray escape sequence renders as literal garbage in a GTK
+# label, and it only takes one binary deciding it is on a terminal.
+DOCK_NOTIFY_WIDTH="${DOCK_NOTIFY_WIDTH:-58}"
+DOCK_NOTIFY_LINES="${DOCK_NOTIFY_LINES:-7}"
+
+# A tagged report must never reach a notification with its tags showing.
+#
+# Cells that render through kodachi-json-report emit the status-window stream
+# (#TITLE / #AGE / #SECTION / #ROW label value state). That is meant for the
+# window. When the window cannot open, or the answer turns out short enough for
+# a notification, the SAME text goes to the notifier, and without this it would
+# arrive as literal "#ROW\tStatus\tRUNNING\tok" lines. Strip the tags back to
+# plain text, exactly as kodachi-dock-status:plain_text() already does for the
+# session report, so both surfaces read properly from one source.
+strip_report_tags() {
+    printf '%s\n' "${1:-}" | awk -F'\t' '
+        $1 == "#TITLE"   { next }
+        $1 == "#AGE"     { printf "%s\n", $2; next }
+        $1 == "#SECTION" { printf "\n%s\n", $2; next }
+        $1 == "#ROW"     { if ($2 == "") printf "  %s\n", $3; else printf "  %s: %s\n", $2, $3; next }
+        { print }
+    '
+}
+
+format_notification_body() {
+    local text="${1:-}"
+    [[ -n "$text" ]] || return 0
+
+    # Detect the tagged stream by its own markers, not by guessing.
+    if printf '%s' "$text" | command grep -q '^#\(TITLE\|SECTION\|ROW\|AGE\)\t'; then
+        text="$(strip_report_tags "$text")"
+    fi
+
+    local cleaned wrapped kept
+    # Keep tab and newline, drop every other C0 control and the ESC that starts
+    # an ANSI sequence.
+    cleaned="$(printf '%s\n' "$text" | tr -d '\000-\010\013\014\016-\037\177' | expand)"
+    # -s breaks on spaces, so a wrapped line does not split a word or an IP.
+    wrapped="$(printf '%s\n' "$cleaned" | fold -s -w "$DOCK_NOTIFY_WIDTH")"
+    kept="$(printf '%s\n' "$wrapped" | head -n "$DOCK_NOTIFY_LINES")"
+
+    printf '%s' "$kept"
+    if [[ "$(printf '%s\n' "$wrapped" | wc -l)" -gt "$DOCK_NOTIFY_LINES" ]]; then
+        printf '\n...'
+    fi
+}
+
+dock_notify() {
+    local urgency="${1:-normal}"
+    local title="${2:-}"
+    local body
+    body="$(format_notification_body "${3:-}")"
+    local duration="${4:-8}"
+
+    if command_exists health-control; then
+        if health-control notify \
+            --message "$title" \
+            --body "$body" \
+            --urgency "$urgency" \
+            --duration "$duration" \
+            --notify-icon "$DOCK_ICON" >/dev/null 2>&1; then
+            return 0
+        fi
+    fi
+
+    notify_message "$urgency" "${title}: ${body}"
+    return 0
+}
+
+dock_sound() {
+    local sound="${1:-}"
+    [[ -n "$sound" ]] || return 0
+    command_exists health-control || return 0
+    # 9>&-, same reason as show_in_window: a backgrounded child inherits the
+    # single-flight lock on fd 9 and holds it until it exits. A sound is short, so this
+    # one is a narrow window rather than an indefinite one, but a short wrong answer is
+    # still a wrong answer and the redirection costs nothing.
+    health-control play-sound "$sound" >/dev/null 2>&1 9>&- &
+    return 0
+}
+
+dock_fail() {
+    local message="${1:-Unknown error}"
+    dock_notify critical "Kodachi" "$message" 12
+    dock_sound alert
+    printf '%s\n' "$message" >&2
+    exit 1
+}
+
+# ── Side-car Lookup ───────────────────────────────────────────
+# Columns, tab separated:
+#   Category  Label  Subdock  DockLabel  Icon  NeedsAuth  Timeout  Payload  Sound
+#
+# This metadata deliberately lives OUTSIDE menu-actions.sh. That registry's
+# command field is the final variable of an `IFS=$'\t' read` in lib.sh, so it
+# absorbs every remaining tab; an appended column would be concatenated into the
+# command string and executed. Rows may be added to the registry, columns may not.
+
+sidecar_record() {
+    local wanted_category="${1:-}"
+    local wanted_label="${2:-}"
+
+    [[ -r "$DOCK_SIDECAR" ]] || return 1
+    awk -F'\t' -v c="$wanted_category" -v l="$wanted_label" '
+        /^#/ { next }
+        NF >= 9 && $1 == c && $2 == l { print; exit }
+    ' "$DOCK_SIDECAR"
+}
+
+# ── Authentication (fail closed) ──────────────────────────────
+# online-auth authenticate is non-interactive: it has no username or password
+# option and authenticates from the stored card and license, so it is safe to
+# call from a dock click. On failure the action does NOT run.
+
+ensure_authenticated() {
+    if ! command_exists online-auth; then
+        printf '%s\n' "online-auth is not installed"
+        return 1
+    fi
+
+    if sudo -n online-auth check-login >/dev/null 2>&1; then
+        return 0
+    fi
+
+    dock_notify low "Kodachi" "Not logged in. Authenticating..." 5
+
+    local output
+    if output="$(sudo -n online-auth authenticate 2>&1)"; then
+        return 0
+    fi
+
+    # Report the server's own reason rather than a generic string.
+    printf '%s\n' "${output:-authentication failed with no output}" | tail -n 3
+    return 1
+}
+
+# ── Non-interactive sudo ──────────────────────────────────────
+# Rewrite `sudo` to `sudo -n` ONLY where sudo is being invoked as a command:
+# at the start of the line, or straight after a shell operator (&& || ; | ( {).
+#
+# The previous implementation was `${command_text//sudo /sudo -n }`, a blind
+# global replace. That already mangled a shipped row: the Tor Circuit Monitor
+# command embeds `sudo -n -u debian-tor nyx` inside a quoted argument to
+# xfce4-terminal, and the substitution turned it into `sudo -n -n -u`. sudo
+# tolerates a repeated flag so it was harmless, but any future row carrying the
+# literal string "sudo " inside an argument would be silently rewritten.
+harden_sudo_calls() {
+    printf '%s' "${1:-}" |
+        sed -E 's/(^|[&|;(){}][[:space:]]*)sudo[[:space:]]+(-n[[:space:]]+)?/\1sudo -n /g'
+}
+
+# ── Confirmation ──────────────────────────────────────────────
+# The registry's third field marks an action as needing confirmation, and the
+# rofi menus honour it through lib.sh confirm_action(). A dock click has no rofi
+# session, so the dock asks with a graphical dialog instead. If no dialog tool is
+# available the action is refused rather than run unconfirmed.
+
+# Exit codes are meaningful and the caller depends on them:
+#   0  the user said yes
+#   1  the user said no, stay silent
+#   2  no dialog could be shown, refuse the action and say why
+#
+# The earlier version signalled "no tool" by writing to stdout and let the
+# caller infer the difference from whether that string was empty. That could not
+# tell "user cancelled" from "the dialog failed to open", so an action clicked
+# in a session where the dialog could not appear did nothing at all, silently.
+dock_confirm() {
+    local dock_label="${1:-this action}"
+    local prompt="Run \"${dock_label}\"?"
+
+    if command_exists zenity; then
+        # Capture the status DIRECTLY. Do not test it after an `if`: bash sets
+        # $? to 0 when an `if` condition fails and there is no else branch, so
+        # `if zenity ...; then return 0; fi; [[ $? -eq 1 ]]` reads 0, never 1,
+        # and every Cancel was reported as "no dialog available" instead. That
+        # turned a silent cancel into a red critical notification carrying a
+        # false statement, on all 33 confirm-gated cells.
+        local status=0
+        zenity --question \
+            --title="Kodachi" \
+            --text="$prompt" \
+            --ok-label="Run" \
+            --cancel-label="Cancel" \
+            --default-cancel >/dev/null 2>&1 || status=$?
+
+        # zenity: 0 = Run, 1 = Cancel or window closed, anything else (255) =
+        # it could not display at all.
+        case "$status" in
+            0) return 0 ;;
+            1) return 1 ;;
+            *) return 2 ;;
+        esac
+    fi
+
+    if command_exists "$ROFI_BIN"; then
+        local answer
+        if ! answer="$(printf 'Cancel\nRun\n' |
+            "$ROFI_BIN" -dmenu -i -p "$prompt" -l 2 -no-custom 2>/dev/null)"; then
+            return 2
+        fi
+        [[ "$answer" == "Run" ]] && return 0
+        return 1
+    fi
+
+    return 2
+}
+
+# ── Payload Helpers ───────────────────────────────────────────
+
+# Kodachi binaries print a decorated report: a "Working..." progress line, then
+# box-drawing rules around the data. Taking the first N raw lines therefore
+# returns the banner and none of the answer, which is exactly how "My IP" came
+# out showing no address, city or country. Strip the decoration first.
+clean_output() {
+    printf '%s\n' "${1:-}" |
+        sed -e 's/[[:space:]]*$//' |
+        grep -vE '^[[:space:]]*$' |
+        grep -vE '^[[:space:]]*[═─━=_.-]+[[:space:]]*$' |
+        grep -vE '(Fetching|Loading|Checking|Working|Please wait|Running)[^:]*\.\.\.[[:space:]]*$' |
+        grep -vE '^[[:space:]]*[A-Z][A-Z ]+[A-Z][[:space:]]*$'
+}
+
+first_meaningful_lines() {
+    clean_output "${1:-}" | head -n "${2:-3}"
+}
+
+last_meaningful_lines() {
+    clean_output "${1:-}" | tail -n "${2:-3}"
+}
+
+# Render the current public IP for the result notification.
+#
+# `ip-fetch fetch --json` nests its record under data.raw[] / data.records[] and
+# the key names vary by geolocation provider, so the values are searched for
+# rather than read from a fixed path. Verified against live VM output on
+# 2026-08-16, which carries ip, city, region, country_name, country_code, the
+# flag emoji, and a connection_status block saying whether the path is direct,
+# VPN, Tor or proxy.
+#
+# `mode` is "line" for a single compact line appended to another result, or
+# "block" for the multi-line body of the My IP cell.
+public_ip_line() {
+    local mode="${1:-line}"
+    command_exists ip-fetch || return 1
+
+    local payload
+    payload="$(timeout "$DOCK_IP_TIMEOUT" ip-fetch fetch --json 2>/dev/null)" || return 1
+    [[ -n "$payload" ]] || return 1
+
+    printf '%s' "$payload" | python3 -c '
+import json
+import sys
+
+MODE = sys.argv[1] if len(sys.argv) > 1 else "line"
+
+WANTED = {
+    "ip": ("ip", "ipv4", "query", "public_ip", "ipaddress", "ip_address"),
+    "city": ("city", "geoplugin_city"),
+    "region": ("region", "region_name", "geoplugin_region"),
+    "country": ("country_name", "country", "countryname"),
+    "code": ("country_code", "countrycode"),
+    "flag": ("flag",),
+}
+
+
+def collect(node, found):
+    """Depth-first sweep, first non-empty scalar wins for each wanted field."""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            lowered = key.lower()
+            for field, aliases in WANTED.items():
+                if field not in found and lowered in aliases:
+                    if isinstance(value, (str, int, float)) and str(value).strip():
+                        found[field] = str(value).strip()
+            if lowered == "connection_status" and isinstance(value, dict):
+                if "path" not in found:
+                    labels = [name.replace("is_", "").upper()
+                              for name in ("is_tor", "is_vpn", "is_proxy")
+                              if value.get(name)]
+                    found["path"] = ", ".join(labels) if labels else \
+                        str(value.get("connection_type") or "Direct")
+        for value in node.values():
+            collect(value, found)
+    elif isinstance(node, list):
+        for value in node:
+            collect(value, found)
+    return found
+
+
+try:
+    document = json.load(sys.stdin)
+except (ValueError, OSError):
+    sys.exit(1)
+
+f = collect(document, {})
+if not f.get("ip"):
+    sys.exit(1)
+
+flag = f.get("flag", "")
+country = f.get("country") or f.get("code") or ""
+place = ", ".join(x for x in (f.get("city"), f.get("region"), country) if x)
+
+if MODE == "block":
+    lines = [" ".join(x for x in (f["ip"], flag) if x)]
+    if place:
+        lines.append(place)
+    if f.get("path"):
+        lines.append("Route: " + f["path"])
+    print("\n".join(lines))
+else:
+    short = ", ".join(x for x in (f.get("city"), country) if x)
+    print(" ".join(x for x in (f["ip"], flag) if x) + (" , " + short if short else ""))
+' "$mode" 2>/dev/null
+}
+
+build_success_body() {
+    local payload_kind="${1:-none}"
+    local output="${2:-}"
+    local elapsed="${3:-0}"
+    local address
+
+    case "$payload_kind" in
+        ip)
+            if address="$(public_ip_line line)"; then
+                printf 'Public IP: %s' "$address"
+            else
+                printf 'Completed in %ss. Public IP could not be read.' "$elapsed"
+            fi
+            ;;
+        ipinfo)
+            # The My IP cell: the address IS the answer, so it gets the whole
+            # notification body rather than one appended line.
+            if address="$(public_ip_line block)"; then
+                printf '%s' "$address"
+            else
+                printf '%s' "$(first_meaningful_lines "$output" 6)"
+            fi
+            ;;
+        out | report)
+            local head
+            head="$(first_meaningful_lines "$output" 6)"
+            printf '%s' "${head:-Completed in ${elapsed}s}"
+            ;;
+        out+ip)
+            local summary
+            summary="$(first_meaningful_lines "$output" 4)"
+            printf '%s' "${summary:-Completed in ${elapsed}s}"
+            if address="$(public_ip_line line)"; then
+                printf '\nPublic IP: %s' "$address"
+            fi
+            ;;
+        *)
+            printf 'Completed in %ss' "$elapsed"
+            ;;
+    esac
+}
+
+# ── Action Runner ─────────────────────────────────────────────
+
+dock_run_action() {
+    local category="${1:-}"
+    local label="${2:-}"
+    # The cell passes its own displayed name. A (Category, Label) pair can
+    # legitimately appear in more than one sub-dock under different names
+    # (Routing/Connect WireGuard is "Connect VPN" on the main dock and
+    # "WireGuard" inside the VPN sub-dock), and a side-car lookup returns only
+    # the first match, so without this every such cell reported the main dock's
+    # name. The cell knows what it is called; the side-car does not.
+    local cell_label="${3:-}"
+
+    # A group divider is not clickable: the generator writes it as a cairo-dock
+    # Separator, which has no Exec at all. Reaching here means something invoked
+    # the runner by hand with a divider's key, so refuse rather than search the
+    # registry for a row that by definition does not exist.
+    if [[ "$category" == "$DOCK_SEPARATOR_CATEGORY" ]]; then
+        dock_fail "${category} is a group divider, not an action"
+    fi
+
+    local registry_row
+    registry_row="$(get_action_record "$category" "$label")" ||
+        dock_fail "Unknown action: ${category} / ${label}"
+
+    local _category _label confirm_flag _handler command_text
+    # G86 (reported by <agent>, 2026-08-23, LATENT: 0 of 640 registry rows and 0
+    # of 82 sidecar rows carry an empty field today). A TAB IS AN IFS WHITESPACE BYTE, so
+    # bash COALESCES a run of them: one empty field in the middle of a row and `read`
+    # hands every later variable the wrong column. For the registry that means
+    # confirm_flag holds the HANDLER, compares `!= "1"`, and THE CONFIRMATION IS SKIPPED,
+    # which is precisely the gate G72, G80 and G83 exist to install. \037 is not IFS
+    # whitespace and does not coalesce, so an empty field stays a field. This is the same
+    # repair as the WiFi record separator, for the same reason, one surface over.
+    #
+    # AND THE EXISTING VALIDATION CANNOT SEE IT: the guard filters with `awk -F'\t' ...
+    # NF >= 9`, and awk with an explicit -F does NOT coalesce, so a row with an empty
+    # field has NF == 9 and passes clean. The guard and the consumer disagreed about how
+    # many fields the row has, which is why nothing would ever have reported it.
+    IFS=$'\037' read -r _category _label confirm_flag _handler command_text <<<"${registry_row//$'\t'/$'\037'}"
+    [[ -n "${command_text:-}" ]] ||
+        dock_fail "Action has no command: ${category} / ${label}"
+
+    # Dock metadata, with conservative defaults when the action has no side-car
+    # row: no authentication assumed, the standard long timeout, no payload.
+    local needs_auth=0
+    local timeout_seconds="$DOCK_DEFAULT_TIMEOUT"
+    local payload_kind="none"
+    local sound_enabled=1
+    local dock_label="$label"
+
+    local sidecar_row
+    if sidecar_row="$(sidecar_record "$category" "$label")" && [[ -n "$sidecar_row" ]]; then
+        local _sc _sl _subdock declared_label _icon declared_auth declared_timeout \
+            declared_payload declared_sound
+        # G86, and the SIDECAR is the worst of the three sites: its fields are OPTIONAL
+        # BY DESIGN (the lines below test `[[ -n ... ]]`), so an empty field is an
+        # EXPECTED input shape here rather than a corruption. An empty declared_label or
+        # _icon shifts declared_auth onto the timeout column, and needs_auth is then set
+        # from whatever that holds.
+        IFS=$'\037' read -r _sc _sl _subdock declared_label _icon declared_auth \
+            declared_timeout declared_payload declared_sound <<<"${sidecar_row//$'\t'/$'\037'}"
+        [[ -n "${declared_label:-}" ]] && dock_label="$declared_label"
+        [[ -n "${declared_auth:-}" ]] && needs_auth="$declared_auth"
+        [[ -n "${declared_timeout:-}" ]] && timeout_seconds="$declared_timeout"
+        [[ -n "${declared_payload:-}" ]] && payload_kind="$declared_payload"
+        [[ -n "${declared_sound:-}" ]] && sound_enabled="$declared_sound"
+    fi
+
+    # The cell's own name always wins over the side-car's first match.
+    [[ -n "$cell_label" ]] && dock_label="$cell_label"
+
+    # ── Single flight ─────────────────────────────────────────
+    # The lock lives on a file descriptor so the kernel drops it when this
+    # process exits, including on timeout, failure and signal.
+    #
+    # CAREFUL: bash does not set FD_CLOEXEC on `exec 9>`, so fd 9 is inherited
+    # by every descendant. Several actions deliberately detach a long-lived
+    # child (a browser, the decoy worker), and that child would then hold the
+    # lock for its entire lifetime, making the cell permanently answer
+    # "Already running". The command is therefore executed with 9>&- so the
+    # descriptor never reaches it. Do not remove that redirection.
+    local slug lock_file
+    slug="$(printf '%s_%s' "$category" "$label" | tr -c 'A-Za-z0-9_' '_')"
+    lock_file="${DOCK_RUNTIME_DIR}/${slug}.lock"
+
+    exec 9>"$lock_file" || dock_fail "Cannot create lock for ${dock_label}"
+    if ! flock -n 9; then
+        dock_notify low "Kodachi" "Already running: ${dock_label}" 5
+        return 0
+    fi
+
+    # ── Confirm before anything irreversible ──────────────────
+    # Asked before the start notification so a cancelled action is silent.
+    if [[ "$confirm_flag" == "1" ]]; then
+        dock_confirm "$dock_label"
+        case $? in
+            0) : ;;
+            1) return 0 ;;
+            *) dock_fail "${dock_label}: could not show a confirmation dialog, refusing to run unconfirmed" ;;
+        esac
+    fi
+
+    # The "starting..." toast exists so a 90 second connect does not look like a
+    # dead click. A read-only reporter does not need it: measured on the Kodachi 9
+    # VM 2026-08-17, one health-control notify costs 0.215s wall and 0.10s CPU,
+    # while the whole "My Public IP" cell is 1.65s wall, so the toast is a
+    # noticeable slice of a fast cell AND it puts two notifications on screen for
+    # one click. The declared timeout is the existing, already-measured signal for
+    # how slow an action is, so cells at or under the read-only tier stay silent
+    # until they have an answer.
+    # A non-numeric timeout would make `-gt` throw rather than compare, so an
+    # unexpected side-car value falls back to announcing the start, which is the
+    # safe direction: a spurious toast is better than a click that looks dead.
+    if [[ ! "$timeout_seconds" =~ ^[0-9]+$ ]] ||
+        [[ "$timeout_seconds" -gt "$DOCK_QUIET_START_MAX_TIMEOUT" ]]; then
+        dock_notify low "Kodachi" "${dock_label}: starting..." 4
+    fi
+
+    # ── Authenticate first, never after ───────────────────────
+    if [[ "$needs_auth" == "1" ]]; then
+        local auth_error
+        if ! auth_error="$(ensure_authenticated)"; then
+            dock_fail "${dock_label}: authentication failed. ${auth_error}"
+        fi
+    fi
+
+    # ── Execute ───────────────────────────────────────────────
+    # A dock click has no controlling terminal, so a sudo call that wanted a
+    # password would fail confusingly rather than prompt. Every Kodachi binary
+    # reached from here is already NOPASSWD, and -n makes that explicit.
+    local command_line
+    command_line="$(harden_sudo_calls "$command_text")"
+
+    local started output status elapsed
+    started=$SECONDS
+    # 9>&- keeps the single-flight lock out of the child, see the note above.
+    # NO_COLOR and a dumb TERM: a binary that decides it is on a terminal emits
+    # ANSI sequences, and those render as literal escape garbage inside a GTK
+    # notification label. Nothing shipped today does it from here, which is
+    # exactly why it would be missed the day something starts.
+    #
+    # < /dev/null is load-bearing, not tidiness. stdout is captured into a
+    # notification and there is no terminal on the other end of a launcher
+    # click, so a command that decides to read a confirmation from stdin can
+    # only block until this timeout fires: the user sees "timed out after
+    # 180s" for a command that was waiting on an answer nobody could give.
+    # Measured 2026-08-18 on testvm-Pixel-8-Pro-3eb556: a 288-cell sweep run
+    # over SSH with stdin INHERITED reported 13 cells as 90s timeouts, and
+    # every one of those 13 finished in 0 to 16 seconds when the identical
+    # command was re-run with stdin on /dev/null (wipe-logs 16s, kill-switch-arm
+    # 2s, set-random-hostname 1s). Whether cairo-dock happens to hand the
+    # launcher a null stdin is not something this script should depend on.
+    output="$(NO_COLOR=1 TERM=dumb timeout --signal=TERM --kill-after=10 "$timeout_seconds" \
+        bash -c "$command_line" </dev/null 2>&1 9>&-)"
+    status=$?
+    elapsed=$((SECONDS - started))
+
+    # 124 is timeout's own signal-sent exit, 137 is the follow-up SIGKILL.
+    if [[ $status -eq 124 || $status -eq 137 ]]; then
+        dock_fail "${dock_label}: timed out after ${timeout_seconds}s"
+    fi
+
+    # `report` cells are reporters whose exit code is part of the ANSWER, not a
+    # verdict on whether the cell worked.
+    #
+    # Measured on the test VM 2026-08-17: `systemctl status syncthing` exits 3
+    # when the unit is stopped and `systemctl status gnunet` exits 3 likewise, so
+    # both Syncthing Status and GnuNet Status painted a red "failed" notification
+    # carrying the correct status text. `integrity-check check-versions` exits
+    # non-zero when it FINDS a version mismatch, which is the cell doing its job.
+    # A user reading "GnuNet Status failed" concludes the button is broken.
+    #
+    # An empty output with a non-zero exit is still a real failure: there is no
+    # answer to show.
+    if [[ $status -ne 0 && "$payload_kind" == "report" && -n "${output// /}" ]]; then
+        if output_is_lengthy "$output" && show_in_window "$dock_label" "$output"; then
+            [[ "$sound_enabled" == "1" ]] && dock_sound success
+            return 0
+        fi
+        local reported notice
+        reported="$(first_meaningful_lines "$output" 6)"
+        notice="$(truncation_notice "$output" 6)"
+        [[ -n "$notice" ]] && reported="${reported}"$'\n'"${notice}"
+        dock_notify normal "Kodachi" "${dock_label}"$'\n'"${reported}" 12
+        [[ "$sound_enabled" == "1" ]] && dock_sound success
+        return 0
+    fi
+
+    if [[ $status -ne 0 ]]; then
+        local reason
+        reason="$(last_meaningful_lines "$output" 3)"
+        dock_fail "${dock_label} failed: ${reason:-exit code ${status}}"
+    fi
+
+    # ── Report ────────────────────────────────────────────────
+    # A LENGTHY ANSWER GOES TO THE WINDOW. The notification body is built either
+    # way, so a machine with no display or no python still reports normally.
+    if output_is_lengthy "$output" && show_in_window "$dock_label" "$output"; then
+        [[ "$sound_enabled" == "1" ]] && dock_sound success
+        return 0
+    fi
+
+    local body notice
+    body="$(build_success_body "$payload_kind" "$output" "$elapsed")"
+    # Only for the payload kinds that TRUNCATE. `ip`/`ipinfo` bodies are the
+    # whole answer, so a notice there would be a lie about a complete report.
+    if [[ "$payload_kind" == "out" || "$payload_kind" == "report" || "$payload_kind" == "out+ip" ]]; then
+        notice="$(truncation_notice "$output" 6)"
+        [[ -n "$notice" ]] && body="${body}"$'\n'"${notice}"
+    fi
+    dock_notify normal "Kodachi" "${dock_label}: done"$'\n'"${body}" 10
+    [[ "$sound_enabled" == "1" ]] && dock_sound success
+
+    return 0
+}
+
+# When the window path was TRIED and FAILED for a lengthy answer, say so.
+#
+# BUG-16, <agent>. show_in_window() waits 3s for the window to touch its
+# token and returns 1 otherwise, and the caller then falls through to the
+# notification, whose body is the FIRST SIX LINES. So a forty-line report became
+# six lines with no indication a tail ever existed. That is exactly the data loss
+# the window feature was built to prevent, reappearing inside the feature's own
+# fallback, and the fallback was INDISTINGUISHABLE FROM SUCCESS.
+#
+# The fix is not to hide the fallback but to make it honest: name how much is
+# missing and where the rest went. The full answer is written to a file the user
+# can open, because a notification cannot hold it and telling someone their
+# output is gone is only half an answer.
+truncation_notice() {
+    local output="${1:-}" shown="${2:-6}"
+    local total spill
+    # `|| echo 0` HERE IS THE grep -c TRAP, AND THIS SITE REALLY REACHES IT.
+    # `grep -c` PRINTS "0" and then EXITS 1 on no match, so the fallback appends a
+    # SECOND zero and total becomes the two-line string "0\n0". clean_output strips
+    # blank lines, separator rules, progress lines and ALL-CAPS headers, so a cell
+    # whose entire output is those (a lone "Running..." line, a bare header) leaves
+    # grep with empty input and takes exactly that branch. Measured:
+    #     total=[0\n0]
+    #     bash: [[: 0
+    #     0: syntax error in expression (error token is "0")
+    # `[[ -le ]]` then returns FALSE instead of returning early, so the dock mktemps a
+    # spill file it does not need and prints "showing 6 of 0\n0 lines" at the user.
+    # Reported as a class by <agent> against thunar-gpg-sign.sh, where the same
+    # shape fed an `-eq` and silently disabled the whole no-GPG-key guard.
+    # `|| total=0` outside the substitution keeps the numeric contract on every path.
+    total="$(printf '%s\n' "$output" | clean_output | command grep -c '' 2>/dev/null)" || total=0
+    [[ "$total" -le "$shown" ]] && return 0
+    spill="$(mktemp "${DOCK_RUNTIME_DIR}/report.XXXXXX")" || return 0
+    printf '%s\n' "$output" > "$spill" 2>/dev/null || return 0
+    printf '... window did not open, showing %s of %s lines\nfull answer: %s' \
+        "$shown" "$total" "$spill"
+}
+
+# ── Long answers get a WINDOW, not a notification ─────────────
+# OPERATOR RULE, 2026-08-18: "any icon that displays long text always make for it
+# a window like the session status with an OK button so the user has the time to
+# read it and clicks when he is done, because the information is lengthy."
+#
+# A desktop notification is the wrong container for a long answer twice over: it
+# times out while the user is still reading, and xfce4-notifyd collapses and
+# ellipsises a long body, so the tail of the answer is not merely rushed, it is
+# never shown. `Instances And IPs` is the case that prompted this: a table of one
+# row per Tor instance with tag, IP, country and status.
+#
+# kodachi-status-window already exists for the session report, is painted in
+# Kodachi's own palette, has a Close button and closes on Escape, and its parser
+# passes untagged lines through unchanged, so ANY command output can be handed to
+# it. #TITLE gives the window the cell's own name.
+#
+# DETACHED, for the reason the status path already documents: the window is read
+# and closed in the user's own time, so waiting on it would hold the cell's
+# single-flight lock and burn the action timeout. Measured 2026-08-17: the
+# blocking version was killed at 90s every time and reported the cell as FAILED
+# while the window sat there working.
+DOCK_STATUS_WINDOW="${KODACHI_STATUS_WINDOW:-/usr/local/libexec/kodachi/kodachi-status-window}"
+# THRESHOLD IS A POLICY, NOT A MEASUREMENT, and it is set deliberately low.
+#
+# Measuring where xfce4-notifyd starts ellipsising would be a precise answer to
+# the wrong question: that point moves with theme, font and screen, so a number
+# tuned on this VM would be wrong on the operator's ultrawide. What does not
+# move is the asymmetry of the two mistakes. A window for something that would
+# have fit in a bubble is COSMETIC. A notification that truncates is DATA LOSS,
+# silently, with no way for the reader to know a tail existed. The operator's
+# instruction points the same way: "any icon that display long text always make
+# ofr it a window".
+#
+# So: 4 lines or 200 characters, low on purpose. Overridable for anyone who
+# disagrees on their own machine.
+#
+# THIS TRADES AGAINST show_in_window()'s FALLBACK and the two must be read
+# together: a lower threshold puts MORE cells on the window path, so it is only
+# safe because that path now waits for the window to signal that it mapped and
+# drops back to a notification when it does not.
+DOCK_WINDOW_MIN_LINES="${KODACHI_DOCK_WINDOW_MIN_LINES:-4}"
+DOCK_WINDOW_MIN_CHARS="${KODACHI_DOCK_WINDOW_MIN_CHARS:-200}"
+
+output_is_lengthy() {
+    local text="${1:-}"
+    [[ -n "${text//[[:space:]]/}" ]] || return 1
+    local lines chars
+    lines="$(printf '%s\n' "$text" | grep -c '')"
+    chars="${#text}"
+    [[ "$lines" -ge "$DOCK_WINDOW_MIN_LINES" || "$chars" -ge "$DOCK_WINDOW_MIN_CHARS" ]]
+}
+
+# Returns 0 when the answer was handed to a window, 1 when it was not and the
+# caller should fall back to a notification. Never returns non-zero for a reason
+# the user would care about: a missing window, no display, or no python is a
+# presentation limit, not a failed action.
+show_in_window() {
+    local title="${1:-Kodachi}" text="${2:-}"
+    [[ -x "$DOCK_STATUS_WINDOW" ]] || return 1
+    command_exists python3 || return 1
+    [[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]] || return 1
+    # WAIT FOR PROOF THAT IT ACTUALLY APPEARED, do not assume.
+    #
+    # setsid detaches the window so it can outlive this cell, which also means a
+    # crash AFTER exec is invisible here: a missing GTK 3 typelib, a missing
+    # kodachi_ui, a dead display or a python traceback would leave the cell
+    # silent, having reported nothing at all. (It read "GTK4" until 2026-09-03;
+    # the window is GTK 3 on the shared design library now, and its import
+    # guard exits 3 without writing the token so this path still fires.) That is the same "reports success while doing nothing" shape this
+    # whole lane has been removing, and it would now affect every cell that
+    # produces a long answer.
+    #
+    # So the window touches a token as soon as its surface is mapped, and this
+    # waits a short while for it. No token means fall back to the notification,
+    # which is the previous behaviour rather than nothing.
+    local token
+    token="$(mktemp "${DOCK_RUNTIME_DIR}/window.XXXXXX")" || return 1
+    command find "$token" -delete 2>/dev/null
+
+    # 9>&- IS LOAD BEARING AND IS THE WHOLE OF G77 (reported by <agent>,
+    # 2026-08-23, and reproduced by them in a plain-bash harness with a control arm).
+    #
+    # `dock_run_action` holds the single-flight lock on fd 9. `setsid` starts a new
+    # SESSION; it does not close file descriptors, and neither does `&` or `disown`.
+    # So this detached, long-lived GTK window inherited fd 9 and held the flock for its
+    # ENTIRE LIFETIME, because flock releases only when the last descriptor on that open
+    # file description closes and the cell's own process exiting does not close the
+    # window's copy. User-visible: click a `report` cell whose output is long enough to
+    # open a window, then click the SAME cell again and it answers "Already running" and
+    # does nothing until the window is closed. Nothing tells the user that.
+    #
+    # The hazard note at the top of dock_run_action already said all of this and applied
+    # the redirection to the ONE spawn that existed when it was written. show_in_window
+    # came later. A comment cannot enforce an invariant on code added after it, which is
+    # why tests/test-dock-action-fd9.sh now asserts it over EVERY spawn in this file.
+    printf '#TITLE\t%s\n%s\n' "$title" "$text" \
+        | KODACHI_WINDOW_TOKEN="$token" setsid "$DOCK_STATUS_WINDOW" >/dev/null 2>&1 9>&- &
+    disown 2>/dev/null || true
+
+    local waited=0
+    while [[ $waited -lt "${DOCK_WINDOW_WAIT_DS:-30}" ]]; do
+        if [[ -e "$token" ]]; then
+            command find "$token" -delete 2>/dev/null
+            return 0
+        fi
+        sleep 0.1
+        waited=$((waited + 1))
+    done
+    command find "$token" -delete 2>/dev/null
+    return 1
+}
+
+# ── Self Check ────────────────────────────────────────────────
+# Proves every side-car key still names a real registry row. A side-car row that
+# has lost its registry row would otherwise surface as a dead dock cell.
+
+# TWO FILES OWN ONE ORDERING NAMESPACE AND NOTHING USED TO COMPARE THEM.
+#
+# A sub-dock container takes its Order from dock-layout.tsv. A _MainDock_ cell
+# takes its Order from its POSITION in dock-actions.tsv, counted from 1. Those
+# are the SAME namespace: cairo-dock sorts the main dock by Order and breaks a
+# tie by its own internal read order, so a collision leaves the left-to-right
+# position of both icons undefined, and Kodachi-Dock-Playbook 14.6 makes that
+# order a designed property rather than an accident.
+#
+# BOTH MANDATORY GATES PASSED WITH A TIE PRESENT. `--check` validated that every
+# key resolves; `kodachi-dock-build verify` proved two runs are byte-identical.
+# Neither compares the two files to each other, and a reproducible build of a
+# wrong ordering is still reproducible. <agent> found five collisions in
+# the old 154-launcher dock, and the replacement layout built to FIX that dock
+# reproduced one (Apps and Emergency both at 10). Adding seven more containers
+# for the application groups is exactly the edit that would bring it back, so
+# the comparison is a gate now instead of a comment.
+# AN ICON PATH THAT DOES NOT EXIST RENDERS AS A QUESTION MARK, AND NOTHING SAID SO.
+#
+# cairo-dock silently substitutes a generic "?" for an Icon= it cannot load. The
+# launcher file is valid, the build is byte-reproducible, --check passes, and the
+# dock shows a question mark where the art should be. Measured on
+# <lab-host>, 2026-08-19: two of eight group containers pointed at
+# papirus/gcr-key.svg and papirus/system-file-manager.svg, neither of which is in
+# the shipped icon set, and BOTH mandatory gates were green. The 71 cell icons
+# had been verified against the real file list and the 8 container icons had not,
+# which is why only the containers broke: the check that existed covered the
+# population that was already correct.
+# TWO ICONS ON ONE BAR SHOWING THE SAME PICTURE IS A DEFECT, NOT A DUPLICATE ROW.
+#
+# The main dock is a 100px strip of images. The label is a hover tooltip, so the
+# IMAGE is the only thing distinguishing one entry from another at a glance.
+# Measured on <lab-host>, 2026-08-19: the Network command window and the
+# Network launcher group both carried fluent-emoji/world-map.png, and the System
+# window and System group both carried papirus/preferences-desktop.svg, so four
+# icons on the bar were two indistinguishable pairs doing different things. Every
+# other gate was green, because each row was individually valid.
+#
+# Scoped to the MAIN DOCK deliberately. Inside a sub-dock a shared image is often
+# correct: three Oniux entries all wearing the onion is the group's whole point.
+# TWO ICONS WITH THE SAME LABEL ARE AS BAD AS TWO WITH THE SAME PICTURE.
+#
+# On a dock the tooltip is the only text, so the NAME is the other half of what
+# distinguishes one icon from another. Measured on <lab-host>: the Network
+# command window and the Network launcher GROUP were both labelled "Network",
+# and System likewise, so four icons were two indistinguishable pairs doing
+# entirely different things (one opens the VPN/Tor/DNS control surface, one
+# opens a folder of network applications).
+#
+# The duplicate-IMAGE gate below was green throughout, because after an earlier
+# fix those pairs carried different pictures. A gate that checks one dimension
+# of identity says nothing about the other, and the operator spotted the label
+# collision in a screenshot while my gate reported 0 duplicates.
+# IDENTITY IS A TUPLE, AND TWO SINGLE-DIMENSION GATES LEAVE THE HOLE OPEN.
+#
+# <agent>'s generalisation of the duplicate-label finding, and it found
+# something the label and image gates both missed: "Tor Browser (Firejail)" and
+# "Tor Browser Settings" had different labels AND different icons AND ran the
+# byte-identical command `/usr/local/bin/kodachi-tor-browser`. Neither gate can
+# see that, and it is worse than a cosmetic duplicate: the labels promise a
+# sandbox and a settings dialog that the command does not provide, so a user
+# who wants a firejailed browser would believe they had one.
+#
+# A cell's identity to a USER is label + icon + position; to the SYSTEM it is
+# the command it runs. This gate asserts the last of those, which is the only
+# one the other two cannot approximate.
+#
+# Scoped to cells that CARRY their own command (_LAUNCH_) or name a window
+# (_WINDOW_). Two registry cells legitimately share a (Category, Label) in
+# different sub-docks under different names; that is the "shared by N cells"
+# line dock_self_check already reports, and it is a placement decision rather
+# than a defect.
+dock_command_dup_check() {
+    grep -v '^#' "$DOCK_SIDECAR" 2>/dev/null | awk -F'\t' \
+        -v sep="$DOCK_SEPARATOR_CATEGORY" -v lau="$DOCK_LAUNCH_CATEGORY" '
+        # A LITERAL STRING COMPARE READS TWO SPELLINGS OF ONE PROGRAM AS TWO
+        # PROGRAMS. `firetools` and `/usr/bin/firetools` are the same binary, and
+        # the gate above them was blind to that: it compared field 8 byte for
+        # byte, so any cell added with an absolute path silently evaded the whole
+        # check. Reduce an absolute-path token to its basename before comparing.
+        #
+        # DELIBERATELY NARROW, because the obvious generalisation is wrong. A
+        # token is rewritten only when it starts with "/", carries no quote
+        # character, and has a NON-EMPTY basename. Each clause was put there by a
+        # row that breaks without it, measured against the shipped 111-command
+        # sidecar:
+        #   non-empty   `pkexec thunar /` would normalise to `pkexec thunar` and
+        #               collide with a plain `pkexec thunar`, which opens a
+        #               different directory. The root argument must survive.
+        #   no quote    `x-terminal-emulator -e su-to-root -c '"'"'/usr/sbin/lynis ...`
+        #               and the `bash -c '"'"'... mktemp -d /tmp/...'"'"'` cell carry
+        #               paths INSIDE a quoted sub-command; rewriting those mangles
+        #               the quoting and compares a string nobody wrote.
+        #   arguments   everything after the program is compared verbatim, so
+        #               `firejail librewolf` stays distinct from `librewolf`. That
+        #               distinction is the point: one is sandboxed and one is not.
+        #
+        # Calibrated in BOTH directions before it shipped. Against the real
+        # sidecar it rewrites 11 of 111 rows and introduces 0 collisions; adding a
+        # synthetic `/usr/bin/firetools` cell makes it red against the existing
+        # `firetools` cell, and a synthetic `pkexec gparted` makes it red against
+        # `pkexec /usr/sbin/gparted`. A gate that has never been seen to fail is
+        # not known to work.
+        function dock_cmd_key(cmd,   parts, i, n, t, b, out) {
+            n = split(cmd, parts, /[ \t]+/)
+            out = ""
+            for (i = 1; i <= n; i++) {
+                t = parts[i]
+                if (t ~ /^\// && t !~ /['"'"'"]/) {
+                    b = t
+                    sub(/.*\//, "", b)
+                    if (b != "") t = b
+                }
+                out = (out == "" ? t : out " " t)
+            }
+            return out
+        }
+        NF >= 9 && $1 != sep {
+            if ($1 == lau)            key = $8
+            else if ($1 == "_WINDOW_") key = "window:" $2
+            else                       next
+            if (key == "" || key == "none") next
+            if ($1 == lau) key = dock_cmd_key(key)
+            n[key]++; who[key] = who[key] ", " $4; total++
+        }
+        END {
+            bad = 0
+            for (i in n) if (n[i] > 1) {
+                printf "DUPLICATE COMMAND: %s run by%s\n", i, substr(who[i], 2)
+                bad++
+            }
+            if (total == 0) { printf "NO COMMANDS READ: this result is vacuous\n"; exit 1 }
+            printf "%d self-contained command(s), %d duplicated\n", total, bad
+            exit (bad > 0)
+        }'
+}
+
+dock_label_dup_check() {
+    local layout="$DOCK_LAYOUT"
+    {
+        grep -v '^#' "$layout" 2>/dev/null | awk -F'\t' 'NF == 4 && $1 != "" { print $1 "\tgroup" }'
+        grep -v '^#' "$DOCK_SIDECAR" 2>/dev/null | awk -F'\t' \
+            -v sep="$DOCK_SEPARATOR_CATEGORY" \
+            'NF >= 9 && $3 == "_MainDock_" && $1 != sep { print $4 "\twindow" }'
+    } | sort | awk -F'\t' '
+        $1 != "" { n[$1]++; who[$1] = who[$1] ", " $2; total++; src[$2]++ }
+        END {
+            bad = 0
+            for (i in n) if (n[i] > 1) {
+                printf "DUPLICATE MAIN-DOCK LABEL: \"%s\" used by%s\n", i, substr(who[i], 2)
+                bad++
+            }
+            # PER-SOURCE, NOT ONE TOTAL. A single total is satisfied by EITHER
+            # file, so a layout with every container deleted still reported
+            # "0 duplicated" here while the population it compares had halved.
+            if (src["group"] == 0)  { printf "NO GROUP ROWS READ: this result is vacuous\n"; exit 1 }
+            if (src["window"] == 0) { printf "NO WINDOW CELLS READ: this result is vacuous\n"; exit 1 }
+            if (total == 0) { printf "NO MAIN-DOCK LABELS READ: this result is vacuous\n"; exit 1 }
+            printf "%d main-dock label(s), %d duplicated\n", total, bad
+            exit (bad > 0)
+        }'
+}
+
+dock_icon_dup_check() {
+    local layout="$DOCK_LAYOUT"
+    {
+        grep -v '^#' "$layout" 2>/dev/null | awk -F'\t' 'NF == 4 { print $3 "\t" $1 " (group)" }'
+        grep -v '^#' "$DOCK_SIDECAR" 2>/dev/null | awk -F'\t' \
+            -v sep="$DOCK_SEPARATOR_CATEGORY" \
+            'NF >= 9 && $3 == "_MainDock_" && $1 != sep { print $5 "\t" $4 " (window)" }'
+    } | sort | awk -F'\t' '
+        # The second field here is "<Name> (group)" or "<Name> (window)", NOT a
+        # bare tag: my first attempt keyed on $2 directly and the guard below
+        # then fired on a perfectly healthy dock, because "Kodachi (group)"
+        # never equals "group". Match the SUFFIX, which is the part that
+        # actually carries the source.
+        $1 != "" {
+            n[$1]++; who[$1] = who[$1] ", " $2; total++
+            if ($2 ~ /\(group\)$/)  src["group"]++
+            if ($2 ~ /\(window\)$/) src["window"]++
+        }
+        END {
+            bad = 0
+            for (i in n) if (n[i] > 1) {
+                printf "DUPLICATE MAIN-DOCK ICON: %s used by%s\n", i, substr(who[i], 2)
+                bad++
+            }
+            # PER-SOURCE, NOT ONE TOTAL. A single total is satisfied by EITHER
+            # file, so a layout with every container deleted still reported
+            # "0 duplicated" here while the population it compares had halved.
+            if (src["group"] == 0)  { printf "NO GROUP ROWS READ: this result is vacuous\n"; exit 1 }
+            if (src["window"] == 0) { printf "NO WINDOW CELLS READ: this result is vacuous\n"; exit 1 }
+            if (total == 0) { printf "NO MAIN-DOCK ICONS READ: this result is vacuous\n"; exit 1 }
+            printf "%d main-dock icon(s), %d duplicated\n", total, bad
+            exit (bad > 0)
+        }'
+}
+
+dock_icon_check() {
+    local layout="$DOCK_LAYOUT"
+    # F4: DOCK_ICON_DIR was assigned and never read, so the gate silently checked
+    # absolute paths on the running system no matter what it was pointed at. It
+    # is now a real prefix override for the icon ROOT, used below.
+    local root="${DOCK_ICON_DIR:-}"
+    local missing=0 checked=0 icon rel
+    local container_icons=0 cell_icons=0
+    if [[ ! -r "$layout" ]]; then
+        printf 'LAYOUT NOT READABLE, container icons unchecked: %s\n' "$layout"
+        return 1
+    fi
+    # ICON ROOT FLOOR. DOCK_ICON_DIR is a PREFIX OVERRIDE, not a search path: every
+    # icon below is re-rooted under it, so a root that is absent or unsearchable makes
+    # every `-f` fail and the arm prints one MISSING line per icon plus `0/N exist`.
+    # That reads as "the ISO ships no dock icons", a release blocker, and it is an
+    # instrument error. Measured 2026-09-07 by <agent> on <lab-host> and
+    # reproduced on the dev host: a root of cairo-dock/usr/local/share/kodachi/dock/icons
+    # (absent, and what playbook 33.5 wrongly documented) turned 132/132 into 0/132 with
+    # 132 false MISSING lines, while all 132 icons sat present at the absolute paths the
+    # arm had just printed as missing. dock_order_check and the layout arm already fail
+    # closed on an unreadable input; this arm was the one member of the family with no
+    # floor. -x as well as -d, because a directory with the search bit cleared fails
+    # every child `-f` the same way and for the same instrument reason.
+    if [[ -n "$root" ]] && { [[ ! -d "$root" ]] || [[ ! -x "$root" ]]; }; then
+        printf 'ICON ROOT NOT A SEARCHABLE DIRECTORY, no icon can resolve: %s\n' "$root"
+        printf 'this result is vacuous\n'
+        return 1
+    fi
+    while IFS=$'\037' read -r _ _ icon _; do
+        [[ -n "$icon" && "$icon" == /* ]] || continue
+        checked=$((checked + 1)); container_icons=$((container_icons + 1))
+        rel="$icon"
+        [[ -n "$root" ]] && rel="${root}/${icon#/usr/share/kodachi/dock/icons/}"
+        [[ -f "$rel" ]] || { printf 'MISSING CONTAINER ICON: %s\n' "$icon"; missing=$((missing + 1)); }
+    done < <(grep -v '^#' "$layout" 2>/dev/null | awk -F'\t' 'NF == 4' | tr '\t' '\037')
+    while IFS=$'\037' read -r cat _ _ _ icon _; do
+        [[ "$cat" == "$DOCK_SEPARATOR_CATEGORY" ]] && continue
+        [[ -n "$icon" && "$icon" == /* ]] || continue
+        checked=$((checked + 1)); cell_icons=$((cell_icons + 1))
+        rel="$icon"
+        [[ -n "$root" ]] && rel="${root}/${icon#/usr/share/kodachi/dock/icons/}"
+        [[ -f "$rel" ]] || { printf 'MISSING CELL ICON: %s\n' "$icon"; missing=$((missing + 1)); }
+    done < <(grep -v '^#' "$DOCK_SIDECAR" 2>/dev/null | awk -F'\t' 'NF >= 9' | tr '\t' '\037')
+    printf '%d/%d icon path(s) exist on disk (%d container, %d cell)\n' \
+        "$((checked - missing))" "$checked" "$container_icons" "$cell_icons"
+    # DIAGNOSTIC ONLY, NEVER A VERDICT. If the root passed the floor above and yet
+    # EVERY icon is missing, the likeliest cause is still the root: pointed at a real
+    # directory that simply is not the icon tree. Say so, but do NOT return vacuous.
+    # With no root set, "every icon is gone" is a genuine catastrophic finding and has
+    # to stay a finding; converting it to a silent skip would be worse than the false
+    # positive this fix removes. This changes the MESSAGE, never the exit status.
+    if [[ "$missing" -gt 0 && "$missing" -eq "$checked" ]]; then
+        printf 'EVERY icon missing: suspect the icon ROOT, not the icons%s\n' \
+            "${root:+ (DOCK_ICON_DIR=$root)}"
+    fi
+    # PER-SOURCE DENOMINATORS, not one total. A single total is satisfied by
+    # EITHER file, so a gutted layout still scored 79/79 here while the eight
+    # container icons it exists to check had silently left the population.
+    # Measured by an inspector on a layout with every container row deleted.
+    if [[ "$container_icons" -eq 0 ]]; then
+        printf 'NO CONTAINER ICONS READ from %s: this result is vacuous\n' "$layout"
+        return 1
+    fi
+    if [[ "$cell_icons" -eq 0 ]]; then
+        printf 'NO CELL ICONS READ from %s: this result is vacuous\n' "$DOCK_SIDECAR"
+        return 1
+    fi
+    return $(( missing > 0 ))
+}
+
+dock_order_check() {
+    local layout="$DOCK_LAYOUT"
+    # NOT `return 0`. An unreadable layout is the failure this gate exists to
+    # detect, not a reason to skip it: the containers whose Order it validates
+    # are exactly the objects that go missing. Reported by an inspector against
+    # this file, and it is the same shape as the icon check below whose
+    # denominator stayed healthy at 80 because the sidecar alone supplied it.
+    if [[ ! -r "$layout" ]]; then
+        printf 'LAYOUT NOT READABLE, cannot check Order collisions: %s\n' "$layout"
+        return 1
+    fi
+    if [[ ! -r "$DOCK_SIDECAR" ]]; then
+        printf 'SIDE-CAR NOT READABLE, cannot check Order collisions: %s\n' "$DOCK_SIDECAR"
+        return 1
+    fi
+    # THIS GATE MODELS THE GENERATOR'S ALLOCATION, IT DOES NOT ASSUME A BAND.
+    #
+    # It used to fail any container whose Order fell inside 1..k, the range the
+    # main-dock cells occupied, because generate_into() numbered those cells
+    # 1,2,3... blind to the containers and an overlap really was a collision.
+    # Since 2026-08-19 the cell counter STEPS OVER every Order a container owns,
+    # which is what makes "containers first, command windows after" expressible
+    # at all, so an overlapping range is now the normal case and the old
+    # predicate fails every correct layout. It is the same trap as the pre-fix
+    # G1 detector: a check written against an architecture keeps returning a
+    # clean, specific, publishable number after the architecture moves.
+    #
+    # So: simulate the real allocation and assert the property that still means
+    # something, which is that no two main-dock objects end up on the same Order.
+    awk -F'\t' -v layout="$layout" '
+        FNR == NR {
+            if (!/^#/ && NF >= 4 && $1 != "") {
+                corder[$2] = corder[$2] " " $1; cn[$2]++; ncontainers++
+                # A non-integer Order is cairo-dock drag residue (5.6875). It
+                # breaks the container filename printf and cannot be stepped
+                # over by an integer counter, so it is a defect in its own right.
+                if ($2 !~ /^[0-9]+$/) nonint[$2] = corder[$2]
+                taken[$2 + 0] = 1
+                holder[$2 + 0] = corder[$2]
+            }
+            next
+        }
+        /^#/ { next }
+        NF >= 9 && $3 == "_MainDock_" { band = ++cells; name[cells] = $4 }
+        END {
+            bad = 0
+            for (o in cn) {
+                if (cn[o] > 1) {
+                    printf "ORDER COLLISION: %d containers share Order=%s:%s\n", cn[o], o, corder[o]
+                    bad++
+                }
+            }
+            for (o in nonint) {
+                printf "NON-INTEGER CONTAINER ORDER: container(s)%s sit at Order=%s; integers only\n", nonint[o], o
+                bad++
+            }
+            # Replay generate_into(): each main-dock cell takes the next integer
+            # that no container has claimed.
+            idx = 0
+            for (i = 1; i <= cells; i++) {
+                idx++
+                while (idx in taken) idx++
+                if (idx in used) {
+                    printf "ORDER COLLISION: %s and %s both resolve to Order=%d\n", used[idx], name[i], idx
+                    bad++
+                }
+                used[idx] = name[i]
+                if (idx > span) span = idx
+            }
+            for (o in taken) if (o + 0 > span) span = o + 0
+            # A GATE THAT READ NOTHING HAS PROVEN NOTHING.
+            # Measured by an inspector: with every container row deleted from
+            # the layout this block printed "no container/cell Order collision"
+            # and exited 0. Its four siblings had anti-vacuity guards and this
+            # one did not, so the two commits that established the pattern did
+            # not apply it here. A dock with NO sub-docks is not a dock that
+            # passed, it is a dock the gate could not see.
+            if (ncontainers == 0) {
+                printf "NO CONTAINERS READ from %s: this result is vacuous\n", layout
+                exit 1
+            }
+            if (band == 0) {
+                printf "NO MAIN-DOCK CELLS READ: this result is vacuous\n"
+                exit 1
+            }
+            printf "%d container(s) and %d main-dock cell(s) occupying Order 1..%d\n", ncontainers, band, span
+            if (bad == 0) printf "no container/cell Order collision\n"
+            exit (bad > 0)
+        }
+    ' "$layout" "$DOCK_SIDECAR"
+}
+
+dock_self_check() {
+    if [[ ! -r "$DOCK_SIDECAR" ]]; then
+        printf 'Side-car not readable: %s\n' "$DOCK_SIDECAR" >&2
+        return 1
+    fi
+    if [[ ! -r "$DOCK_REGISTRY" ]]; then
+        printf 'Registry not readable: %s\n' "$DOCK_REGISTRY" >&2
+        return 1
+    fi
+
+    # One pass over each file. Calling get_action_record() per side-car row
+    # would re-read the whole registry once per row.
+    #
+    # Distinct-key accounting matters: a (Category, Label) pair may appear in
+    # several sub-docks under different names, which is intentional, but it also
+    # means "N/N rows resolve" overstates how many DISTINCT actions exist. Both
+    # numbers are reported so neither can be quoted misleadingly.
+    awk -F'\t' -v sep="$DOCK_SEPARATOR_CATEGORY" -v win="$DOCK_WINDOW_CATEGORY" -v lau="$DOCK_LAUNCH_CATEGORY" '
+        FNR == NR {
+            if (NF >= 5) known[$1 SUBSEP $2] = 1
+            next
+        }
+        /^#/ { next }
+        NF >= 9 && $1 == sep { separators++; next }
+        # A _WINDOW_ cell has no registry row BY DESIGN. kodachi-dock-build
+        # writes `Exec=kodachi-command-window <Label>` for it and it bypasses the
+        # runner deliberately, because registering GTK entries in menu-actions.sh
+        # would ship graphical-only rows onto the headless terminal image, which
+        # is the class of mistake that once put 1.2M of dock icons there.
+        #
+        # Counting them as MISSING made `--check` exit 1 on a CLEAN, correctly
+        # built dock, so the gate the playbook makes mandatory could not pass on
+        # the shipped product. Reported by <agent> from the .173 sweep
+        # (15 rows, 111/126). They are now counted and named exactly the way
+        # separators already were, and they no longer sit in the resolve
+        # denominator, which was measuring the wrong population: 111/126 reads as
+        # 15 broken cells when the truth is 111 of 111 registry-backed cells
+        # resolving plus 15 by-design bypasses.
+        NF >= 9 && $1 == win { windows++; next }
+        # A _LAUNCH_ cell carries its own Exec in the Payload column and has no
+        # registry row by design, exactly like a window. It IS checked for a
+        # non-empty payload, because a _LAUNCH_ row with an empty command emits
+        # a launcher that silently does nothing when clicked, which is the one
+        # failure this row type can have and the one the generator refuses.
+        NF >= 9 && $1 == lau {
+            launchers++
+            if ($8 == "" || $8 == "none") {
+                launch_broken++
+                printf "LAUNCHER WITH NO COMMAND: %s / %s\n", $1, $2
+            }
+            next
+        }
+        NF >= 9 {
+            total++
+            key = $1 SUBSEP $2
+            seen[key]++
+            if (seen[key] == 1) { distinct++; order[++order_count] = key }
+            if (!(key in known)) {
+                missing++
+                printf "MISSING REGISTRY ROW: %s / %s\n", $1, $2
+            }
+        }
+        END {
+            # Emit shared keys in INPUT order. Walking an awk hash with
+            # `for (k in seen)` yields a different order on every run, and this
+            # is diagnostic output that people diff between runs.
+            for (i = 1; i <= order_count; i++) {
+                k = order[i]
+                if (seen[k] > 1) {
+                    split(k, parts, SUBSEP)
+                    printf "shared by %d cells: %s / %s\n", seen[k], parts[1], parts[2]
+                    shared++
+                }
+            }
+            printf "%d/%d side-car cells resolve to a registry row\n", \
+                total - missing, total
+            printf "%d distinct actions, %d of them placed in more than one sub-dock\n", \
+                distinct, shared + 0
+            printf "%d group separator(s), which carry no registry row by design\n", \
+                separators + 0
+            printf "%d application launcher(s), which carry their own Exec\n", \
+                launchers + 0
+            if (launch_broken > 0)
+                printf "%d launcher(s) have NO command and would do nothing\n", \
+                    launch_broken
+            printf "%d command window(s), which bypass the registry by design\n", \
+                windows + 0
+            exit (missing > 0 || launch_broken > 0)
+        }
+    ' "$DOCK_REGISTRY" "$DOCK_SIDECAR"
+}
+
+# ── Usage ─────────────────────────────────────────────────────
+
+show_usage() {
+    cat <<'USAGE'
+Kodachi Dock Control - Action Runner
+
+Usage:
+  kodachi-dock-action <Category> <Label> [CellName]
+                                           Run one dock action. CellName is the
+                                           name shown on the cell that invoked
+                                           it, used in the notifications.
+  kodachi-dock-action --list               List every action the dock exposes
+  kodachi-dock-action --check              Verify each side-car key has a registry row
+  kodachi-dock-action --help               Show this message
+
+Categories and labels are the ones used by the shared Kodachi Treasure action
+registry, so any action reachable from the rofi menus is reachable from the dock.
+USAGE
+}
+
+# ── Entry Point ───────────────────────────────────────────────
+
+main() {
+    case "${1:-}" in
+        --list)
+            awk -F'\t' -v sep="$DOCK_SEPARATOR_CATEGORY" '
+                /^#/ { next }
+                NF >= 9 && $1 == sep { printf "%-22s %-34s %s\n", $3, "-- " $2 " --", "(group divider)"; next }
+                NF >= 9 { printf "%-22s %-34s %s\n", $3, $4, $1 " / " $2 }
+            ' "$DOCK_SIDECAR"
+            ;;
+        --check)
+            # EVERY GATE RUNS, THEN THE WORST RESULT WINS. Chained with `&&` the
+            # first failure hid all the others, so sabotaging the Order AND an
+            # icon reported only the Order. A punch list you cannot see in full
+            # takes as many rounds as it has items.
+            dock_gate_rc=0
+            dock_self_check     || dock_gate_rc=1
+            dock_order_check    || dock_gate_rc=1
+            dock_icon_check     || dock_gate_rc=1
+            dock_icon_dup_check  || dock_gate_rc=1
+            dock_label_dup_check   || dock_gate_rc=1
+            dock_command_dup_check || dock_gate_rc=1
+            return "$dock_gate_rc"
+            ;;
+        "" | -h | --help)
+            show_usage
+            ;;
+        *)
+            if [[ $# -lt 2 || $# -gt 3 ]]; then
+                show_usage >&2
+                exit 1
+            fi
+            dock_run_action "$1" "$2" "${3:-}"
+            ;;
+    esac
+}
+
+main "$@"

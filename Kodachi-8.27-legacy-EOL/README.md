@@ -1,22 +1,38 @@
-# Kodachi OS - Legacy Resources and Archives
+# Kodachi 8.27 , legacy archive (END OF LIFE)
 
-Historical resources, legacy configurations, and archived components from previous versions of the Kodachi OS security distribution.
+The archived source of Kodachi 8.27, the last release of the 8 line. **End of life: it
+receives no updates and no security fixes, and it should not be deployed.** It is kept as a
+historical record, and because the shell and Gambas sources show how Kodachi worked before
+the Rust rewrite.
+
+For a system you can actually run, see **[../Kodachi-9](../Kodachi-9)** (stable) or
+**[../Kodachi-10](../Kodachi-10)** (current, beta).
 
 ## Directory Structure
 
 ```
-z-resources/
-├── README.md                    # This overview
-└── version 8.27/               # Kodachi 8.27 legacy archive
-    ├── Kodachi 8.27 source/    # Original source files and documentation
-    │   ├── Kodachi-Log.txt      # Version 8.27 changelog
-    │   ├── Kodachi-hash.txt     # File integrity hashes
-    │   └── LICENSE              # License information
-    ├── gambas/                  # Legacy Gambas applications
-    │   ├── kodachi-dashboard/   # Dashboard application with assets
-    │   └── your_location/       # Location utility    
-    └── kodachi 9 on the way
+Kodachi-8.27-legacy-EOL/
+├── README.md          This overview
+├── LICENSE            The licence in force for the 8.27 release
+├── open/              The archived source, laid out as it sat on the system
+│   ├── bash/          9,392 files, 427 MB. The whole shell layer:
+│   │                    etc/    dnscrypt-proxy, tor, grub.d, bodhibuilder, default
+│   │                    home/   the kodachi user's dotfiles and scripts
+│   │                    usr/    the installed helper scripts
+│   └── gambas/        43 files. The Gambas GUI applications, the pre-Tauri dashboard:
+│                        kodachi-dashboard/   the dashboard, with its image assets
+│                        your_location/       the geolocation utility
+└── docs/              4 files, 516 KB
+    ├── Kodachi-Log.txt        The complete 8.27 changelog
+    ├── Kodachi-hash.txt       SHA256/MD5 integrity hashes for the release
+    ├── project-structure.md   A full file-by-file map of the 8.27 tree
+    └── landing-page.md        The 8.27 landing page copy
 ```
+
+> **Note on the sections below.** They were written when this archive sat alongside other
+> legacy material, so some of them describe directories that are not in this folder
+> (`clients-config/`, `old-vps-configs/`, `auto-install/`, `openvpn/`, `www/html/`). The
+> historical and architectural notes remain accurate and are kept for that reason.
 
 ## Legacy Components
 

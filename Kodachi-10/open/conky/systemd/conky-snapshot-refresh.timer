@@ -1,0 +1,31 @@
+[Unit]
+Description=Kodachi Conky Snapshot Refresh Timer
+# NO After=graphical-session.target on the TIMER: combined with the timer's
+# implicit Before=timers.target it created a SHUTDOWN ordering cycle
+# (graphical-session.target -> conky timer -> timers.target -> basic.target ->
+# graphical-session.target) that systemd broke by dropping
+# graphical-session.target/stop. The .service keeps After=graphical-session.target,
+# which is correct. audit 2026-06-03.
+
+[Timer]
+# audit 2026-05-08 (macOS-Ventura bundle): the legacy 15s value caused this
+# timer to fire DURING the xfce4-session startup window (login → graphical-
+# session.target took 134 s on installed systems). Each fire spawned 30+
+# sudo'd children (health-control, tor-switch, dns-switch, permission-guard)
+# that competed with xfce4-session for PAM, dbus, disk and CPU, visibly
+# stalling the desktop bring-up. Raising to 240 s ensures the first fire
+# always lands AFTER the desktop is interactive, even on slow installed
+# systems where xfce4-session needs >2 min to reach graphical-session.target.
+OnActiveSec=240
+# Then every 90 seconds (well within the 120s cache TTL)
+OnUnitActiveSec=90
+# Spread timer across a 15s window to avoid all timers firing at once
+RandomizedDelaySec=15
+# Keep running even if a refresh is slow
+Persistent=false
+# Tighten accuracy so RandomizedDelaySec dominates instead of the systemd
+# default 1-minute accuracy bucket.
+AccuracySec=1s
+
+[Install]
+WantedBy=graphical-session.target

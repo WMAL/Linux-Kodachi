@@ -1,0 +1,170 @@
+{
+  "schema_version": "1.1",
+  "id": "system-check-basic",
+  "name": "system-check-basic",
+  "description": "Quick system overview: memory, disk, interfaces, and active processes",
+  "metadata": {
+    "created": "2025-10-09T00:00:00Z",
+    "modified": "2025-10-09T00:00:00Z",
+    "version": "1.0"
+  },
+  "global_settings": {
+    "kill_policy": "continue",
+    "continue_policy": true,
+    "max_log_size": 10485760,
+    "default_timeout": 300,
+    "working_dir": "."
+  },
+  "steps": [
+    {
+      "id": 1,
+      "type": "command",
+      "cmd": "free -h",
+      "condition": {
+        "type": "always"
+      },
+      "timeout": 120,
+      "confirm": false,
+      "nice_level": 0,
+      "cell_store": "info",
+      "score_impact": 1,
+      "colonyops_safety": {
+        "danger_level": "safe",
+        "requires_auth": false,
+        "needs_sudo": false,
+        "execution_kind": "tauri-command",
+        "destructive": false,
+        "workflow_safe": true,
+        "shell_safe": true,
+        "confirm_copy": "",
+        "rollback_hint": "Re-run the corresponding status command and restore the previous configuration if needed."
+      },
+      "command_id": "linux.system.free_h",
+      "argv": [
+        "/usr/bin/free",
+        "-h"
+      ],
+      "description": "Run free -h through the typed Linux executor"
+    },
+    {
+      "id": 2,
+      "type": "command",
+      "cmd": "df -h",
+      "condition": {
+        "type": "always"
+      },
+      "timeout": 120,
+      "confirm": false,
+      "nice_level": 0,
+      "cell_store": "info",
+      "score_impact": 1,
+      "colonyops_safety": {
+        "danger_level": "safe",
+        "requires_auth": false,
+        "needs_sudo": false,
+        "execution_kind": "tauri-command",
+        "destructive": false,
+        "workflow_safe": true,
+        "shell_safe": true,
+        "confirm_copy": "",
+        "rollback_hint": "Re-run the corresponding status command and restore the previous configuration if needed."
+      },
+      "command_id": "linux.df",
+      "argv": [
+        "/usr/bin/df",
+        "-h"
+      ],
+      "description": "Run df -h through the typed Linux executor"
+    },
+    {
+      "id": 3,
+      "type": "command",
+      "cmd": "ip addr",
+      "condition": {
+        "type": "always"
+      },
+      "timeout": 30,
+      "confirm": false,
+      "nice_level": 0,
+      "cell_store": "info",
+      "score_impact": 1,
+      "colonyops_safety": {
+        "danger_level": "safe",
+        "requires_auth": false,
+        "needs_sudo": false,
+        "execution_kind": "typed-arbitrary-workflow",
+        "destructive": false,
+        "workflow_safe": true,
+        "shell_safe": true,
+        "confirm_copy": "",
+        "rollback_hint": "Review the step result and restore the prior state before continuing if the command changed system state."
+      },
+      "command_id": "workflow.argv.ip.6b4ee795565c85ed",
+      "argv": [
+        "ip",
+        "addr"
+      ],
+      "description": "Run the typed workflow command 'ip addr'."
+    },
+    {
+      "id": 4,
+      "type": "command",
+      "cmd": "ps aux",
+      "condition": {
+        "type": "always"
+      },
+      "timeout": 30,
+      "confirm": false,
+      "nice_level": 0,
+      "cell_store": "info",
+      "score_impact": 1,
+      "colonyops_safety": {
+        "danger_level": "safe",
+        "requires_auth": false,
+        "needs_sudo": false,
+        "execution_kind": "typed-arbitrary-workflow",
+        "destructive": false,
+        "workflow_safe": true,
+        "shell_safe": true,
+        "confirm_copy": "",
+        "rollback_hint": "Review the step result and restore the prior state before continuing if the command changed system state."
+      },
+      "command_id": "workflow.argv.ps.7142d2f23d923bc8",
+      "argv": [
+        "ps",
+        "aux"
+      ],
+      "description": "Run the typed workflow command 'ps aux'."
+    },
+    {
+      "id": 5,
+      "type": "command",
+      "cmd": "echo 'System check basic completed successfully'",
+      "condition": {
+        "type": "if_success"
+      },
+      "timeout": 10,
+      "confirm": false,
+      "nice_level": 0,
+      "cell_store": "info",
+      "score_impact": 0,
+      "colonyops_safety": {
+        "danger_level": "safe",
+        "requires_auth": false,
+        "needs_sudo": false,
+        "execution_kind": "typed-arbitrary-workflow",
+        "destructive": false,
+        "workflow_safe": true,
+        "shell_safe": true,
+        "confirm_copy": "",
+        "rollback_hint": "Review the step result and restore the prior state before continuing if the command changed system state."
+      },
+      "command_id": "workflow.argv.echo.21e6ec361272ed87",
+      "argv": [
+        "echo",
+        "System check basic completed successfully"
+      ],
+      "description": "Run the typed workflow command 'echo 'System check basic completed successfully''."
+    }
+  ]
+}

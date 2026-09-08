@@ -1,0 +1,404 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<actions>
+<action>
+	<icon>kodachi</icon>
+	<name>Open Terminal Here</name>
+	<unique-id>1540422804797777-1</unique-id>
+	<command>exo-open --working-directory %f --launch TerminalEmulator</command>
+	<description>Open terminal in this directory</description>
+	<patterns>*</patterns>
+	<directories/>
+</action>
+<action>
+	<icon>kodachi</icon>
+	<name>Open Terminal Here</name>
+	<unique-id>1540422804797815-2</unique-id>
+	<command>exo-open --working-directory %d --launch TerminalEmulator</command>
+	<description>Open terminal in containing directory</description>
+	<patterns>*</patterns>
+	<audio-files/>
+	<image-files/>
+	<other-files/>
+	<text-files/>
+	<video-files/>
+</action>
+<action>
+	<icon>kodachi</icon>
+	<name>Find in this folder</name>
+	<unique-id>1540422804797864-3</unique-id>
+	<command>catfish --path=%f</command>
+	<description>Search for files within this folder</description>
+	<patterns>*</patterns>
+	<directories/>
+</action>
+<action>
+	<icon>kodachi</icon>
+	<name>Print file/s</name>
+	<unique-id>1540422804797871-4</unique-id>
+	<command>thunar-print.sh %F</command>
+	<description>Send one or multiple files to the default printer</description>
+	<patterns>*.asc,*.brf,*.css,*.doc,*.docm,*.docx,*.dotm,*.dotx,*.fodg,*.fodp,*.fods,*.fodt,*.gif,*.htm,*.html,*.jpe,*.jpeg,*.jpg,*.odb,*.odf,*.odg,*.odm,*.odp,*.ods,*.odt,*.otg,*.oth,*.otp,*.ots,*.ott,*.pbm,*.pdf,*.pgm,*.png,*.pnm,*.pot,*.potm,*.potx,*.ppm,*.ppt,*.pptm,*.pptx,*.rtf,*.shtml,*.srt,*.text,*.tif,*.tiff,*.txt,*.xbm,*.xls,*.xlsb,*.xlsm,*.xlsx,*.xltm,*.xltx,*.xpm,*.xwd</patterns>
+	<audio-files/>
+	<image-files/>
+	<other-files/>
+	<text-files/>
+	<video-files/>
+</action>
+<action>
+	<icon>kodachi</icon>
+	<name>Create a Link</name>
+	<unique-id>1540517014701672-8</unique-id>
+	<command>ln -s %f &apos;Link to %n&apos;</command>
+	<description>Create symbolic link to selected file</description>
+	<patterns>*</patterns>
+	<directories/>
+	<audio-files/>
+	<image-files/>
+	<other-files/>
+	<text-files/>
+	<video-files/>
+</action>
+<action>
+	<icon>kodachi</icon>
+	<name>Kodachi Secure Wipe</name>
+	<unique-id>1540586402742481-12</unique-id>
+	<command>thunar-wipe.sh %F</command>
+	<description>Securely wipe the selected files or folder, unrecoverable, asks you to confirm</description>
+	<patterns>*</patterns>
+	<startup-notify/>
+	<directories/>
+	<audio-files/>
+	<image-files/>
+	<other-files/>
+	<text-files/>
+	<video-files/>
+</action>
+<action>
+	<icon>kodachi</icon>
+	<name>Kodachi Calculate Size</name>
+	<unique-id>1540588653193771-1</unique-id>
+	<command>thunar-checksum.sh -a space -n %f</command>
+	<description>Calculate disk space used by folder</description>
+	<patterns>*</patterns>
+	<directories/>
+</action>
+<action>
+	<icon>kodachi</icon>
+	<name>Kodachi Open as Root</name>
+	<unique-id>1540586479215474-13</unique-id>
+	<command>thunar-root.sh -m thunar %F</command>
+	<description>Open file manager with root privileges</description>
+	<patterns>*</patterns>
+	<directories/>
+</action>
+<action>
+	<icon>kodachi</icon>
+	<name>Kodachi Edit as Root</name>
+	<unique-id>1540564993416919-2</unique-id>
+	<command>thunar-root.sh -m mousepad %F</command>
+	<description>Edit file with root privileges</description>
+	<patterns>*</patterns>
+	<other-files/>
+	<text-files/>
+</action>
+<action>
+	<icon>kodachi</icon>
+	<name>Kodachi MD5 Hash</name>
+	<unique-id>1540584768756395-8</unique-id>
+	<command>thunar-checksum.sh -a md5 -n %f</command>
+	<description>Calculate MD5 checksum of file</description>
+	<patterns>*</patterns>
+	<audio-files/>
+	<image-files/>
+	<other-files/>
+	<text-files/>
+	<video-files/>
+</action>
+<action>
+	<icon>kodachi</icon>
+	<name>Kodachi SHA256 Hash</name>
+	<unique-id>1540584818309023-9</unique-id>
+	<command>thunar-checksum.sh -a sha256 -n %f</command>
+	<description>Calculate SHA256 checksum of file</description>
+	<patterns>*</patterns>
+	<audio-files/>
+	<image-files/>
+	<other-files/>
+	<text-files/>
+	<video-files/>
+</action>
+<action>
+	<icon>kodachi</icon>
+	<name>Kodachi SHA512 Hash</name>
+	<unique-id>1540584833090789-10</unique-id>
+	<command>thunar-checksum.sh -a sha512 -n %f</command>
+	<description>Calculate SHA512 checksum of file</description>
+	<patterns>*</patterns>
+	<audio-files/>
+	<image-files/>
+	<other-files/>
+	<text-files/>
+	<video-files/>
+</action>
+<action>
+	<icon>kodachi</icon>
+	<name>Kodachi BLAKE2 Hash</name>
+	<unique-id>1738754001-blake2</unique-id>
+	<command>thunar-view.sh -m blake2 %f</command>
+	<description>Calculate BLAKE2 hash (faster and more secure than SHA)</description>
+	<patterns>*</patterns>
+	<audio-files/>
+	<image-files/>
+	<other-files/>
+	<text-files/>
+	<video-files/>
+</action>
+<action>
+	<icon>kodachi</icon>
+	<name>Kodachi Digest (GtkHash)</name>
+	<unique-id>1615497731240528-1</unique-id>
+	<command>gtkhash %F</command>
+	<description>Open file in GtkHash for digest calculation</description>
+	<patterns>*</patterns>
+	<audio-files/>
+	<image-files/>
+	<other-files/>
+	<text-files/>
+	<video-files/>
+</action>
+	<action>
+		<icon>kodachi</icon>
+		<name>Kodachi GPG Encrypt</name>
+		<unique-id>1615498658902023-3</unique-id>
+		<command>thunar-gpg-encrypt.sh -f %f</command>
+		<description>Encrypt file with GPG (AES256)</description>
+		<patterns>*</patterns>
+		<directories/>
+		<audio-files/>
+		<image-files/>
+		<other-files/>
+		<text-files/>
+		<video-files/>
+</action>
+<action>
+	<icon>kodachi</icon>
+	<name>Kodachi GPG Decrypt</name>
+	<unique-id>1615548321816810-1</unique-id>
+	<command>thunar-gpg-decrypt.sh -f %f</command>
+	<description>Decrypt GPG encrypted file</description>
+	<patterns>*.gpg,*.asc,*.pgp</patterns>
+	<other-files/>
+<text-files/>
+</action>
+	<action>
+		<icon>kodachi</icon>
+		<name>Kodachi GPG Sign</name>
+		<unique-id>1615548385090476-2</unique-id>
+		<command>thunar-gpg-sign.sh -f %f</command>
+		<description>Create GPG signature for file</description>
+		<patterns>*</patterns>
+		<directories/>
+		<audio-files/>
+		<image-files/>
+		<other-files/>
+		<text-files/>
+		<video-files/>
+</action>
+<action>
+	<icon>kodachi</icon>
+	<name>Kodachi GPG Verify</name>
+	<unique-id>1615548450736711-3</unique-id>
+	<command>thunar-gpg-verify.sh -f %f</command>
+	<description>Verify GPG signature of file</description>
+	<patterns>*.sig,*.sign,*.asc</patterns>
+	<other-files/>
+<text-files/>
+</action>
+<action>
+	<icon>kodachi</icon>
+	<name>Kodachi GPG Info</name>
+	<unique-id>1615548671368756-5</unique-id>
+	<command>thunar-gpg-info.sh -f %f</command>
+	<description>Show GPG packet information for file</description>
+	<patterns>*.gpg,*.asc,*.pgp,*.sig</patterns>
+	<other-files/>
+<text-files/>
+</action>
+	<action>
+		<icon>kodachi</icon>
+		<name>Kodachi OpenSSL Encrypt/Decrypt</name>
+		<unique-id>1615548506034320-4</unique-id>
+		<command>thunar-openssl.sh -f %f</command>
+		<description>Encrypt or decrypt file with OpenSSL (AES-256-CBC)</description>
+		<patterns>*</patterns>
+		<directories/>
+		<audio-files/>
+		<image-files/>
+		<other-files/>
+		<text-files/>
+		<video-files/>
+</action>
+<action>
+	<icon>kodachi</icon>
+	<name>Kodachi Strip Image Metadata</name>
+	<unique-id>1738754002-exif</unique-id>
+	<command>thunar-metadata.sh -m exif %F</command>
+	<description>Remove ALL metadata (EXIF, GPS, camera info) from images</description>
+	<patterns>*.jpg,*.jpeg,*.png,*.tiff,*.tif,*.gif,*.webp,*.heic</patterns>
+	<image-files/>
+</action>
+<action>
+	<icon>kodachi</icon>
+	<name>Kodachi Strip PDF Metadata</name>
+	<unique-id>1738754003-pdfmeta</unique-id>
+	<command>thunar-metadata.sh -m pdf %F</command>
+	<description>Remove author, creation date, software info from PDF</description>
+	<patterns>*.pdf</patterns>
+	<other-files/>
+</action>
+<action>
+	<icon>kodachi</icon>
+	<name>Kodachi MAT2 Sanitize</name>
+	<unique-id>1738754004-mat2</unique-id>
+	<command>thunar-metadata.sh -m mat2 %F</command>
+	<description>Deep metadata cleaning with MAT2 (images, docs, audio, video)</description>
+	<patterns>*</patterns>
+	<audio-files/>
+	<image-files/>
+	<other-files/>
+	<text-files/>
+	<video-files/>
+</action>
+<action>
+	<icon>kodachi</icon>
+	<name>Kodachi VirusTotal Check</name>
+	<unique-id>1738754005-vt</unique-id>
+	<command>thunar-virustotal.sh %f</command>
+	<description>Check file hash on VirusTotal (privacy-safe, no upload)</description>
+	<patterns>*</patterns>
+	<audio-files/>
+	<image-files/>
+	<other-files/>
+	<text-files/>
+	<video-files/>
+</action>
+<action>
+	<icon>kodachi</icon>
+	<name>Kodachi Hex View</name>
+	<unique-id>1738754006-hex</unique-id>
+	<command>thunar-view.sh -m hex %f</command>
+	<description>View file in hexadecimal (forensic inspection)</description>
+	<patterns>*</patterns>
+	<audio-files/>
+	<image-files/>
+	<other-files/>
+	<text-files/>
+	<video-files/>
+</action>
+<action>
+	<icon>kodachi</icon>
+	<name>Kodachi Entropy Analysis</name>
+	<unique-id>1738754007-entropy</unique-id>
+	<command>thunar-view.sh -m entropy %f</command>
+	<description>Analyze file entropy (detect encryption/compression)</description>
+	<patterns>*</patterns>
+	<audio-files/>
+	<image-files/>
+	<other-files/>
+	<text-files/>
+	<video-files/>
+</action>
+<action>
+	<icon>kodachi</icon>
+	<name>Kodachi View Metadata</name>
+	<unique-id>1738754008-viewmeta</unique-id>
+	<command>thunar-view.sh -m metadata %f</command>
+	<description>View all file metadata (EXIF, XMP, IPTC)</description>
+	<patterns>*</patterns>
+	<audio-files/>
+	<image-files/>
+	<other-files/>
+	<text-files/>
+	<video-files/>
+</action>
+<action>
+	<icon>kodachi</icon>
+	<name>Kodachi File Type Check</name>
+	<unique-id>1738754009-filetype</unique-id>
+	<command>thunar-view.sh -m filetype %F</command>
+	<description>Verify true file type (detect disguised files)</description>
+	<patterns>*</patterns>
+	<audio-files/>
+	<image-files/>
+	<other-files/>
+	<text-files/>
+	<video-files/>
+</action>
+<action>
+	<icon>kodachi</icon>
+	<name>Kodachi Copy Path</name>
+	<unique-id>1756200001-copypath</unique-id>
+	<command>thunar-copy-path.sh %F</command>
+	<description>Copy the full path(s) to the clipboard</description>
+	<patterns>*</patterns>
+	<directories/>
+	<audio-files/>
+	<image-files/>
+	<other-files/>
+	<text-files/>
+	<video-files/>
+</action>
+<action>
+	<icon>kodachi</icon>
+	<name>Kodachi Verify Checksum</name>
+	<unique-id>1756200002-verifysum</unique-id>
+	<command>thunar-verify-checksum.sh %f</command>
+	<description>Compare this file against a published checksum</description>
+	<patterns>*</patterns>
+	<audio-files/>
+	<image-files/>
+	<other-files/>
+	<text-files/>
+	<video-files/>
+</action>
+<action>
+	<icon>kodachi</icon>
+	<name>Kodachi Compare Files</name>
+	<unique-id>1756200003-compare</unique-id>
+	<command>thunar-compare.sh %F</command>
+	<description>Compare exactly two selected files</description>
+	<patterns>*</patterns>
+	<audio-files/>
+	<image-files/>
+	<other-files/>
+	<text-files/>
+	<video-files/>
+</action>
+<action>
+	<icon>kodachi</icon>
+	<name>Kodachi Wipe Free Space</name>
+	<unique-id>1756200004-freespace</unique-id>
+	<command>thunar-wipe.sh -m freespace %f</command>
+	<description>Overwrite free space on this filesystem (existing files untouched)</description>
+	<patterns>*</patterns>
+	<directories/>
+</action>
+<action>
+	<icon>kodachi</icon>
+	<name>Kodachi Sandbox Shell Here</name>
+	<unique-id>1756200005-sandboxsh</unique-id>
+	<command>thunar-sandbox.sh -m terminal %f</command>
+	<description>Open a Firejail-confined shell in this folder, no network</description>
+	<patterns>*</patterns>
+	<directories/>
+</action>
+<action>
+	<icon>kodachi</icon>
+	<name>Kodachi Sandbox File Manager</name>
+	<unique-id>1756200006-sandboxfm</unique-id>
+	<command>thunar-sandbox.sh -m files %f</command>
+	<description>Browse this folder in a Firejail-confined file manager, no network</description>
+	<patterns>*</patterns>
+	<directories/>
+</action>
+</actions>

@@ -1,0 +1,270 @@
+#!/usr/bin/env bash
+# Kodachi Dock Control - Session Status Reporter
+#
+# SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.1
+# Copyright (c) 2013-2026 Warith Al Maawali
+#
+# This file is part of Kodachi OS.
+# For full license terms, see LICENSE.md or visit:
+# https://kodachi.cloud/docs/license.html
+#
+# Commercial or organizational use requires a written license.
+# Contact: warith@digi77.com
+#
+# Description:
+# Answers "what is my machine doing right now" for the dock, in two shapes:
+#
+#   report          one window carrying every privacy-relevant fact at once
+#   field <name>    one fact, printed as a single short line for a notification
+#
+# Both read ONE source: the conky-status snapshot cache. That matters for a dock
+# click. Collecting a fresh snapshot walks eight adapters and was measured at
+# 10.45s wall on the Kodachi 9 test VM (<lab-host>, 2026-08-17); reading the
+# cache is a file read. Every field below therefore comes out of a single
+# `conky-status panel all` call, so a report showing twenty facts costs exactly
+# one binary invocation rather than twenty.
+#
+# The snapshot's age is printed rather than hidden. A cached answer that says how
+# old it is stays honest; a cached answer presented as live does not.
+#
+# Author: Warith Al Maawali
+# Version: <lab-host>
+# Last updated: 2026-09-04
+
+set -uo pipefail
+
+# How stale the cached snapshot may be before a field is collected fresh. A dock
+# click is an interactive action, so this is deliberately generous: the age is
+# always shown, and a user who wants live numbers has the Refresh cell.
+STATUS_TTL="${KODACHI_DOCK_STATUS_TTL:-90}"
+STATUS_TIMEOUT="${KODACHI_DOCK_STATUS_TIMEOUT:-30}"
+# show-remote-timezone is a network round trip, not a snapshot read, so it is
+# called only when actually asked for and always under its own short timeout.
+REMOTE_TZ_TIMEOUT="${KODACHI_DOCK_REMOTE_TZ_TIMEOUT:-12}"
+
+# ── The two renderers ─────────────────────────────────────────
+# THEY ARE FILES, NOT `python3 -c` HEREDOCS, AND THEY HAVE A SECOND CALLER.
+# kodachi-command-window builds the same session report for the GTK Status
+# window and may NOT run this script to get it: the direct-execution contract
+# lists kodachi-dock-status in PROXY_BASENAMES, and naming it in a binding
+# makes the WHOLE contract fail to load (kodachi_direct.py _validate_binding).
+# So the renderer moved into a module both callers reach, rather than being
+# copied into the GTK program, because two copies of a status renderer are two
+# machines that will eventually disagree about the same box.
+#
+# Resolved relative to THIS file first, so a tree pushed to a test VM runs its
+# own copy rather than whatever is installed there. Same rule the three GTK
+# windows already follow.
+KODACHI_LIB_DIR="${KODACHI_LIB_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib/kodachi" 2>/dev/null && pwd || echo /usr/local/lib/kodachi)}"
+REPORT_RENDERER="${KODACHI_SESSION_REPORT_RENDERER:-$KODACHI_LIB_DIR/kodachi_session_report.py}"
+POOL_RENDERER="${KODACHI_SESSION_POOL_RENDERER:-$KODACHI_LIB_DIR/kodachi_session_pool.py}"
+
+fatal() {
+    printf 'ERROR: %s\n' "$*" >&2
+    exit 1
+}
+
+command_present() { command -v "$1" >/dev/null 2>&1; }
+
+# ── Snapshot ──────────────────────────────────────────────────
+# One call, cached in a temp file for the life of this process so `report` can
+# read twenty fields without twenty invocations.
+
+SNAPSHOT_JSON=""
+
+load_snapshot() {
+    [[ -n "$SNAPSHOT_JSON" ]] && return 0
+    command_present conky-status || return 1
+
+    # WHETHER THE CALLER ASKED FOR FRESH DATA IS PART OF THE ANSWER.
+    # Two dock rows exist, "Everything About This Session" and "Everything,
+    # Fresh Data", and their output differed by exactly one word: "snapshot
+    # taken 3s ago" against "snapshot taken 2s ago". The operator reported them
+    # as the same window showing the same information, and he was right: a
+    # one-second delta is not a visible difference. The flag is exported so the
+    # header can SAY which path ran.
+    local refresh_flag=()
+    STATUS_WAS_REFRESHED=0
+    if [[ "${1:-}" == "--refresh" ]]; then
+        refresh_flag=(--refresh)
+        STATUS_WAS_REFRESHED=1
+    fi
+    export STATUS_WAS_REFRESHED
+
+    SNAPSHOT_JSON="$(timeout "$STATUS_TIMEOUT" \
+        conky-status panel all --ttl "$STATUS_TTL" "${refresh_flag[@]}" --json 2>/dev/null)"
+    [[ -n "$SNAPSHOT_JSON" ]] || return 1
+    return 0
+}
+
+# Render one or more fields out of the loaded snapshot. The extraction lives in
+# python because the snapshot is nested JSON whose exact shape varies with which
+# adapters answered, and a jq-style path that silently yields empty on a missing
+# branch is precisely how a status screen ends up quietly lying.
+render() {
+    local mode="$1"
+    printf '%s' "$SNAPSHOT_JSON" | python3 "$REPORT_RENDERER" "$mode" "${REMOTE_TZ_VALUE:-}"
+}
+
+# ── Remote timezone ───────────────────────────────────────────
+# Not part of the snapshot: it is a lookup against the public IP, so it is a
+# network round trip and is fetched only when the caller actually needs it.
+
+REMOTE_TZ_VALUE=""
+
+# ── Tor instance pool ─────────────────────────────────────────
+# Deliberately NOT from the conky snapshot: the pool is tor-switch's own state,
+# and it is the one thing about Tor that cannot be inferred from the exit IP.
+# Each instance carries its own country, so the pool reads best as a row of flags.
+TOR_INSTANCE_TIMEOUT="${KODACHI_DOCK_TOR_INSTANCE_TIMEOUT:-25}"
+
+tor_instances_json() {
+    # Retried once on purpose. Measured 2026-08-18 during the full click test:
+    # the SAME command failed as the Tor sub-dock's cell and passed as the Status
+    # sub-dock's cell moments later, and passes on demand. tor-switch serialises
+    # against its own instance operations, so a pool query issued while another
+    # tor-switch call holds the lock comes back empty rather than late. One retry
+    # after a short pause turns that transient into an answer instead of into a
+    # red notification about a pool that is perfectly healthy.
+    command_present tor-switch || return 1
+    local payload
+    payload="$(timeout "$TOR_INSTANCE_TIMEOUT" sudo -n tor-switch list-instances-with-ip --json 2>/dev/null)"
+    if [[ -z "$payload" ]]; then
+        sleep 3
+        payload="$(timeout "$TOR_INSTANCE_TIMEOUT" sudo -n tor-switch list-instances-with-ip --json 2>/dev/null)"
+    fi
+    [[ -n "$payload" ]] || return 1
+    printf '%s' "$payload"
+}
+
+# mode "line" -> one compact line for a notification
+# mode "rows" -> tagged SECTION and ROW lines for the status window
+tor_instances_render() {
+    local mode="${1:-line}" payload
+    payload="$(tor_instances_json)" || return 1
+    [[ -n "$payload" ]] || return 1
+
+    printf '%s' "$payload" | python3 "$POOL_RENDERER" "$mode" 2>/dev/null
+}
+
+fetch_remote_timezone() {
+    command_present health-control || return 1
+    local output
+    output="$(timeout "$REMOTE_TZ_TIMEOUT" sudo -n health-control show-remote-timezone 2>/dev/null)" || return 1
+    # Kodachi binaries print a progress line and box rules before the answer, so
+    # taking the first line would return the banner. Keep the last line that
+    # looks like a timezone or a sentence containing one.
+    REMOTE_TZ_VALUE="$(printf '%s\n' "$output" |
+        grep -oE '[A-Za-z]+/[A-Za-z_+-]+' | tail -n 1)"
+    [[ -n "$REMOTE_TZ_VALUE" ]]
+}
+
+# ── Presentation ──────────────────────────────────────────────
+# The full report does not fit a desktop notification, so it gets its own window.
+# It is deliberately a TEXT window: the values here (session id, IP, MAC) are
+# things a user copies into a support message.
+
+STATUS_WINDOW="${KODACHI_STATUS_WINDOW:-/usr/local/libexec/kodachi/kodachi-status-window}"
+
+# Strip the tags so the same report is readable anywhere the window cannot open
+# (a notification body, a terminal, a log).
+plain_text() {
+    printf '%s\n' "${1:-}" | awk -F'\t' '
+        $1 == "#TITLE"   { printf "%s\n", $2; next }
+        $1 == "#AGE"     { printf "(%s)\n", $2; next }
+        $1 == "#SECTION" { printf "\n%s\n", $2; next }
+        $1 == "#ROW"     { printf "  %-24s %s\n", $2, $3; next }
+        { print }
+    '
+}
+
+# The window is DETACHED on purpose. It is a window the user reads and closes in
+# their own time, so waiting for it would hold the dock cell's single-flight lock
+# and burn the action's timeout: measured 2026-08-17 on the test VM, the blocking
+# version was killed at its 90s timeout every time and reported the cell as
+# FAILED while the window sat there working perfectly.
+#
+# setsid detaches it from this process group so closing the dock never kills it.
+# The caller (kodachi-dock-action) already runs this whole script with 9>&- so the
+# detached child cannot inherit and hold the cell's flock.
+show_window() {
+    local body="$1"
+    command_present python3 || return 1
+    [[ -x "$STATUS_WINDOW" ]] || return 1
+    [[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]] || return 1
+
+    printf '%s\n' "$body" | setsid "$STATUS_WINDOW" >/dev/null 2>&1 &
+    disown 2>/dev/null || true
+    return 0
+}
+
+show_usage() {
+    cat <<'USAGE'
+Kodachi Dock Control - Session Status Reporter
+
+Usage:
+  kodachi-dock-status report [--refresh]   Every privacy-relevant fact in one window
+  kodachi-dock-status field <name>         Print one fact as a single line
+  kodachi-dock-status --list-fields        Show the field names
+  kodachi-dock-status --help               Show this message
+
+Reads the conky-status snapshot cache, so a report costs one binary call rather
+than one per fact. --refresh collects fresh data first and is slower.
+USAGE
+}
+
+main() {
+    case "${1:-}" in
+        report)
+            load_snapshot "${2:-}" || fatal "conky-status did not return a snapshot"
+            fetch_remote_timezone || REMOTE_TZ_VALUE=""
+            local body pool
+            body="$(render report)" || fatal "could not read the snapshot"
+            # The instance pool is its own binary call, so it is appended rather
+            # than folded into the snapshot render. A machine with no pool simply
+            # has no section, instead of a section full of "unknown".
+            if pool="$(tor_instances_render rows)" && [[ -n "$pool" ]]; then
+                body="${body}"$'\n'"${pool}"
+            fi
+            if show_window "$body"; then
+                # The cell's notification should say the window opened, not dump
+                # sixty lines of report into a toast.
+                printf 'Session status window opened.\n'
+            else
+                # No graphical route: stdout still reaches the dock runner, which
+                # turns it into a notification. Truncated is better than silent.
+                plain_text "$body"
+            fi
+            ;;
+        field)
+            local name="${2:-}"
+            [[ -n "$name" ]] || fatal "field needs a name, try --list-fields"
+            # The instance pool does not come from the snapshot, so it is served
+            # before load_snapshot is even reached: asking for it should not pay
+            # for a snapshot it never reads.
+            if [[ "$name" == "torinstances" ]]; then
+                tor_instances_render line || fatal "tor-switch did not report an instance pool"
+                return 0
+            fi
+            load_snapshot || fatal "conky-status did not return a snapshot"
+            [[ "$name" == "remotetz" ]] && { fetch_remote_timezone || REMOTE_TZ_VALUE=""; }
+            render "$name"
+            ;;
+        --list-fields)
+            load_snapshot || fatal "conky-status did not return a snapshot"
+            # torinstances is served outside the snapshot, so it is listed here
+            # rather than by the renderer that only knows snapshot fields.
+            { render --list-fields; printf 'torinstances\n'; } | sort
+            ;;
+        "" | -h | --help)
+            show_usage
+            ;;
+        *)
+            printf 'Unknown verb: %s\n\n' "$1" >&2
+            show_usage >&2
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"

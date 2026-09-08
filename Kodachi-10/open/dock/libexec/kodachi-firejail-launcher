@@ -1,0 +1,495 @@
+#!/usr/bin/env python3
+# Kodachi Dock Control - Firejail application launcher
+#
+# SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.1
+# Copyright (c) 2013-2026 Warith Al Maawali
+#
+# This file is part of Kodachi OS.
+# For full license terms, see LICENSE.md or visit:
+# https://kodachi.cloud/docs/license.html
+#
+# Commercial or organizational use requires a written license.
+# Contact: warith@digi77.com
+#
+"""Launch one approved desktop application through Firejail.
+
+The argument is an application identity, never a command.  This adapter owns
+the final allowlist and constructs one fixed argv without a shell.
+
+THREE SOURCES OF IDENTITY, ONE RULE.  The caller never supplies an executable
+path; it supplies a name, and this adapter resolves it.  That invariant is what
+makes the window safe, and it is unchanged.  What grew on 2026-08-25 is where
+an identity may COME FROM, because a hand-maintained table of eight is not a
+security boundary, it is a ceiling, and the operator hit it:
+
+  <app-id>            one of APP_SPECS below, the eight reviewed applications
+                      that carry Kodachi-specific Firejail arguments.
+  profile:<name>      any program Firejail itself vouches for on THIS machine,
+                      i.e. one with a root-owned /etc/firejail/<name>.profile,
+                      resolved against a fixed safe PATH.  HOW MANY THAT IS, IS
+                      A PROPERTY OF THE MACHINE AND IS DELIBERATELY NOT WRITTEN
+                      DOWN HERE: it changes with every apt run, and three
+                      hand-maintained copies of one runtime quantity had already
+                      drifted apart (this file said 208, the window said 206,
+                      the truth was 207).  Count it, do not quote it.
+
+                      THE COUNTING COMMAND MUST OBEY THE SAME RULES THIS
+                      ADAPTER DOES, or it is a fourth drifting copy wearing a
+                      shell prompt.  The first version documented here used
+                      `command -v`, which resolves on the INHERITED PATH, and
+                      returned 208 against a product answer of 206: it counted
+                      ~/.cargo/bin/cargo and two ~/.npm-global entries that
+                      `validate_program` would never reach.  Resolve on the
+                      fixed list, follow the link, and walk the ancestry for
+                      root ownership and no group or other write, exactly as
+                      `_trusted_ancestry` does:
+
+                        for p in /etc/firejail/*.profile; do
+                          n=${p##*/}; n=${n%.profile}
+                          [ "$(stat -c%u "$p")" = 0 ] || continue
+                          for d in /usr/local/sbin /usr/local/bin /usr/sbin \
+                                   /usr/bin /sbin /bin; do
+                            [ -x "$d/$n" ] || continue
+                            f=$(readlink -f "$d/$n"); ok=1
+                            while :; do
+                              [ "$(stat -c%u "$f")" = 0 ] || { ok=0; break; }
+                              [ $(( 8#$(stat -c%a "$f") & 8#22 )) -eq 0 ] \
+                                || { ok=0; break; }
+                              [ "$f" = / ] && break
+                              f=$(dirname "$f")
+                            done
+                            [ $ok = 1 ] && echo "$n"
+                            break
+                          done
+                        done | wc -l
+
+                      Measured on the development host 2026-08-25: that prints
+                      206, and the window's own discovered_applications() offers
+                      206 on the same machine.  The naive fixed-path loop
+                      without the ancestry walk prints 207; the extra one is
+                      /usr/bin/obsidian, whose real target lives under
+                      /opt/Obsidian at mode 775, so the group could replace the
+                      binary and the adapter refuses it.  That refusal is the
+                      feature, and a counting command that misses it is not
+                      counting what this adapter will run.
+                      The allowlist grows with the system, not with this file.
+  custom:<slug>       an entry the operator added, read BY THIS ADAPTER from
+                      ~/.config/kodachi/isolation-apps.json.  Never passed in.
+
+`custom:` deliberately accepts a program this adapter would refuse under
+`validate_program`, and the reason is worth stating rather than hiding.  That
+function requires root ownership of the whole path, which is right for a fixed
+table an attacker might try to redirect.  It is WRONG as a rule for an operator
+sandboxing something he does not trust: refusing to contain a downloaded binary
+because it is not system-owned inverts the purpose of a sandbox.  Running such a
+program under Firejail is strictly safer than running it natively, which is what
+he would otherwise do.  So `custom:` keeps every check that stops somebody ELSE
+choosing the target (the config must be owned by the invoking user and writable
+by nobody else, no path component may be group or other writable) and drops only
+the one that would stop HIM choosing it.  Set-user-ID and set-group-ID programs
+stay refused, because those are an escalation whoever owns them.
+"""
+
+# SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.1
+# Copyright (c) 2013-2026 Warith Al Maawali
+
+import json
+import os
+import pwd
+import re
+import stat
+import sys
+
+
+FIREJAIL_PATH = "/usr/bin/firejail"
+FIREJAIL_PROFILE_DIR = "/etc/firejail"
+# The resolution PATH is fixed here and never read from the environment. An
+# inherited PATH is caller-controlled, and the whole point of taking a name
+# instead of a path is that the caller does not get to pick the file.
+SAFE_PATH = ("/usr/local/sbin", "/usr/local/bin", "/usr/sbin", "/usr/bin",
+             "/sbin", "/bin")
+USER_APPS_RELATIVE = (".config", "kodachi", "isolation-apps.json")
+# One shape for every derived identity: a leading letter or digit, then a
+# conservative set that cannot express a path, a parent reference or an option.
+IDENTITY_RE = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._+@-]{0,63}\Z")
+APP_SPECS = {
+    "librewolf": ("/usr/local/bin/librewolf", "dedicated"),
+    "keepassxc": ("/usr/bin/keepassxc", "dedicated"),
+    "electrum": ("/usr/bin/electrum", "dedicated"),
+    "monero-wallet": ("/usr/local/bin/monero-wallet-gui", "default"),
+    "thunar": ("/usr/bin/thunar", "dedicated"),
+    "double-commander": ("/usr/bin/doublecmd", "default"),
+    "xfce-terminal": ("/usr/bin/xfce4-terminal", "default"),
+    "xterm": ("/usr/bin/xterm", "default"),
+}
+FIREJAIL_ARGS = {
+    # THERE IS NO librewolf ROW, AND ITS ABSENCE IS THE FIX.
+    # On 2026-08-26 I published a finding that /etc/firejail/librewolf.profile's
+    # bare `ignore apparmor` left the browser AppArmor-unconfined, and I shipped
+    # `--apparmor` here as the remedy. BOTH HALVES WERE WRONG. The finding was
+    # false and the remedy was a REGRESSION that stopped the browser launching.
+    # Measured on <lab-host> as a same-run A/B, then RE-RUN WITH THE TWO
+    # ARMS IN THE OPPOSITE ORDER to kill the ordering objection. Both orders
+    # agree, from a verified-clean pre-state each time:
+    #     without --apparmor (as shipped)  10-12 librewolf processes, every one
+    #                                      reading kodachi-librewolf (enforce),
+    #                                      1 firejail sandbox, 1 window
+    #     with    --apparmor               0 processes, 0 sandboxes, no window;
+    #                                      firejail prints "Parent pid N, child
+    #                                      pid M" and nothing ever starts
+    # TWO INDEPENDENT ERRORS PRODUCED THE FALSE FINDING.
+    # (1) I read /proc/<pid>/attr/current on the firejail WRAPPER process. The
+    #     wrapper legitimately reads `unconfined`; it is not the application.
+    #     Every LEAF librewolf process was confined the entire time. Read the
+    #     leaf, never the wrapper, or a correct sandbox reads as a broken one.
+    # (2) This image ships its OWN /etc/apparmor.d/kodachi.librewolf (mtime
+    #     2026-06-26), loaded as `kodachi-librewolf (enforce)` and tighter than
+    #     firejail's generic firejail-default. Upstream's `ignore apparmor` is
+    #     CORRECT for this image: it stops firejail replacing the product's own
+    #     profile with its weaker one. Forcing --apparmor made firejail try to
+    #     apply firejail-default over a process already confined by
+    #     kodachi-librewolf, and the launch died silently.
+    # DO NOT ADD THE ROW BACK without re-reading the wrapper/leaf distinction
+    # above and re-measuring on a VM. test_firejail_args_table_is_exact_and_the
+    # _browser_has_no_apparmor_row pins this.
+    "xfce-terminal": (
+        "--noprofile",
+        "--net=none",
+        "--caps.drop=all",
+        "--nonewprivs",
+        "--noroot",
+        "--private-tmp",
+        "--private-dev",
+        "--seccomp",
+    ),
+}
+APP_ARGS = {
+    "xfce-terminal": ("--disable-server",),
+}
+
+
+def fail(message):
+    print(f"kodachi-firejail-launcher: {message}", file=sys.stderr)
+    return 2
+
+
+def _trusted_stat(file_stat, *, executable=False):
+    if file_stat.st_uid != 0 or file_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+        return False
+    return bool(not executable or (
+        stat.S_ISREG(file_stat.st_mode) and file_stat.st_mode & 0o111
+    ))
+
+
+def _trusted_ancestry(path):
+    current = os.path.dirname(path)
+    while True:
+        if not _trusted_stat(os.stat(current, follow_symlinks=True)):
+            return False
+        if current == "/":
+            return True
+        current = os.path.dirname(current)
+
+
+def validate_program(path):
+    """Return one canonical executable only when its whole path is system-owned."""
+    if not os.path.isabs(path):
+        return None
+    try:
+        configured = os.lstat(path)
+        if configured.st_uid != 0:
+            return None
+        if not stat.S_ISLNK(configured.st_mode) and not _trusted_stat(
+            configured, executable=True
+        ):
+            return None
+        if not _trusted_ancestry(path):
+            return None
+
+        resolved = os.path.realpath(path)
+        if not _trusted_stat(
+            os.stat(resolved, follow_symlinks=True), executable=True
+        ):
+            return None
+        if not _trusted_ancestry(resolved):
+            return None
+        return resolved
+    except OSError:
+        return None
+
+
+def user_applications_path():
+    """The operator's own catalog, under HIS home, resolved by us not by them."""
+    return os.path.join(pwd.getpwuid(os.geteuid()).pw_dir, *USER_APPS_RELATIVE)
+
+
+def _not_writable_by_others(file_stat, owner_uid):
+    """Nobody but the owner may have been able to choose this file."""
+    return (file_stat.st_uid == owner_uid
+            and not file_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH))
+
+
+def validate_user_program(path):
+    """Return a canonical executable the OPERATOR chose, containing it anyway.
+
+    Deliberately weaker than validate_program in exactly one respect, and
+    stronger in another. It does NOT require root ownership, because a sandbox
+    that refuses to contain an untrusted download has inverted its own purpose.
+    It DOES refuse set-user-ID and set-group-ID programs, which validate_program
+    never had to think about because a root-owned tree it already trusted could
+    not be used to gain anything. Here the file may be attacker-supplied
+    content, so a setuid bit on it is the one thing Firejail is not a defence
+    against: --nonewprivs is not in force until firejail itself decides so, and
+    an escalation that happens at exec time happens whoever owns the file.
+    """
+    if not os.path.isabs(path):
+        return None
+    try:
+        resolved = os.path.realpath(path)
+        info = os.stat(resolved, follow_symlinks=True)
+        if not stat.S_ISREG(info.st_mode) or not info.st_mode & 0o111:
+            return None
+        if info.st_mode & (stat.S_ISUID | stat.S_ISGID):
+            return None
+        # No component of the path may be writable by anyone other than its
+        # owner, so a third party cannot swap the target out from under him
+        # between the moment he added it and the moment he clicks Launch.
+        current = resolved
+        while True:
+            entry = os.stat(current, follow_symlinks=True)
+            group_or_other_writable = entry.st_mode & (stat.S_IWGRP
+                                                       | stat.S_IWOTH)
+            # THE STICKY BIT IS THE EXCEPTION, AND WITHOUT IT THIS REFUSES
+            # EVERYTHING UNDER /tmp. Measured 2026-08-25: my first positive
+            # control failed, which is the only reason I found it. /tmp is
+            # 1777, so a plain group-or-other-writable test walks up from any
+            # temporary directory and refuses, and the refusal would have read
+            # as "the mode check works" while actually being blind to whether
+            # the mode was ever the reason.
+            #
+            # WHAT STICKY ACTUALLY GUARANTEES, stated precisely, because the
+            # first version of this comment overstated it: in a sticky
+            # directory only the entry's owner, the DIRECTORY'S OWNER and root
+            # may unlink or rename an entry. The directory owner is exempt, so
+            # an attacker-owned 1777 directory anywhere on the path would take
+            # this exception and let its owner swap the target between this
+            # check and execv. Hence the ownership clause: the sticky directory
+            # must belong to root or to the invoking user. Every real case
+            # still passes, because /tmp, /var/tmp and /dev/shm are all
+            # root-owned 1777.
+            trusted_sticky = (stat.S_ISDIR(entry.st_mode)
+                              and entry.st_mode & stat.S_ISVTX
+                              and entry.st_uid in (0, os.geteuid()))
+            if group_or_other_writable and not trusted_sticky:
+                return None
+            if current == "/":
+                break
+            current = os.path.dirname(current)
+        return resolved
+    except OSError:
+        return None
+
+
+def resolve_profiled(name):
+    """A program Firejail itself vouches for, resolved on a fixed PATH.
+
+    The vouching authority is the PROFILE, and the profile must be root owned
+    and unwritable by anyone else, because /etc/firejail is what decides how
+    much containment the program gets. A profile an attacker can write is a
+    profile that can say `--noprofile` in spirit, so trusting the name without
+    checking the file that gives it meaning would be the whole design undone.
+    """
+    if not IDENTITY_RE.match(name or ""):
+        return None, "not a usable program name: %s" % (name or "<empty>")
+    profile = os.path.join(FIREJAIL_PROFILE_DIR, name + ".profile")
+    try:
+        if not _trusted_stat(os.stat(profile, follow_symlinks=True)):
+            return None, "Firejail profile is not system owned: %s" % profile
+    except OSError:
+        return None, "no Firejail profile is installed for %s" % name
+    for directory in SAFE_PATH:
+        candidate = validate_program(os.path.join(directory, name))
+        if candidate is not None:
+            return candidate, ""
+    return None, "%s has a Firejail profile but is not installed here" % name
+
+
+def load_user_applications():
+    """Read the operator's catalog, refusing one anybody else could have written.
+
+    Returns (entries, reason). An unreadable or untrusted file yields an EMPTY
+    list and a reason that says which, never a silent empty that reads as "he
+    has not added anything yet".
+    """
+    path = user_applications_path()
+    try:
+        handle = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError as exc:
+        return [], "cannot read %s: %s" % (path, exc.strerror or exc)
+    # THE DESCRIPTOR IS CLOSED ON EVERY PATH OUT OF HERE. It used to leak on
+    # the untrusted-catalog return below, measured at 200 leaked descriptors
+    # over 200 calls: harmless in a one-shot CLI and real for any importer.
+    # os.fdopen ADOPTS the descriptor, so once `wrapped` exists only the `with`
+    # may close it, and closing it here as well would be a double close on a
+    # number the process may have already reused.
+    wrapped = None
+    try:
+        info = os.fstat(handle)
+        if not _not_writable_by_others(info, os.geteuid()):
+            return [], ("%s must be owned by you and writable by nobody else"
+                        % path)
+        wrapped = os.fdopen(handle, "r", encoding="utf-8", errors="replace")
+        with wrapped:
+            document = json.load(wrapped)
+    except (OSError, ValueError) as exc:
+        return [], "cannot parse %s: %s" % (path, exc)
+    finally:
+        if wrapped is None:
+            try:
+                os.close(handle)
+            except OSError:
+                pass
+    if not isinstance(document, dict):
+        return [], "%s is not a JSON object" % path
+    raw = document.get("applications")
+    if not isinstance(raw, list):
+        return [], "%s has no applications list" % path
+    entries = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        slug = item.get("id")
+        program = item.get("executable")
+        if not isinstance(slug, str) or not IDENTITY_RE.match(slug):
+            continue
+        if not isinstance(program, str) or not program:
+            continue
+        entries.append({
+            "id": slug,
+            "name": item.get("name") if isinstance(item.get("name"), str)
+                    else slug,
+            "executable": program,
+            "runtime": "firejail",
+        })
+    return entries, ""
+
+
+def resolve_custom(slug):
+    """One entry from the operator's own catalog, chosen by us from HIS file."""
+    if not IDENTITY_RE.match(slug or ""):
+        return None, "not a usable application id: %s" % (slug or "<empty>")
+    entries, reason = load_user_applications()
+    if reason:
+        return None, reason
+    for entry in entries:
+        if entry["id"] != slug:
+            continue
+        program = validate_user_program(entry["executable"])
+        if program is None:
+            return None, ("%s is not a launchable program, or a directory on "
+                          "its path is writable by somebody else: %s"
+                          % (entry["name"], entry["executable"]))
+        return program, ""
+    return None, "you have not added an application called %s" % slug
+
+
+def application_args(app_id):
+    if app_id != "librewolf":
+        return APP_ARGS.get(app_id, ())
+    profile = os.path.join(
+        pwd.getpwuid(os.geteuid()).pw_dir,
+        ".librewolf",
+        "kodachi-firejail.default",
+    )
+    try:
+        os.makedirs(profile, mode=0o700, exist_ok=True)
+        profile_stat = os.lstat(profile)
+        if (not stat.S_ISDIR(profile_stat.st_mode)
+                or profile_stat.st_uid != os.geteuid()):
+            return None
+        os.chmod(profile, 0o700)
+    except OSError:
+        return None
+    return ("--no-remote", "--profile", profile)
+
+
+def main(argv=None):
+    args = list(sys.argv[1:] if argv is None else argv)
+    if len(args) == 2 and args[0] == "--validate-custom":
+        program = validate_user_program(args[1])
+        if program is None:
+            return fail("custom program failed the Firejail safety preflight")
+        print(program)
+        return 0
+    if len(args) != 1:
+        return fail("expected exactly one approved application ID")
+
+    app_id = args[0]
+    # REFUSE AN UNKNOWN IDENTITY BEFORE ANY RESOLUTION HAPPENS, and that is a
+    # contract, not a style choice: test_unknown_id_is_refused_before_resolution
+    # asserts validate_program is never reached for one. Widening the accepted
+    # set from one table to three sources does not widen when the refusal
+    # happens, so the shape has to be decided here, before the first stat.
+    # THE NAME AFTER THE PREFIX IS PART OF THE SHAPE, not part of the
+    # resolution. A bare `profile:` or `custom:` used to count as known, so an
+    # empty name reached the firejail path check and the disk before being
+    # refused for its emptiness. Both resolvers test the same regex anyway, so
+    # deciding it here costs nothing and keeps ONE rule true: an identity this
+    # adapter does not recognise never causes a single stat.
+    def prefixed(prefix):
+        return (app_id.startswith(prefix)
+                and bool(IDENTITY_RE.match(app_id[len(prefix):])))
+
+    known = (app_id in APP_SPECS
+             or prefixed("profile:")
+             or prefixed("custom:"))
+    if app_id.startswith("-") or not known:
+        return fail(f"unsupported application ID: {app_id}")
+    if os.geteuid() == 0:
+        return fail("refusing to launch a graphical sandbox as root")
+
+    firejail = validate_program(FIREJAIL_PATH)
+    if firejail is None:
+        return fail("Firejail is not installed")
+
+    # THE ORDER IS THE PRECEDENCE, AND THE PREFIXED FORMS CANNOT COLLIDE WITH
+    # THE TABLE, because IDENTITY_RE forbids a colon. A reviewed application
+    # therefore always wins its own name and always keeps its own arguments.
+    if app_id in APP_SPECS:
+        executable = validate_program(APP_SPECS[app_id][0])
+        if executable is None:
+            return fail(f"application is not installed: {app_id}")
+        app_args = application_args(app_id)
+        if app_args is None:
+            return fail(f"cannot prepare application profile: {app_id}")
+        firejail_args = FIREJAIL_ARGS.get(app_id, ())
+    elif app_id.startswith("profile:"):
+        executable, why = resolve_profiled(app_id[len("profile:"):])
+        if executable is None:
+            return fail(why)
+        # NO KODACHI-SPECIFIC ARGUMENTS. The profile Firejail ships is the
+        # whole policy for these, and inventing extra flags here would silently
+        # contradict a file the operator can read for himself.
+        app_args, firejail_args = (), ()
+    elif app_id.startswith("custom:"):
+        executable, why = resolve_custom(app_id[len("custom:"):])
+        if executable is None:
+            return fail(why)
+        app_args, firejail_args = (), ()
+    else:                                   # unreachable: `known` covers all three
+        return fail(f"unsupported application ID: {app_id}")
+
+    os.execv(
+        firejail,
+        [
+            firejail,
+            *firejail_args,
+            executable,
+            *app_args,
+        ],
+    )
+    return fail("Firejail execution returned unexpectedly")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

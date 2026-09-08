@@ -1,0 +1,332 @@
+# Kodachi Dock Control - Cell Side-car
+#
+# SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.1
+# Copyright (c) 2013-2026 Warith Al Maawali
+#
+# This file is part of Kodachi OS.
+# For full license terms, see LICENSE.md or visit:
+# https://kodachi.cloud/docs/license.html
+#
+# Commercial or organizational use requires a written license.
+# Contact: warith@digi77.com
+#
+# Description:
+# Per-cell metadata, keyed to the shared rofi registry by Category + Label.
+#
+# PROPOSAL B KEEPS THE MAIN DOCK COMPACT. This file used to carry 149 rows: 126 cells and 23 separators,
+# spread over 15 window icons, 8 direct-action cells and 6 sub-docks, for 29
+# icons on the bar. Every one of those cells still exists and still runs the same
+# command; they now live inside GTK command windows (kodachi_windows.py), which
+# resolve the SAME (Category, Label) pairs against the SAME registry. Nothing was
+# deleted, it moved one level in.
+#
+# What remains here:
+# Manifest census: 127 rows = 107 _LAUNCH_ + 13 _WINDOW_ + 4 _SEP_ + 3 registry
+#    1 grouped Quick GTK surface on the main dock
+#   11 _WINDOW_ rows inside the More sub-dock and one inside Containers
+#    4 _SEP_ rows: three defining the running, application and quick-command
+#      regions of the main dock, and one divider the operator added by hand
+#      inside More on 2026-08-21
+#  107 _LAUNCH_ rows, one direct Dashboard launcher on the main dock plus 106
+#      direct application launchers spread over 9 sub-docks (More 3, Browsers 3,
+#      Terminals 16, Security 12, Encryption 9, Net Tools 12, Utilities 22,
+#      Files 21, Containers 8)
+#
+#      FOUR SCATTERED FIREJAIL CELLS WERE CONSOLIDATED INTO ONE WINDOW ON
+#      2026-08-25, AND THE Containers GROUP WAS KEPT IN FULL. The operator's
+#      words were "can user use it easly its confiusing": Firejail and Podman
+#      were thirteen cells across four groups for a decision with one sentence
+#      in it, choose an application then choose how isolated it runs. What was
+#      confusing was the SCATTER, not the Containers group, and he ruled on that
+#      directly: "do not remove the cairo doc group conainers that has 8 icons
+#      only add the sandbox aplications icon to it so the sanbox applications
+#      becaome the first one .. i love the icons". So `_WINDOW_ isolation` is now
+#      the FIRST cell of Containers, ahead of its eight shortcuts, and it opens
+#      the window that holds every Firejail and Podman control including theirs.
+#
+#      REMOVED, all four outside the Containers group and all four duplicated by
+#      a cell inside it or by a window destination: kodachi-browser-firejail
+#      (Browsers) and firejail-terminal (Terminals), which both ran a BARE
+#      `firejail <program>` and bypassed the validated wrapper entirely, and
+#      whose Containers twins container-firejail-browser and
+#      container-firejail-terminal go through the wrapper and remain; plus
+#      firejail-configuration-wizard and firejail-sandbox-manager (Security),
+#      which are now expert-tool rows on the window's Profiles destination.
+#      See openspec/changes/add-unified-isolation-manager.
+#
+#      40 launchers were added on 2026-08-24 after an operator-approved census
+#      of every visible .desktop entry in the PRISTINE ISO
+#      (/run/live/rootfs/filesystem.squashfs/usr/share/applications, 175 visible
+#      apps, 52 already on the dock). Each of the 40 was launch-tested on
+#      testvm-kodachi-91fb5c before it was proposed. TWO OF THEM ARE SYSTEM-TRAY
+#      APPLETS AND OPEN NO WINDOW: `firetools` (Firejail Sandbox Manager) and
+#      `redshift-gtk` (Redshift Night Colour). That is upstream behaviour, not a
+#      broken cell, and the operator approved them knowing it.
+#    3 registry cells that launch programs, all in Browsers
+#   ------
+#   13 generated main-dock icons across these regions, plus Application Menu,
+#      Show Desktop, Quick Browser, the Trash (dustbin) applet and Cairo-Dock's
+#      live application icons.
+# Quick Browser remains the operator-selected folder-choice popup.
+#
+# THERE IS NO `trash-folder` _LAUNCH_ ROW ANY MORE, AND THAT IS A REVERSAL.
+# It existed because of a claim that the dustbin APPLET "failed to open on both
+# test VMs", so a deterministic `thunar trash:///` launcher was shipped in its
+# place. THAT CLAIM CARRIES NO EVIDENCE, measured 2026-08-21 by <agent>:
+# `git log -S` puts the sentence in 176ce0d44 "feat(cairo-dock): add proposal B
+# quick deck" (<agent>, 2026-08-20 10:34), whose entire commit body is the
+# subject line plus an Agent-ID trailer. No VM named, no symptom, no artifact, no
+# date of the observation. So this reversal overturns an unattributed assertion,
+# not a measurement, and it must not be restated as though a test had been run.
+#
+# The cost of that trade is what the operator saw on 2026-08-21: a launcher is a
+# static icon, so it cannot show whether the bin holds anything, and it sat two
+# cells away from the dustbin applet this host has enabled, drawing the SAME
+# wastebasket twice. The applet is the surface that reports state, so the applet
+# is what ships, with `empty image` / `full image` in
+# theme/plug-ins/dustbin/dustbin.conf carrying the same wastebasket artwork the
+# launcher wore, plus `quick info=1` for the item count.
+#
+# THE APPLET DOES SHIP: `cairo-dock-plug-ins` is in the ISO package list
+# (livebuilds/kodachi-terminal-build/overlays/gui-xfce/package-lists/
+# gui-xfce.list.chroot:171) and `apt-cache depends` shows it Depends on
+# cairo-dock-dustbin-plug-in exactly as it does on cairo-dock-showdesktop-plug-in
+# and cairo-dock-gmenu-plug-in, the two applets this dock already relies on.
+# Enabling dustbin therefore adds no package. That is a package-list check, not a
+# VM click.
+#
+# WHAT IS NOT RE-PROVEN BY THAT REVERSAL: the applet's open action works on THIS
+# host, and the recorded VM failure has not been re-tested. Re-test `dustbin`
+# left-click on a test VM before the next ISO; if it still fails there, the fix
+# belongs in the applet's file-manager invocation, not in a second trash icon.
+#
+# THE PRISTINE ISO CENSUS PLUS THE OPERATOR'S APPROVAL IS THE SOURCE FOR
+# APPLICATION MEMBERSHIP, never this host's panel and never a booted VM's
+# writable overlay. The executable contract in tests/test_quick_deck.py pins the
+# one authoritative count block above, so a row change cannot leave a second
+# prose manifest contradicting it. GitKraken, Obsidian, Session, Tabby and
+# VSCodium do ship in the pristine image; they are absent here because the
+# operator explicitly declined them on 2026-08-24, not because the software is
+# missing. Chromium and Firefox ESR were excluded because that same pristine
+# census showed they do not ship.
+#
+# A _LAUNCH_ row carries its Exec VERBATIM in the Payload column and does NOT go
+# through the action runner. The runner authenticates and audits Kodachi
+# actions; making it gate `veracrypt` would demand a signature check to open a
+# GUI. NeedsAuth, Timeout and Sound are inert for these rows and are 0.
+#
+# Order follows the generated contract: Dashboard, Quick, More, Running
+# Applications, Applications, eight application groups, then Quick Commands.
+# Quick presents eight compact groups. More preserves all full GTK windows.
+#
+# Columns: Category Label Subdock DockLabel Icon NeedsAuth Timeout Payload Sound
+#
+# A _WINDOW_ row is not a registry action: kodachi-dock-build writes
+# `Exec=kodachi-command-window <Label>` for it and it bypasses the runner on
+# purpose, because registering GTK entries in menu-actions.sh would ship
+# graphical-only rows onto the headless terminal image. NeedsAuth, Timeout and
+# Payload are therefore all inert for those rows and are written as 0/0/none.
+#
+# Author: Warith Al Maawali
+# Version: 12.0.0
+# Last updated: 2026-08-24
+
+
+# is moved to a STRANDED COMMENTS section at the end for you to re-file.
+# MAIN-DOCK ORDER IS FILE ORDER, STEPPING OVER EVERY Order A CONTAINER OWNS.
+# dock-layout.tsv owns Orders 3, 4 and 7..13, so the five main-dock rows below
+# take 1, 2, 5, 6 and 14 in file order: Dashboard, Quick, then the separators.
+# Cairo-Dock inserts live application icons using the "Running Applications"
+# separator as the exact relative-icon anchor, named by `relative icon=` in
+# theme/cairo-dock.conf and theme/cairo-dock-simple.conf. THAT ANCHOR IS A
+# GENERATED FILENAME, so it moves whenever the main-dock order changes: this
+# rearrangement renamed it from 001- to 005-main-separator-running-applications
+# .desktop, and both confs were updated with it. Re-read it from a throwaway
+# build after any future rearrangement instead of assuming it survived.
+#
+# CAPTURED FROM THE OPERATOR'S OWN REARRANGEMENT, made with the mouse on
+# 2026-08-21 between 18:07 and 18:19. He deleted the `Kodachi` sub-dock: the
+# Dashboard came out onto the main dock at 1, and Kodachi Repository Manager,
+# Kodachi Quick Actions and Rofi Apps moved into More behind a divider he added
+# by hand. More itself moved from the far right to 3, Security and Encryption
+# swapped, and Utilities and Files swapped. The four applets moved with it and
+# their positions live in their own confs, not here:
+# showDesktop 3.5, GMenu (Application Menu) 5.5, Quick Browser 36, dustbin 37.
+#
+# Label names the region that FOLLOWS it, which is what `export` writes back.
+# NOTE: `kodachi-dock-build export` still does NOT emit these body comments, but
+# you no longer have to re-add them by hand. sync-cairo-dock.sh re-grafts every
+# comment block onto the data row it sits above, so `capture` round-trips this
+# file byte for byte. A block whose anchor row leaves the dock is NOT dropped: it
+# is moved to a STRANDED COMMENTS section at the end for you to re-file.
+#
+# SECOND REARRANGEMENT, captured 2026-08-25 from the same live dock. He moved
+# Qalculate! out of Files and into Utilities (Files 21 -> 20 launchers,
+# Utilities 21 -> 22), reordered Browsers, Files, Net Tools, Terminals and
+# Utilities in place, and replaced four icons with his own picks. The four he
+# picked came out of the capture as /home/<user>/Desktop/PNG-ALL/*.png, which
+# is a PER-USER PICKER PATH that ships as a broken icon on every other machine,
+# so each one was copied into usr/share/kodachi/dock/icons/custom/ under its
+# slug and the row repointed at the shipped copy: isolation, monero-gui-wallet,
+# electrum-bitcoin-wallet and kodachi-browser-new-window.
+#
+# THIRD REARRANGEMENT, captured 2026-08-28 from the same live dock. Containers
+# moved from the far right to main-dock Order 3, More moved to 4, and Browsers
+# through Files shifted to 7..13. Notes moved from Files to Utilities;
+# Screenshot and LibreOffice moved into Files; Geany, Font Manager and Clipboard
+# Manager changed position inside Utilities. The translated applet positions are
+# showDesktop 0.5 and GMenu 6.5; Quick Browser remains 24.
+#
+# CAPTURE NOW PRESERVES ESTABLISHED SLUGS. A generated .desktop carries Name,
+# Icon, Exec and Order and no slug field, so the exporter derives a slug from
+# the label. `preserve_exported_slugs` maps each established row by kind, label
+# and Exec before comment re-grafting, including rows moved between groups. New
+# live rows have no established identity and keep the exported slug.
+_LAUNCH_	kodachi-dashboard	_MainDock_	Dashboard	/usr/share/kodachi/dock/icons/kodachi-green-128.png	0	0	/usr/local/bin/kodachi-dashboard-launcher	0
+_WINDOW_	quick	_MainDock_	Quick	/usr/share/kodachi/dock/icons/custom/main-quick.png	0	0	none	1
+_SEP_	Running Applications	_MainDock_	Running Applications	-	0	0	none	0
+_SEP_	Applications	_MainDock_	Applications	-	0	0	none	0
+_SEP_	Quick Commands	_MainDock_	Quick Commands	-	0	0	none	0
+
+# ── Containers (9 cells: the Isolation Manager window first, then the six Podman controls and the two Firejail shortcuts the operator kept) ──
+_WINDOW_	isolation	Containers	Isolation Manager	/usr/share/kodachi/dock/icons/custom/isolation-manager.png	0	0	none	1
+_LAUNCH_	container-disposable-shell	Containers	Podman Disposable Shell	/usr/share/kodachi/dock/icons/custom/podman-disposable-ghost-shell.png	0	0	xfce4-terminal --title="Podman Disposable Shell" --command="/usr/local/libexec/kodachi/kodachi-container-manager disposable-shell"	0
+_LAUNCH_	container-persistent-workbench	Containers	Podman Persistent Workbench	/usr/share/kodachi/dock/icons/fluent-emoji/anchor.png	0	0	xfce4-terminal --title="Podman Persistent Workbench" --command="/usr/local/libexec/kodachi/kodachi-container-manager persistent-workbench"	0
+_LAUNCH_	container-status	Containers	Podman Status	/usr/share/kodachi/dock/icons/fluent-emoji/stethoscope.png	0	0	xfce4-terminal --hold --title="Podman Status" --command="/usr/local/libexec/kodachi/kodachi-container-manager status"	0
+_LAUNCH_	container-start-all	Containers	Start All Kodachi Containers	/usr/share/kodachi/dock/icons/fluent-emoji/fire.png	0	0	xfce4-terminal --hold --title="Start Kodachi Containers" --command="/usr/local/libexec/kodachi/kodachi-container-manager start-all"	0
+_LAUNCH_	container-stop-all	Containers	Stop All Kodachi Containers	/usr/share/kodachi/dock/icons/fluent-emoji/crescent-moon.png	0	0	xfce4-terminal --hold --title="Stop Kodachi Containers" --command="/usr/local/libexec/kodachi/kodachi-container-manager stop-all"	0
+_LAUNCH_	container-reset-workbench	Containers	Reset Podman Workbench	/usr/share/kodachi/dock/icons/custom/petri-dish-keyboard.png	0	0	xfce4-terminal --hold --title="Reset Podman Workbench" --command="/usr/local/libexec/kodachi/kodachi-container-manager reset-workbench"	0
+_LAUNCH_	container-firejail-browser	Containers	Kodachi Browser (Firejail)	/usr/share/kodachi/dock/icons/custom/firejail-browser-shield.png	0	0	/usr/local/libexec/kodachi/kodachi-firejail-launcher librewolf	0
+_LAUNCH_	container-firejail-terminal	Containers	Firejail Terminal	/usr/share/kodachi/dock/icons/custom/firejail-terminal-bubbles.png	0	0	/usr/local/libexec/kodachi/kodachi-firejail-launcher xfce-terminal	0
+
+# ── More (15 rows: 11 full GTK control surfaces, then the Kodachi Repository
+# ── Manager, then a hand-added divider with the two cells that used to be the
+# ── Kodachi sub-dock behind it. Counted as ROWS, not cells, because More is the
+# ── only section that contains a _SEP_ and a divider is not a cell) ──
+_WINDOW_	status	More	Status	/usr/share/kodachi/dock/icons/papirus/Stacer.svg	0	0	none	1
+_WINDOW_	network	More	Network	/usr/share/kodachi/dock/icons/fluent-emoji/world-map.png	0	0	none	1
+_WINDOW_	identity	More	Identity	/usr/share/kodachi/dock/icons/papirus/deflemask.svg	0	0	none	1
+_WINDOW_	devices	More	Devices	/usr/share/kodachi/dock/icons/custom/devices-plug.png	0	0	none	1
+_WINDOW_	harden	More	Harden	/usr/share/kodachi/dock/icons/custom/harden-shield-check.svg	0	0	none	1
+_WINDOW_	verify	More	Verify	/usr/share/kodachi/dock/icons/fluent-emoji/microscope.png	0	0	none	1
+_WINDOW_	services	More	Services	/usr/share/kodachi/dock/icons/papirus/preferences-system-services.svg	0	0	none	1
+_WINDOW_	account	More	Account	/usr/share/kodachi/dock/icons/custom/more-account.png	0	0	none	1
+_WINDOW_	system	More	System	/usr/share/kodachi/dock/icons/papirus/preferences-desktop.svg	0	0	none	1
+_WINDOW_	workflows	More	Recipes	/usr/share/kodachi/dock/icons/custom/more-recipes.png	0	0	none	1
+_WINDOW_	emergency	More	Emergency	/usr/share/kodachi/dock/icons/custom/more-emergency.png	0	0	none	1
+_LAUNCH_	kodachi-repository-manager	More	Kodachi Repository Manager	/usr/share/kodachi/dock/icons/custom/more-repository-manager.png	0	0	/usr/local/bin/kodachi-repo-manager	0
+_SEP_	Group	More	Group	-	0	0	none	0
+_LAUNCH_	kodachi-quick-actions	More	Kodachi Quick Actions	/usr/share/kodachi/dock/icons/fluent-emoji/bullseye.png	0	0	kodachi-rofi-actions	0
+_LAUNCH_	rofi-apps	More	Rofi Apps	/usr/share/kodachi/dock/icons/papirus/gnome-search-tool.svg	0	0	/usr/local/bin/kodachi-rofi-launcher	0
+
+# ── Browsers (6 cells) ──
+Privacy Tools	Kodachi Browser	Browsers	Kodachi Browser	/usr/share/kodachi/dock/icons/liteb.png	0	60	none	0
+Privacy Tools	Tor Browser	Browsers	Tor Browser	/usr/share/kodachi/dock/icons/tor_browser.png	0	60	none	0
+_LAUNCH_	kodachi-browser-oniux	Browsers	Kodachi Browser (Oniux)	/usr/share/kodachi/dock/icons/papirus/tor.svg	0	0	oniux-launcher librewolf	0
+_LAUNCH_	kodachi-browser-new-window	Browsers	Kodachi Browser (New Window)	/usr/share/kodachi/dock/icons/custom/kodachi-browser-new-window.png	0	0	librewolf --new-window	0
+_LAUNCH_	kodachi-browser-disposable	Browsers	Kodachi Browser (Disposable)	/usr/share/kodachi/dock/icons/fluent-emoji/broom.png	0	0	bash -c 'librewolf --no-remote --profile "$(mktemp -d /tmp/librewolf-temp.XXXXXX)" about:blank'	0
+Privacy Tools	Browser via Proxychains	Browsers	Proxychains Browser	/usr/share/kodachi/dock/icons/proxyb.png	0	60	none	0
+
+# ── Terminals (16 cells) ──
+_LAUNCH_	terminal-emulator	Terminals	Terminal Emulator	/usr/share/kodachi/dock/icons/papirus/utilities-terminal.svg	0	0	xfce4-terminal	0
+_LAUNCH_	torified-shell	Terminals	Torified Shell	/usr/share/kodachi/dock/icons/torall.png	0	0	xfce4-terminal -e "bash -c '. torsocks on; bash'" -T "Torified Shell"	0
+_LAUNCH_	oniux-terminal	Terminals	Oniux Terminal	/usr/share/kodachi/dock/icons/aqua/oniux-terminal.png	0	0	oniux-launcher xfce4-terminal	0
+_LAUNCH_	oniux-tilix	Terminals	Oniux Tilix	/usr/share/kodachi/dock/icons/aqua/oniux-tilix.png	0	0	oniux-launcher tilix	0
+_LAUNCH_	oniux-kitty	Terminals	Oniux Kitty	/usr/share/kodachi/dock/icons/aqua/oniux-kitty.png	0	0	oniux-launcher kitty	0
+_LAUNCH_	tilix	Terminals	Tilix	/usr/share/kodachi/dock/icons/terminal(1).png	0	0	tilix	0
+_LAUNCH_	kitty	Terminals	Kitty	/usr/share/kodachi/dock/icons/aqua/kitty.png	0	0	kitty	0
+_LAUNCH_	root-terminal	Terminals	Root Terminal	/usr/share/kodachi/dock/icons/papirus/ssh-askpass-gnome.svg	0	0	pkexec xfce4-terminal	0
+_LAUNCH_	root-terminator	Terminals	Root Terminator	/usr/share/kodachi/dock/icons/aqua/root-skull.png	0	0	pkexec x-terminal-emulator	0
+_LAUNCH_	btop	Terminals	Btop	/usr/share/kodachi/dock/icons/aqua/resource-graph.png	0	0	xfce4-terminal -e btop	0
+_LAUNCH_	htop	Terminals	Htop	/usr/share/kodachi/dock/icons/papirus/htop.svg	0	0	xfce4-terminal -e htop	0
+_LAUNCH_	neovim	Terminals	Neovim	/usr/share/kodachi/dock/icons/apps/nvim.png	0	0	xfce4-terminal -e nvim	0
+_LAUNCH_	midnight-commander	Terminals	Midnight Commander	/usr/share/kodachi/dock/icons/apps/mc.svg	0	0	xfce4-terminal -e mc	0
+_LAUNCH_	vim	Terminals	Vim	/usr/share/kodachi/dock/icons/apps/gvim.svg	0	0	xfce4-terminal -e vim	0
+_LAUNCH_	xterm	Terminals	XTerm	/usr/share/kodachi/dock/icons/apps/xterm.svg	0	0	xterm	0
+_LAUNCH_	cmatrix	Terminals	CMatrix	/usr/share/kodachi/dock/icons/apps/cmatrix.png	0	0	xfce4-terminal -e cmatrix	0
+
+# ── Security (12 cells) ──
+_LAUNCH_	portmaster	Security	Portmaster	/usr/share/kodachi/dock/icons/custom/portmaster.png	0	0	/usr/lib/portmaster/portmaster	0
+_LAUNCH_	firewall-configuration	Security	Firewall Configuration	/usr/share/kodachi/dock/icons/aqua/firewall-rack.png	0	0	gufw	0
+_LAUNCH_	bleachbit	Security	BleachBit	/usr/share/kodachi/dock/icons/papirus/bleachbit.svg	0	0	bleachbit	0
+_LAUNCH_	bleachbit-as-root	Security	BleachBit (as root)	/usr/share/kodachi/dock/icons/papirus/sweeper.svg	0	0	pkexec bleachbit	0
+_LAUNCH_	metadata-cleaner	Security	Metadata Cleaner	/usr/share/kodachi/dock/icons/aqua/spray-cleaner.png	0	0	metadata-cleaner	0
+_LAUNCH_	network-tools	Security	Network Tools	/usr/share/kodachi/dock/icons/papirus/gnome-nettool.svg	0	0	gnome-nettool	0
+_LAUNCH_	lynis-auditing-tool	Security	Lynis auditing tool	/usr/share/kodachi/dock/icons/fluent-emoji/magnifying-glass-tilted-left.png	0	0	xfce4-terminal --title="Lynis Audit" --command="su-to-root -c '/usr/sbin/lynis audit system --no-colors'"	0
+_LAUNCH_	logs	Security	Logs	/usr/share/kodachi/dock/icons/papirus/utilities-log-viewer.svg	0	0	gnome-logs	0
+_LAUNCH_	onion-circuits	Security	Onion Circuits	/usr/share/kodachi/dock/icons/apps/onioncircuits.svg	0	0	onioncircuits	0
+_LAUNCH_	zenmap	Security	Zenmap Port Scanner	/usr/share/kodachi/dock/icons/apps/zenmap.svg	0	0	pkexec /usr/bin/zenmap	0
+_LAUNCH_	etherape	Security	EtherApe Traffic Map	/usr/share/kodachi/dock/icons/apps/etherape.png	0	0	pkexec /usr/bin/etherape	0
+_LAUNCH_	linssid	Security	LinSSID Wi-Fi Scanner	/usr/share/kodachi/dock/icons/apps/linssid.png	0	0	linssid-pkexec	0
+
+# ── Encryption (9 cells) ──
+_LAUNCH_	veracrypt	Encryption	VeraCrypt	/usr/share/kodachi/dock/icons/Mimetypes-encrypted-icon.png	0	0	veracrypt	0
+_LAUNCH_	keepassxc	Encryption	KeePassXC	/usr/share/kodachi/dock/icons/papirus/keepassxc.svg	0	0	keepassxc	0
+_LAUNCH_	otpclient	Encryption	OTPClient	/usr/share/kodachi/dock/icons/papirus/keysmith.svg	0	0	otpclient	0
+_LAUNCH_	gtkhash	Encryption	GtkHash	/usr/share/kodachi/dock/icons/papirus/gtkhash.svg	0	0	gtkhash	0
+_LAUNCH_	passwords-and-keys	Encryption	Passwords and Keys	/usr/share/kodachi/dock/icons/papirus/seahorse.svg	0	0	seahorse	0
+_LAUNCH_	sirikali	Encryption	SiriKali	/usr/share/kodachi/dock/icons/custom/sirikali-key.png	0	0	sirikali	0
+_LAUNCH_	luckyluks	Encryption	luckyLUKS	/usr/share/kodachi/dock/icons/papirus/kgpg.svg	0	0	luckyluks	0
+_LAUNCH_	kleopatra	Encryption	Kleopatra Certificate Manager	/usr/share/kodachi/dock/icons/apps/kleopatra.png	0	0	kleopatra	0
+_LAUNCH_	gnupg-log-viewer	Encryption	GnuPG Log Viewer	/usr/share/kodachi/dock/icons/apps/org.kde.kwatchgnupg.svg	0	0	kwatchgnupg	0
+
+# ── Net Tools (12 cells) ──
+_LAUNCH_	monero-gui-wallet	Net Tools	Monero GUI Wallet	/usr/share/kodachi/dock/icons/custom/monero-gui-wallet.png	0	0	/opt/monero-gui/monero-wallet-gui	0
+_LAUNCH_	electrum-bitcoin-wallet	Net Tools	Electrum Bitcoin Wallet	/usr/share/kodachi/dock/icons/custom/electrum-bitcoin-wallet.png	0	0	electrum	0
+_LAUNCH_	riseupvpn	Net Tools	RiseupVPN	/usr/share/kodachi/dock/icons/papirus/network-vpn.svg	0	0	riseup-vpn	0
+_LAUNCH_	onionshare	Net Tools	OnionShare	/usr/share/kodachi/dock/icons/fluent-emoji/onion.png	0	0	onionshare	0
+_LAUNCH_	start-syncthing	Net Tools	Start Syncthing	/usr/share/kodachi/dock/icons/papirus/syncthing.svg	0	0	syncthing serve --no-browser --logfile=default	0
+_LAUNCH_	syncthing-web-ui	Net Tools	Syncthing Web UI	/usr/share/kodachi/dock/icons/aqua/sync-window.png	0	0	syncthing --browser-only	0
+_LAUNCH_	putty	Net Tools	PuTTY	/usr/share/kodachi/dock/icons/papirus/putty.svg	0	0	putty	0
+_LAUNCH_	remmina	Net Tools	Remmina	/usr/share/kodachi/dock/icons/papirus/krdc.svg	0	0	remmina	0
+_LAUNCH_	filezilla	Net Tools	FileZilla	/usr/share/kodachi/dock/icons/papirus/kfoldersync.svg	0	0	filezilla	0
+_LAUNCH_	transmission	Net Tools	Transmission	/usr/share/kodachi/dock/icons/custom/transmission-download.png	0	0	transmission-gtk	0
+_LAUNCH_	uget	Net Tools	uGet Download Manager	/usr/share/kodachi/dock/icons/apps/uget-icon.svg	0	0	env GDK_BACKEND=x11 uget-gtk	0
+_LAUNCH_	advanced-network-configuration	Net Tools	Advanced Network Configuration	/usr/share/kodachi/dock/icons/papirus/preferences-system-network.svg	0	0	nm-connection-editor	0
+
+# ── Utilities (22 cells) ──
+_LAUNCH_	mission-center	Utilities	Mission Center	/usr/share/kodachi/dock/icons/aqua/xeyes.png	0	0	missioncenter	0
+_LAUNCH_	system-monitor	Utilities	System Monitor	/usr/share/kodachi/dock/icons/papirus/gnome-system-monitor.svg	0	0	gnome-system-monitor	0
+_LAUNCH_	task-manager	Utilities	Task Manager	/usr/share/kodachi/dock/icons/aqua/system-dials.png	0	0	xfce4-taskmanager	0
+_LAUNCH_	gdebi	Utilities	GDebi	/usr/share/kodachi/dock/icons/aqua/package-installer.png	0	0	gdebi-gtk	0
+_LAUNCH_	synaptic	Utilities	Synaptic	/usr/share/kodachi/dock/icons/custom/synaptic-puzzle.png	0	0	pkexec /usr/sbin/synaptic	0
+_LAUNCH_	corectrl	Utilities	CoreCtrl	/usr/share/kodachi/dock/icons/custom/corectrl.svg	0	0	corectrl	0
+_LAUNCH_	timeshift	Utilities	Timeshift Snapshots	/usr/share/kodachi/dock/icons/apps/timeshift.png	0	0	timeshift-launcher	0
+_LAUNCH_	qalculate	Utilities	Qalculate!	/usr/share/kodachi/dock/icons/papirus/speedcrunch.svg	0	0	qalculate-gtk	0
+_LAUNCH_	galculator	Utilities	Galculator	/usr/share/kodachi/dock/icons/apps/galculator.svg	0	0	galculator	0
+_LAUNCH_	geany	Utilities	Geany	/usr/share/kodachi/dock/icons/custom/geany-memo.png	0	0	geany	0
+_LAUNCH_	mousepad	Utilities	Mousepad Text Editor	/usr/share/kodachi/dock/icons/apps/org.xfce.mousepad.svg	0	0	mousepad	0
+_LAUNCH_	notes	Utilities	Notes	/usr/share/kodachi/dock/icons/1380585001_sticky-notes.png	0	0	xfce4-notes	0
+_LAUNCH_	gedit	Utilities	gedit Text Editor	/usr/share/kodachi/dock/icons/apps/org.gnome.gedit.png	0	0	gedit	0
+_LAUNCH_	mpv	Utilities	mpv Media Player	/usr/share/kodachi/dock/icons/apps/mpv.svg	0	0	mpv --player-operation-mode=pseudo-gui	0
+_LAUNCH_	webcam-viewer	Utilities	Webcam Viewer	/usr/share/kodachi/dock/icons/apps/guvcview.png	0	0	guvcview	0
+_LAUNCH_	on-screen-keyboard	Utilities	On-Screen Keyboard	/usr/share/kodachi/dock/icons/apps/onboard.svg	0	0	onboard	0
+_LAUNCH_	volume-control	Utilities	Volume Control	/usr/share/kodachi/dock/icons/papirus/audio-card.svg	0	0	pavucontrol	0
+_LAUNCH_	sensor-viewer	Utilities	Sensor Viewer	/usr/share/kodachi/dock/icons/papirus/computersettings.svg	0	0	xfce4-sensors	0
+_LAUNCH_	clipboard-manager	Utilities	Clipboard Manager	/usr/share/kodachi/dock/icons/apps/xfce4-clipman-plugin.svg	0	0	xfce4-clipman	0
+_LAUNCH_	font-manager	Utilities	Font Manager	/usr/share/kodachi/dock/icons/papirus/preferences-desktop-theme.svg	0	0	font-manager	0
+_LAUNCH_	dictionary	Utilities	Dictionary	/usr/share/kodachi/dock/icons/apps/xfce4-dict.svg	0	0	xfce4-dict	0
+_LAUNCH_	redshift	Utilities	Redshift Night Colour	/usr/share/kodachi/dock/icons/apps/redshift.svg	0	0	redshift-gtk	0
+
+# ── Files (21 cells) ──
+_LAUNCH_	thunar-file-manager	Files	Thunar File Manager	/usr/share/kodachi/dock/icons/custom/thunar-file-folder.png	0	0	thunar	0
+_LAUNCH_	thunar-root	Files	Thunar (Root)	/usr/share/kodachi/dock/icons/aqua/folder-locked.png	0	0	pkexec thunar /	0
+_LAUNCH_	disk-usage	Files	Disk Usage	/usr/share/kodachi/dock/icons/papirus/drive-harddisk.svg	0	0	baobab	0
+_LAUNCH_	gparted	Files	GParted	/usr/share/kodachi/dock/icons/custom/gparted-disk.png	0	0	pkexec /usr/sbin/gparted	0
+_LAUNCH_	disks	Files	Disks	/usr/share/kodachi/dock/icons/papirus/gnome-disks.svg	0	0	gnome-disks	0
+_LAUNCH_	catfish	Files	Catfish	/usr/share/kodachi/dock/icons/papirus/drill-search.svg	0	0	catfish	0
+_LAUNCH_	bulk-rename	Files	Bulk Rename	/usr/share/kodachi/dock/icons/fluent-emoji/shuffle-tracks-button.png	0	0	thunar --bulk-rename	0
+_LAUNCH_	copyq	Files	CopyQ	/usr/share/kodachi/dock/icons/fluent-emoji/clipboard.png	0	0	copyq --start-server show	0
+_LAUNCH_	flameshot	Files	Flameshot	/usr/share/kodachi/dock/icons/papirus/camera-photo.svg	0	0	flameshot	0
+_LAUNCH_	screenshot	Files	Screenshot	/usr/share/kodachi/dock/icons/apps/org.xfce.screenshooter.svg	0	0	xfce4-screenshooter	0
+_LAUNCH_	vokoscreenng	Files	vokoscreenNG	/usr/share/kodachi/dock/icons/papirus/audio-recorder.svg	0	0	vokoscreenNG	0
+_LAUNCH_	double-commander	Files	Double Commander	/usr/share/kodachi/dock/icons/apps/doublecmd.svg	0	0	doublecmd	0
+_LAUNCH_	engrampa	Files	Engrampa Archive Manager	/usr/share/kodachi/dock/icons/apps/engrampa.svg	0	0	engrampa	0
+_LAUNCH_	meld	Files	Meld Diff Viewer	/usr/share/kodachi/dock/icons/apps/org.gnome.Meld.svg	0	0	meld	0
+_LAUNCH_	grsync	Files	Grsync Backup	/usr/share/kodachi/dock/icons/apps/grsync.png	0	0	grsync	0
+_LAUNCH_	atril	Files	Atril Document Viewer	/usr/share/kodachi/dock/icons/apps/atril.svg	0	0	atril	0
+_LAUNCH_	libreoffice	Files	LibreOffice	/usr/share/kodachi/dock/icons/apps/libreoffice-startcenter.svg	0	0	libreoffice	0
+_LAUNCH_	gthumb	Files	gThumb Image Browser	/usr/share/kodachi/dock/icons/apps/org.gnome.gThumb.svg	0	0	gthumb	0
+_LAUNCH_	ristretto	Files	Ristretto Image Viewer	/usr/share/kodachi/dock/icons/apps/org.xfce.ristretto.svg	0	0	ristretto	0
+_LAUNCH_	document-scanner	Files	Document Scanner	/usr/share/kodachi/dock/icons/papirus/cups.svg	0	0	simple-scan	0
+_LAUNCH_	xfburn	Files	Xfburn Disc Burner	/usr/share/kodachi/dock/icons/apps/org.xfce.xfburn.svg	0	0	xfburn	0

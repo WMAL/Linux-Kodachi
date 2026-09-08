@@ -1,0 +1,241 @@
+#!/usr/bin/env python3
+# Kodachi Dock Control - isolation runtime launcher
+#
+# SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.1
+# Copyright (c) 2013-2026 Warith Al Maawali
+#
+# This file is part of Kodachi OS.
+# For full license terms, see LICENSE.md or visit:
+# https://kodachi.cloud/docs/license.html
+#
+# Commercial or organizational use requires a written license.
+# Contact: warith@digi77.com
+#
+"""Launch one approved application under one approved isolation runtime.
+
+The arguments are a runtime name and an application identity, never a command.
+This adapter owns the runtime allowlist. It does not widen the Firejail
+allowlist: for the `firejail` runtime it delegates to the existing
+`kodachi-firejail-launcher`, which keeps its one-argument contract untouched.
+
+    kodachi-isolation-launcher native   thunar
+    kodachi-isolation-launcher firejail thunar
+    kodachi-isolation-launcher podman   xfce-terminal
+
+`native` runs the program unconfined and is never a default. It exists because
+the isolation window's whole purpose is a comparison, and a comparison needs its
+baseline reachable and clearly labelled.
+
+`podman` is accepted only for identities in CONTAINER_CAPABLE. The shipped
+rootless container capability gives a container no X11 or Wayland socket, so a
+graphical application cannot run in one at all and is refused here rather than
+being offered and failing later.
+"""
+
+import os
+import stat
+import sys
+
+
+FIREJAIL_LAUNCHER = "/usr/local/libexec/kodachi/kodachi-firejail-launcher"
+CONTAINER_MANAGER = "/usr/local/libexec/kodachi/kodachi-container-manager"
+TERMINAL = "/usr/bin/xfce4-terminal"
+
+RUNTIMES = ("native", "firejail", "podman")
+
+# A DELIBERATE SECOND COPY OF THE FIREJAIL ALLOWLIST, not an import.
+# Each adapter stays independently auditable: you can read this file and know
+# exactly what it will execute without following an import into another file
+# whose table could be widened by someone editing only that file. The drift
+# hazard a copy creates is closed by a detector instead of by coupling:
+# tests/test_isolation_launcher.py asserts this table is identical to the
+# Firejail wrapper's APP_SPECS in both directions, so adding an application to
+# one file and not the other is a RED, not a silent divergence.
+APP_SPECS = {
+    "librewolf": "/usr/local/bin/librewolf",
+    "keepassxc": "/usr/bin/keepassxc",
+    "electrum": "/usr/bin/electrum",
+    "monero-wallet": "/usr/local/bin/monero-wallet-gui",
+    "thunar": "/usr/bin/thunar",
+    "double-commander": "/usr/bin/doublecmd",
+    "xfce-terminal": "/usr/bin/xfce4-terminal",
+    "xterm": "/usr/bin/xterm",
+}
+
+# Identity -> container manager verb. Terminals only, and the reason is a
+# property of the shipped container, not of the application: a container with
+# no display socket can run a shell and cannot run a window.
+CONTAINER_CAPABLE = {
+    "xfce-terminal": "disposable-shell",
+    "xterm": "disposable-shell",
+}
+
+NO_DISPLAY_REASON = (
+    "Kodachi containers run with no X11 or Wayland socket, so a graphical "
+    "application cannot draw from inside one."
+)
+
+# THE SAME FIXED PATH kodachi-container-manager TESTS, NEVER shutil.which().
+# The manager pins PODMAN_BIN="/usr/bin/podman" at its line 31 and dies at its
+# line 232 on `[[ -x "$PODMAN_BIN" ]]`. A `which` that found
+# /usr/local/bin/podman would make this adapter answer "available" while the
+# manager it is about to exec dies anyway, which reinstates the defect one
+# layer down and would pass any test that installs podman ANYWHERE.
+PODMAN_BIN = "/usr/bin/podman"
+
+# And the test override is gated exactly as the manager gates it: the manager
+# reads KODACHI_CONTAINER_TEST_PODMAN_BIN only when
+# KODACHI_CONTAINER_TEST_ASSET_DIR is set (its lines 35-40). Honouring the
+# override without that gate would let this adapter and the product disagree
+# about what "installed" means, which is the same class of drift as the `which`.
+PODMAN_ABSENT_REASON = (
+    "Podman is not installed at /usr/bin/podman, so the disposable container "
+    "shell this identity would open cannot start."
+)
+
+
+def podman_binary():
+    """The exact executable the container manager will test, override included."""
+    if os.environ.get("KODACHI_CONTAINER_TEST_ASSET_DIR"):
+        return os.environ.get("KODACHI_CONTAINER_TEST_PODMAN_BIN") or PODMAN_BIN
+    return PODMAN_BIN
+
+
+def container_runtime_ready():
+    """True only when Podman itself can be executed on this machine."""
+    path = podman_binary()
+    return os.path.isfile(path) and os.access(path, os.X_OK)
+
+
+def fail(message):
+    print(f"kodachi-isolation-launcher: {message}", file=sys.stderr)
+    return 2
+
+
+def _trusted_stat(file_stat, *, executable=False):
+    if file_stat.st_uid != 0 or file_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+        return False
+    return bool(not executable or (
+        stat.S_ISREG(file_stat.st_mode) and file_stat.st_mode & 0o111
+    ))
+
+
+def _trusted_ancestry(path):
+    current = os.path.dirname(path)
+    while True:
+        if not _trusted_stat(os.stat(current, follow_symlinks=True)):
+            return False
+        if current == "/":
+            return True
+        current = os.path.dirname(current)
+
+
+def validate_program(path):
+    """Return one canonical executable only when its whole path is system-owned.
+
+    Byte-for-byte the same test the Firejail wrapper applies, deliberately, so
+    the native arm cannot be a weaker door into the same application set.
+    """
+    if not os.path.isabs(path):
+        return None
+    try:
+        configured = os.lstat(path)
+        if configured.st_uid != 0:
+            return None
+        if not stat.S_ISLNK(configured.st_mode) and not _trusted_stat(
+            configured, executable=True
+        ):
+            return None
+        if not _trusted_ancestry(path):
+            return None
+
+        resolved = os.path.realpath(path)
+        if not _trusted_stat(
+            os.stat(resolved, follow_symlinks=True), executable=True
+        ):
+            return None
+        if not _trusted_ancestry(resolved):
+            return None
+        return resolved
+    except OSError:
+        return None
+
+
+def runtime_available(runtime, app_id):
+    """Return (available, reason). The reason is what the window shows on hover."""
+    if runtime not in RUNTIMES:
+        return False, f"unsupported runtime: {runtime}"
+    if app_id not in APP_SPECS:
+        return False, f"unsupported application ID: {app_id}"
+    if runtime == "podman" and app_id not in CONTAINER_CAPABLE:
+        return False, NO_DISPLAY_REASON
+    # EXISTENCE IS ASKED LAST, ON PURPOSE. "this application cannot draw from
+    # inside a container" is a property of the shipped container and is true on
+    # every machine, so it outranks "this machine has no podman", which is true
+    # only here. Reversing them would tell a workstation user to install podman
+    # for a row that would still refuse afterwards.
+    #
+    # WITHOUT THIS CLAUSE THE ADAPTER SUCCEEDS AND THE FAILURE MOVES INTO A
+    # WINDOW THAT CLOSES WITH IT. Traced by <agent> on 2026-08-26 and
+    # then observed: runtime_available() returned (True, ""), both
+    # validate_program() calls passed because the manager and the terminal ARE
+    # shipped, and os.execv opened an xfce4-terminal titled "Kodachi Disposable
+    # Container Shell" which ran the manager, hit its own `[[ -x $PODMAN_BIN ]]`
+    # die at line 232, and closed with the command, taking the one sentence that
+    # explained it. The operator sees a window flash and vanish, which reads as
+    # a crash rather than a refusal.
+    if runtime == "podman" and not container_runtime_ready():
+        return False, PODMAN_ABSENT_REASON
+    return True, ""
+
+
+def main(argv=None):
+    args = list(sys.argv[1:] if argv is None else argv)
+    if len(args) != 2:
+        return fail("expected exactly one runtime and one approved application ID")
+
+    runtime, app_id = args
+    if runtime.startswith("-") or runtime not in RUNTIMES:
+        return fail(f"unsupported runtime: {runtime}")
+    if app_id.startswith("-") or app_id not in APP_SPECS:
+        return fail(f"unsupported application ID: {app_id}")
+    if os.geteuid() == 0:
+        return fail("refusing to launch a desktop application as root")
+
+    ok, reason = runtime_available(runtime, app_id)
+    if not ok:
+        return fail(reason)
+
+    if runtime == "firejail":
+        # DELEGATION, not reimplementation. The Firejail wrapper keeps its
+        # single-argument contract and every refusal already proven about it.
+        wrapper = validate_program(FIREJAIL_LAUNCHER)
+        if wrapper is None:
+            return fail("the Kodachi Firejail launcher is absent or not trusted")
+        os.execv(wrapper, [wrapper, app_id])
+        return fail("Firejail launcher execution returned unexpectedly")
+
+    if runtime == "native":
+        executable = validate_program(APP_SPECS[app_id])
+        if executable is None:
+            return fail(f"application is not installed: {app_id}")
+        os.execv(executable, [executable])
+        return fail("application execution returned unexpectedly")
+
+    manager = validate_program(CONTAINER_MANAGER)
+    if manager is None:
+        return fail("the Kodachi container manager is absent or not trusted")
+    terminal = validate_program(TERMINAL)
+    if terminal is None:
+        return fail("no trusted terminal is installed for a container shell")
+    verb = CONTAINER_CAPABLE[app_id]
+    os.execv(terminal, [
+        terminal,
+        "--title=Kodachi Disposable Container Shell",
+        f"--command={manager} {verb}",
+    ])
+    return fail("container shell execution returned unexpectedly")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

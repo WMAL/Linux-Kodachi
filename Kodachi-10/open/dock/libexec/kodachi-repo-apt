@@ -1,0 +1,2908 @@
+#!/usr/bin/env python3
+# Kodachi Repository Manager - the privileged half
+#
+# SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.1
+# Copyright (c) 2013-2026 Warith Al Maawali
+#
+# This file is part of Kodachi OS.
+# For full license terms, see LICENSE.md or visit:
+# https://kodachi.cloud/docs/license.html
+#
+# Commercial or organizational use requires a written license.
+# Contact: warith@digi77.com
+#
+# Description:
+# Runs under pkexec, as root, on behalf of kodachi-repo-manager. Everything
+# that touches apt lives here and NOTHING here takes a free-form argument.
+#
+# THE RULE THIS FILE EXISTS TO OBEY. /etc/sudoers.d/kodachi-dock spells it out
+# for ssh-keygen: a NOPASSWD entry ending in a wildcard is arbitrary root,
+# because the wildcard matches every remaining argument. apt is a much worse
+# offender than ssh-keygen, since
+#
+#     apt-get -o APT::Update::Pre-Invoke::="<anything>" update
+#
+# is a root shell with no exploit required, and so are -o Dir::Bin::dpkg,
+# --force-yes and a local .deb path. So the argv this process builds is made of
+# CONSTANTS plus values that survived a whitelist:
+#
+#   package  must appear in a Kodachi repository index on this machine
+#   channel  must be a key of CHANNEL_SUITE, i.e. exactly "stable", "beta" or
+#            "dev". This line said "stable or beta" until 2026-08-22 and had
+#            been false since `dev-credentials` landed: check_channel() has
+#            always read CHANNEL_SUITE, which carries all three. A whitelist
+#            described as narrower than it is sends every reviewer past the
+#            member nobody is checking.
+#
+# There is no verb that forwards an option, and no verb that takes a path.
+#
+# Verbs:
+#   update                    apt-get update
+#   upgrade                   apt-get update, then apt-get upgrade
+#   install  <package> <channel>
+#   reinstall <package> <channel>
+#   remove   <package>
+#   switch   <package> <channel>   pin the package, then install from there
+#   system   <channel>             pin the whole Kodachi origin, then align
+#   enable   <channel>             write the apt source for that channel
+#   source-enable  <where> <file> switch on a non-Kodachi apt source file
+#   source-disable <where> <file> switch it off, keeping the file
+#   source-remove  <where> <file> back it up and delete it
+#   app-install    <package>       one of FAVOURITE_PACKAGES only
+#   app-remove     <package>       one of FAVOURITE_PACKAGES only
+#   dev-credentials                read login and password from stdin
+#   dev-credentials-clear          remove the dev auth stanza
+#   dev-credentials-status         report whether the stanza is present
+#   source-add     <file> <types> <uri> <suite> <components> <keyring|none>
+#                                 write one new .sources file in
+#                                 /etc/apt/sources.list.d
+#     <where> is `main` for /etc/apt/sources.list itself, or `d` for a file in
+#     /etc/apt/sources.list.d. It is one of two fixed words and never a path:
+#     without it the basename "sources.list" named two different real files.
+#   disable  <channel>             remove the source this helper wrote
+#
+# Exit codes: 0 success, 2 bad usage or a rejected argument, 3 not root,
+# anything else is apt's own code, passed through unchanged.
+
+import datetime
+import fcntl
+import os
+import re
+import secrets
+import shutil
+import signal
+import stat
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.parse
+
+# The window matches this prefix on the raw pipe and never prints it. Changing
+# it is a protocol change: the window's copy of this literal must move with it.
+# OPT-IN. The sentinel is PROTOCOL and only the Repository Manager parses it.
+# The same verbs are also run by 16 dock cells (gtk-direct-operations.json) and
+# 16 ColonyOps commands in the Tauri dashboard
+# (colonyops-linux-command-manifest.json, dispatched from commands_linux.rs),
+# and BOTH show this process's stdout to the operator verbatim. Emitting
+# unconditionally put a line of machine protocol at the top of all 32 of those
+# outputs, which is why this is a flag and not a filter: filtering would have to
+# be repeated in every consumer, in two languages, and the next consumer would
+# miss it.
+#
+# An environment variable cannot do this job: pkexec and sudo -n both sanitise
+# the environment, so the helper cannot tell its callers apart that way.
+#
+# A FIXED LITERAL FLAG DOES NOT BREACH THIS FILE'S RULE. The header forbids
+# FREE-FORM arguments, because a wildcard in sudoers is arbitrary root. This is
+# one exact string, compared with ==, consumed before dispatch, and it changes
+# no privileged behaviour: it only decides whether one line is printed.
+PROTOCOL_FLAG = "--protocol"
+HELPER_STARTED = "kodachi-helper-started:"
+# Every verb this file dispatches is lower-case ASCII with hyphens. Anything
+# else cannot be a real verb, and filtering rather than rejecting keeps the
+# sentinel unconditional: it must still be emitted for an argv that is about
+# to be refused, because the window is already waiting to hear the child.
+VERB_SAFE = frozenset("abcdefghijklmnopqrstuvwxyz-")
+APT_GET = "/usr/bin/apt-get"
+DPKG_QUERY = "/usr/bin/dpkg-query"
+# Absolute, like every other binary here, so PATH cannot decide what runs as
+# root. Both are dpkg/apt essentials and are present on every Debian-family
+# machine this window is allowed to run on at all.
+DPKG = "/usr/bin/dpkg"
+APT_MARK = "/usr/bin/apt-mark"
+LISTS_DIR = "/var/lib/apt/lists"
+PIN_DIR = "/etc/apt/preferences.d"
+PIN_PREFIX = "kodachi-channel-"
+SYSTEM_PIN = os.path.join(PIN_DIR, "kodachi-channel.pref")
+
+CHANNEL_SUITE = {"stable": "stable", "beta": "beta", "dev": "dev"}
+CHANNEL_URL = {
+    "stable": "https://kodachi.cloud/repo",
+    "beta": "https://kodachi.cloud/repo-beta",
+    "dev": "https://kodachi.cloud/repo-dev",
+}
+# DEV IS BASIC-AUTH AND THE CREDENTIAL LIVES HERE, in the file apt itself reads
+# and in the exact three-line stanza the ISO hook and the acceptance harness
+# already write. Operator, 2026-08-21, on a2.png: "how are dev credentials
+# entered". They were not: the window refused dev outright and offered no way
+# to configure it, so the Dev radio existed only to grey everything out.
+#
+# The directory is 0755 so an unprivileged window can stat the file and know
+# whether dev is configured; the FILE is 0600 root:root so only apt and root
+# can read the password out of it. That split is deliberate: the window needs
+# to answer "is it set up", never "what is it".
+AUTH_DIR = "/etc/apt/auth.conf.d"
+AUTH_FILE = os.path.join(AUTH_DIR, "kodachi-dev.conf")
+DEV_INDEX_PREFIX = "kodachi.cloud_repo-dev_"
+AUTH_MACHINE = "kodachi.cloud/repo-dev"
+# apt's auth.conf is WHITESPACE SEPARATED, so a space in either field silently
+# reparses the stanza, and a newline in either field lets a caller append a
+# second `machine` entry pointing anywhere. Both are refused outright rather
+# than escaped: there is nothing to escape them WITH in this format.
+LOGIN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+\-]{0,63}\Z")
+SECRET_RE = re.compile(r"^[!-~]{8,512}\Z")
+LOGIN_BYTES_RE = re.compile(rb"^[A-Za-z0-9][A-Za-z0-9._+\-]{0,63}\Z")
+SECRET_BYTES_RE = re.compile(rb"^[!-~]{8,512}\Z")
+DEV_CREDENTIALS_MAX_BYTES = 64 + 1 + 512 + 1
+SOURCES_DIR = "/etc/apt/sources.list.d"
+KEYRING = "/usr/share/keyrings/kodachi-archive-keyring.gpg"
+KEY_URL = "https://kodachi.cloud/repo/kodachi-archive-keyring.asc"
+# The same fingerprint the official setup.sh pins. A key that does not match it
+# is not written, so a hostile mirror cannot turn "enable the beta channel"
+# into "trust this key".
+KEY_FINGERPRINT = "17D7C4B022730515B3FCD94D38CBC528166EAF7B"
+COMPONENTS = "main thirdparty apps"
+# The origin as it appears in the signed Release files of both channels. A pin
+# on the origin is what makes an ENTIRE suite preferred; pinning on the URL
+# would break the moment a mirror appears.
+ORIGIN = "Kodachi"
+
+NAME_RE = re.compile(r"^[a-z0-9][a-z0-9+.\-]{1,127}\Z")
+
+# A source FILE name, which is a different alphabet from a package name.
+# apt accepts ASCII letters, digits, underscore, dot and hyphen, including as
+# the leading character, and reads only .list or .sources files. Slash is not
+# in the alphabet, so the name cannot climb out of the fixed directory.
+SOURCE_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+\.(?:list|sources)\Z")
+# `source-add` writes a stanza built from five caller-supplied strings. Every
+# one of them goes through a whitelist AND through no_line_breaks() below.
+#
+# THE WHITELIST ALONE WAS NOT ENOUGH, and this comment used to claim it was.
+# Measured by <agent> on 2026-08-21 and re-derived here: Python's `$`
+# matches at the end of the string OR immediately before a single trailing
+# newline, so every one of these five accepted "stable\n", "http://x\n" and
+# "evil.sources\n" while the character classes did indeed exclude whitespace.
+# The classes were right; the ANCHOR was the hole, and the comment sent every
+# reviewer past it, which is why it survived 74 contracts and 76 sabotages.
+# They now end at `\Z`, and no_line_breaks() states the property separately so
+# a future anchor mistake cannot make this comment false again.
+#
+# It matters because a doubled newline is a deb822 PARAGRAPH BREAK: a suite of
+# "stable\n" detaches `Components:` and `Signed-By:` from the stanza carrying
+# the URI. This is not an escalation, the caller of a pkexec helper is already
+# an authorised desktop user, it is an integrity defect reachable by PASTE: a
+# GTK Entry refuses a typed newline and accepts a pasted one, and a URI copied
+# out of a terminal routinely carries one.
+#
+# Nothing here reaches a shell, and the file that gets written is a config
+# file, never a program.
+SOURCE_URI_RE = re.compile(
+    r"^(?:https?|ftp|tor\+https?)://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]{1,480}\Z")
+SOURCE_TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+/\-]{0,63}\Z")
+KEYRING_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+\-]{0,127}\.(?:gpg|asc)\Z")
+# Where a keyring may live. Both are root-owned directories; a bare name is
+# resolved inside them and the file has to exist already, so this verb never
+# fetches, imports or trusts a key on the caller's say-so. Adding the key is a
+# separate, deliberate act.
+KEYRING_DIRS = ("/etc/apt/keyrings", "/usr/share/keyrings")
+MAIN_LIST = "/etc/apt/sources.list"
+SOURCE_BACKUP_DIR = "/var/backups/kodachi-apt-sources"
+
+# NOTHING TO DO: the requested state ALREADY HOLDS, so nothing was changed and
+# nothing failed. A third answer, because the two this helper had were both
+# wrong for it. Returning 0 printed a green "done: add the Stable repository"
+# over an operation that added nothing. Reusing 8 was worse and I tried it
+# first: `verb_source_state` returns 8 for the OPPOSITE situation, where the
+# requested state does NOT hold and the file could not be changed, so one
+# number would have meant "already right" in one verb and "still wrong" in
+# another, and the window renders unknown codes as "FAILED , exit code 8".
+# Raised by <agent>, 2026-08-30: a false green replaced by a false
+# failure is not a fix.
+#
+# The window carries HELPER_UNCHANGED bound to this value and a contract pins
+# the two together, because a protocol number defined in two files is two
+# numbers.
+EXIT_UNCHANGED = 3
+
+ENV = {
+    "PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
+    "DEBIAN_FRONTEND": "noninteractive",
+    "LC_ALL": "C.UTF-8",
+    "HOME": "/root",
+}
+
+
+def open_new(path, binary=False):
+    """Create `path` fresh, refusing to follow a link or reuse an existing file.
+
+    EVERY atomic write in this file is "write path + suffix, chmod, os.replace".
+    `os.replace` is safe by itself: rename(2) does not follow symlinks, so it
+    replaces a link rather than writing through it. THE TEMPORARY IS NOT. A
+    plain `open(temporary, "w")` follows a symlink, and the temporary's name is
+    derived from a caller-influenced name in a directory the caller may be able
+    to write, so a link pre-planted at `<name>.kodachi-new` would have this
+    helper write attacker-chosen bytes, as root, to any path on the system.
+
+    O_EXCL refuses an existing file OR link outright, and O_NOFOLLOW refuses a
+    link even if O_EXCL were somehow satisfied. Both, because they fail for
+    different reasons and the cost is one flag.
+
+    Found by <agent> auditing the check_source docstring: the escalation
+    that docstring described could not happen through the TARGET, and nobody had
+    asked whether it could happen through the TEMPORARY. It could.
+    """
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+    try:
+        handle = os.open(path, flags, 0o600)
+    except FileExistsError:
+        die("%s already exists, refusing to write through it" % path)
+    except OSError as error:
+        die("cannot create %s: %s" % (path, error))
+    # THE TEXT BRANCH ENCODES, AND A STRICT ENCODE RAISES ON THE WAY OUT.
+    # THE TWO MODES ARE SPLIT INTO SEPARATE CALLS RATHER THAN SHARING ONE
+    # `**({} if binary else {...})`, and that is not a style choice. The
+    # contract that audits this reads the call's KEYWORD LIST, and a mapping
+    # unpack carries no keyword name at all, so a handler passed that way is
+    # invisible to it and the site reads as unguarded forever. Correct code
+    # that its own contract cannot see is a permanently red gate, and a
+    # permanently red gate gets normalised until a real miss hides behind it.
+    # `backslashreplace` rather than `replace` because this writes apt
+    # configuration a human later reads: `replace` substitutes a bare `?` and
+    # the operator cannot tell a real question mark from a lost character,
+    # while the backslash form says exactly which codepoint could not be
+    # encoded. The binary branch takes neither, since a handler is meaningless
+    # there. Found 2026-08-25 when the contract was widened to see os.fdopen.
+    if binary:
+        return os.fdopen(handle, "wb")
+    return os.fdopen(handle, "w", encoding="utf-8",
+                     errors="backslashreplace")
+
+
+def open_unique_sibling(path, purpose, binary=False):
+    """Create a unique same-directory sibling without weakening open_new()."""
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+    for _attempt in range(64):
+        candidate = "%s.%s.%d.%s" % (
+            path, purpose, os.getpid(), secrets.token_hex(8))
+        try:
+            handle = os.open(candidate, flags, 0o600)
+        except FileExistsError:
+            continue
+        except OSError as error:
+            die("cannot create %s: %s" % (candidate, error))
+        # Same reasoning as open_new() above: the text branch gets an
+        # explicit encode handler, the binary branch cannot take one.
+        if binary:
+            return candidate, os.fdopen(handle, "wb")
+        return candidate, os.fdopen(handle, "w", encoding="utf-8",
+                                    errors="backslashreplace")
+    die("could not allocate a unique %s beside %s" % (purpose, path))
+
+
+def atomic_replace(path, body, mode, binary=False):
+    """Write and replace through a unique, no-follow same-directory file."""
+    temporary, handle = open_unique_sibling(path, "kodachi-new", binary=binary)
+    try:
+        with handle:
+            handle.write(body)
+        os.chmod(temporary, mode)
+        os.replace(temporary, path)
+    except BaseException:
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+        raise
+
+
+def require_safe_dir(directory):
+    """Refuse to mutate anything inside a directory an ordinary user can write.
+
+    check_source validates a name and then RETURNS A PATH; the open and the
+    rename happen afterwards, so it is a check-then-use. Whether that window is
+    exploitable is decided entirely by this directory's owner and mode, and
+    until 2026-08-21 nothing in this file or in its 72 contracts said a word
+    about either. Asserting it is cheaper than reasoning about the window, and
+    an assumption that is asserted cannot rot: `mkdir -p` and `install -D` have
+    already manufactured 0775 directories on this project under the ambient
+    umask, so "that directory is root-only" is exactly the class of assumption
+    that has failed here before.
+    """
+    try:
+        info = os.lstat(directory)
+    except OSError as error:
+        die("cannot stat %s: %s" % (directory, error))
+    if not stat.S_ISDIR(info.st_mode):
+        die("%s is not a directory" % directory)
+    # ROOT OR US, and nobody else. The property that matters is that no
+    # identity other than the one doing the writing can create an entry here.
+    # In production that identity is root, because this helper only ever runs
+    # under pkexec, so `root` is the answer that counts. `os.geteuid()` is
+    # accepted alongside it for exactly one reason: the contracts drive this
+    # function unprivileged, against a fixture directory the test user owns,
+    # and a security check no test can exercise is the shape this project has
+    # already been burned by. A directory owned by a THIRD uid is refused in
+    # both worlds, which is the case that would matter.
+    if info.st_uid not in (0, os.geteuid()):
+        die("%s is owned by uid %d, which is neither root nor the uid %d "
+            "running this helper, refusing to write in it"
+            % (directory, info.st_uid, os.geteuid()))
+    if info.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+        die("%s is mode %04o, group or world writable, refusing to write in it"
+            % (directory, stat.S_IMODE(info.st_mode)))
+
+
+LINE_BREAKS = ("\n", "\r", "\x00", "\u2028", "\u2029", "\x0b", "\x0c")
+
+
+# APT SPLITS A FILE ON \n AND ON NOTHING ELSE, and here that is a WRITE-side
+# problem, not a display one. _toggle_deb822() and _toggle_one_line() below
+# split a source file, edit it and REJOIN it with "\n". Python's
+# str.splitlines() also breaks on \r, \v, \f, \x1c, \x1d, \x1e, \x85, U+2028
+# and U+2029, so with the old split, enabling or disabling one repository
+# turned every one of those characters into a REAL line break in the file on
+# disk: a single stanza would come back as two, and a `Signed-By:` sitting
+# after a form feed inside a URI would become a field apt obeys.
+#
+# Raised by <agent>, 2026-08-21 (K2), against the reader in
+# kodachi_repo.py. This is the same defect on the privileged side, where the
+# consequence is a rewritten file rather than a wrong label.
+#
+# no_line_breaks() above does NOT cover it and is not meant to: that guards
+# values this helper WRITES from its own argv, and these two functions rewrite
+# files apt, packages and the operator wrote.
+#
+# THE COPY IS DELIBERATE. This file runs as root under pkexec and imports
+# nothing from /usr/local/lib, so it cannot share kodachi_repo.apt_lines(). A
+# duplicated guard is normally one guard and one hole, so a contract in
+# tests/test_repo_manager.py asserts over the AST that NEITHER file parses apt
+# text with .splitlines(), naming both, and a sabotage reverts each copy
+# separately.
+def apt_lines(text):
+    """`text` split into lines the way apt splits it: on \n, and only on \n."""
+    lines = (text or "").split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    return lines
+
+
+# THE SAME TWO SETS kodachi_repo.py CARRIES, duplicated for the same reason
+# apt_lines() is: nothing here may import from /usr/local/lib. They are not
+# decoration. DEB822_FIELDS decides which COMMENTED blocks `source-enable` may
+# uncomment, and that has to be the same predicate the window uses to decide
+# which rows get an Enable button drawn on them, or the button acts on
+# something no row was drawn for (looser) or sits inert on a row it is drawn
+# for (tighter). DISABLING_VALUES decides which `Enabled:` lines count as a
+# change. A contract in tests/test_repo_manager.py asserts both sets are
+# identical to the library's, and a sabotage edits each copy separately.
+DEB822_FIELDS = frozenset("""
+    types uris suites components enabled architectures architectures-add
+    architectures-remove languages languages-add languages-remove targets
+    targets-add targets-remove signed-by trusted pdiffs by-hash
+    allow-insecure allow-weak allow-downgrade-to-insecure check-valid-until
+    valid-until-min valid-until-max date-max-future inrelease-path snapshot
+    check-date description x-repolib-name repolib-id
+""".split())
+
+DISABLING_VALUES = ("no", "false", "0", "off", "without", "disable")
+
+
+def no_line_breaks(field, value):
+    r"""Refuse any value carrying a character that can start a new line.
+
+    Stated as its own guard, deliberately, rather than left implicit in five
+    regex anchors. The anchors are correct now (`\Z`, not `$`), but an anchor
+    is one character and the property it carries is invisible at a glance: the
+    version of this file before 2026-08-21 had five `$` anchors and a comment
+    directly above them asserting that no field could carry a newline. Both
+    read as correct. Only one of them was.
+
+    U+2028 and U+2029 are here because Python's `$` and `\Z` do not treat them
+    as line breaks but a text editor, a log viewer and a terminal all do, so a
+    value carrying one displays as two lines to the human reviewing it.
+    """
+    for bad in LINE_BREAKS:
+        if bad in (value or ""):
+            die("%s contains a line break or control character (%r), refusing"
+                % (field, bad))
+    return value
+
+
+def die(message, code=2):
+    sys.stderr.write("kodachi-repo-apt: %s\n" % message)
+    sys.stderr.flush()
+    raise SystemExit(code)
+
+
+def say(message):
+    sys.stdout.write(message + "\n")
+    sys.stdout.flush()
+
+
+def known_packages():
+    """Every package name published in a Kodachi repository index here.
+
+    This is the whitelist. It is derived from the apt lists rather than from a
+    table in this file, because a table would go stale the first time a package
+    is added to the repository and the failure would look like a bug in the
+    window rather than a missing entry here.
+
+    A machine with no Kodachi lists yields an EMPTY set, and every package verb
+    then refuses. That is the correct direction: the alternative, treating an
+    empty whitelist as "allow everything", turns this file into a general
+    purpose root package installer.
+    """
+    names = set()
+    try:
+        entries = os.listdir(LISTS_DIR)
+    except OSError:
+        return names
+    for entry in entries:
+        if not entry.startswith("kodachi.cloud_repo"):
+            continue
+        if not entry.endswith("_Packages"):
+            continue
+        try:
+            with open(os.path.join(LISTS_DIR, entry), "r",
+                      encoding="utf-8", errors="replace") as handle:
+                for line in handle:
+                    if line.startswith("Package: "):
+                        names.add(line[9:].strip())
+        except OSError:
+            continue
+    return names
+
+
+def check_package(name, allowed):
+    no_line_breaks("the package name", name)
+    if not NAME_RE.match(name or ""):
+        die("%r is not a Debian package name" % name)
+    if name not in allowed:
+        die("%s is not published in any Kodachi repository index on this "
+            "machine. Refusing: this helper only manages Kodachi packages."
+            % name)
+    return name
+
+
+def check_channel(name):
+    if name not in CHANNEL_SUITE:
+        die("channel must be one of %s, not %r"
+            % (", ".join(sorted(CHANNEL_SUITE)), name))
+    return name
+
+
+# G64: NOTHING IN THIS CHAIN HAD A BOUND, at any of four layers, and the visible
+# result was the GUI stuck on "working" with every button dead and no way out but
+# closing the window. Reported by <agent>, 2026-08-23, who swept all six
+# dock Python files and found this was the only unbounded wait among nine.
+#
+# The producers need no bug at all to reach: a dpkg/apt lock held by
+# unattended-upgrades, or a third-party repo host that completes the TCP
+# handshake and then stalls. Managing third-party repos is the entire purpose of
+# the window this helper serves, so that second one is not exotic.
+#
+# THE BOUND BELONGS HERE, NOT ONLY IN THE GUI, and that is the whole reason this
+# half exists. The GUI runs us through `pkexec`, so we are root and it is not:
+# `os.killpg` from that window at this process group returns EPERM. It can stop
+# READING and hand the user the window back, which it now does, but only this
+# side can actually stop apt. A timeout that cannot kill anything leaves apt
+# holding /var/lib/dpkg/lock while the user clicks Update again.
+#
+# NO ENVIRONMENT OVERRIDE, deliberately. `pkexec` sanitises the environment, so
+# a KODACHI_APT_TIMEOUT exported next to the GUI would never arrive here and the
+# knob would read as present and do nothing.
+APT_WALL_SECONDS = 900      # apt-get update/upgrade over a slow mirror is legitimately long
+TOOL_WALL_SECONDS = 60      # dpkg-query, gpg: local, and a minute is already generous
+DPKG_LOCK_TIMEOUT = 60      # wait this long for another apt to finish, see apt()
+
+# THE CROSS-PROCESS MUTEX, AND WHY A PER-PROCESS ONE WAS NEVER ENOUGH.
+# The window has `self.busy`, which correctly stops ONE window starting two
+# operations. It cannot see a second window, and more importantly it cannot see
+# the dock: gtk-direct-operations.json exposes all 18 verbs of this helper as
+# their own cells, so "Update all" from a dock cell and an Install from the
+# window are two independent processes with no knowledge of each other.
+# `DPkg::Lock::Timeout` above serialises the two apt runs but does NOT protect
+# this file's own critical sections, and the pin paths are exactly that: an
+# overlapping pair of `switch` calls runs snapshot_pins -> pin -> install ->
+# restore_pins twice, interleaved, and the second restore writes back the pin
+# set the first one captured MID-FLIGHT. The result is a machine pinned to a
+# channel nobody asked for, with both runs reporting success.
+LOCK_PATH = "/run/kodachi-repo-apt.lock"
+LOCK_WAIT_SECONDS = 120
+# Module-scoped on purpose: see the comment at its assignment in main(). A
+# local would be garbage collected, and closing the file releases the flock.
+_LOCK_HANDLE = None
+
+
+def run(argv, timeout=APT_WALL_SECONDS):
+    """Run one command with a fixed environment and stream it straight out.
+
+    Bounded, and killed by PROCESS GROUP rather than by pid. `subprocess.run`'s
+    own `timeout=` kills only the direct child, and apt-get's work happens in
+    dpkg and the http method, which would survive it and keep the lock.
+    """
+    say("+ " + " ".join(argv))
+    try:
+        proc = subprocess.Popen(argv, env=ENV, stdin=subprocess.DEVNULL,
+                                start_new_session=True)
+    except OSError as error:
+        say("could not start %s: %s" % (argv[0], error))
+        return 127
+    try:
+        return proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        pass
+    say("")
+    say("this command was still running after %d seconds and was stopped."
+        % timeout)
+    say("it is not necessarily broken: a package lock held by another process, "
+        "or a repository host that accepts the connection and then stalls, both "
+        "look exactly like this. Check `sudo fuser /var/lib/dpkg/lock-frontend` "
+        "and the repository list, then try again.")
+    for signal_number, grace in ((signal.SIGTERM, 5), (signal.SIGKILL, 5)):
+        try:
+            os.killpg(os.getpgid(proc.pid), signal_number)
+        except (OSError, ProcessLookupError):
+            break
+        try:
+            proc.wait(timeout=grace)
+            break
+        except subprocess.TimeoutExpired:
+            continue
+    return 124
+
+
+def take_exclusive_lock():
+    """Serialise every mutating verb across PROCESSES, not merely per window.
+
+    Returns the held file object, which the caller keeps alive for the life of
+    the run; the kernel drops the lock when this process exits, including when
+    it is killed, so there is no stale-lock class to clean up. That property is
+    the reason for flock over a pid file: this helper is routinely SIGKILLed by
+    its own bounded-run rescue, and a pid file would survive that and wedge
+    every later run.
+
+    /run, not /var/lock or /tmp: it is a tmpfs cleared on boot, it is root-owned,
+    and an unprivileged process cannot pre-create the path to make us fail. We
+    are already root here (main checks geteuid first), so the open cannot be
+    hijacked by a symlink an ordinary user planted.
+
+    WAITS, then REFUSES with a sentence naming the other run. The alternative,
+    failing instantly, reproduces the defect this exists to remove: the operator
+    presses Update in the window while a dock cell is mid-install and gets an
+    error that reads as though his request were wrong.
+    """
+    descriptor = None
+    try:
+        descriptor = os.open(
+            LOCK_PATH,
+            os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC,
+            0o600)
+        os.fchmod(descriptor, 0o600)
+        handle = os.fdopen(
+            descriptor, "w", encoding="utf-8", errors="backslashreplace")
+    except (OSError, ValueError) as error:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        # A machine with no writable /run is not a machine this helper can
+        # serialise on. Say so and continue UNLOCKED rather than refusing every
+        # operation: the lock is a correctness improvement, not a precondition,
+        # and DPkg::Lock::Timeout still serialises the apt calls themselves.
+        say("could not open %s (%s); continuing without the cross-process lock"
+            % (LOCK_PATH, error))
+        return None
+    deadline = time.monotonic() + LOCK_WAIT_SECONDS
+    announced = False
+    while True:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return handle
+        except OSError:
+            if not announced:
+                say("another Kodachi repository operation is already running; "
+                    "waiting up to %d seconds for it to finish"
+                    % LOCK_WAIT_SECONDS)
+                announced = True
+            if time.monotonic() >= deadline:
+                handle.close()
+                die("another Kodachi repository operation is still running "
+                    "after %d seconds. Nothing was changed. Wait for it to "
+                    "finish, or check for a running apt with "
+                    "`sudo fuser /var/lib/dpkg/lock-frontend`."
+                    % LOCK_WAIT_SECONDS, 6)
+            time.sleep(0.5)
+
+
+def apt(*args):
+    """Every apt-get in this file, with the three options that are never optional.
+
+    `Dpkg::Use-Pty=0` and `-q` are unchanged and both stay. `-q` is apt's
+    "omit progress indicators" flag, which suppresses the \\r-animated download
+    meter that would otherwise arrive in the window's log one carriage return
+    at a time; `Dpkg::Use-Pty=0` denies dpkg a pty for the same reason.
+
+    TWO ADDITIONS, AND WHY EACH IS SAFE ALONGSIDE THOSE TWO.
+
+    `APT::Status-Fd=1` is the machine-readable progress channel, and it is
+    INDEPENDENT of the quiet level: the animated meter and this protocol are
+    produced by different code paths in apt, so asking for one while
+    suppressing the other is coherent. MEASURED 2026-08-29 on this project's
+    development host, `apt-get download -q -o Dpkg::Use-Pty=0
+    -o APT::Status-Fd=1 hello`, 8 output lines of which 6 were protocol:
+
+        dlstatus:1:0.0000:Retrieving file 1 of 1
+        Get:1 http://deb.debian.org/debian trixie/main amd64 hello amd64 ...
+        dlstatus:1:48.3355:Retrieving file 1 of 1
+        dlstatus:1:100.0000:Retrieving file 1 of 1
+
+    That is the whole reason a progress gauge is now possible: the percentage
+    arrives on the SAME pipe the window already reads, so no second fd has to
+    survive the pkexec hop (pkexec closes everything above 2, which is what
+    makes the obvious `Status-Fd=3` design fail silently). The window filters
+    these lines out of the log and turns them into a bar; see PROGRESS_PREFIXES
+    in kodachi-repo-manager.
+
+    `DPkg::Lock::Timeout=60` turns the single most common failure of this whole
+    window from a hard error into a wait. Without it, a concurrent
+    unattended-upgrades or a Discover/Synaptic left open makes EVERY verb here
+    fail immediately with apt's raw "Could not get lock /var/lib/dpkg/lock-
+    frontend" text, which the window then prints under a red exit code as
+    though the operation itself were wrong. 60 seconds is chosen to be longer
+    than a typical unattended-upgrades run's dpkg phase and far shorter than
+    APT_WALL_SECONDS, so a genuinely stuck lock still reaches the bounded-run
+    rescue above rather than hiding behind this.
+    """
+    return run([APT_GET, "-o", "Dpkg::Use-Pty=0", "-q",
+                "-o", "APT::Status-Fd=1",
+                "-o", "DPkg::Lock::Timeout=%d" % DPKG_LOCK_TIMEOUT]
+               + list(args))
+
+
+def installed_kodachi(allowed):
+    """Kodachi packages that are installed, in dpkg's own words."""
+    try:
+        out = subprocess.run(
+            [DPKG_QUERY, "-W", "-f", "${binary:Package} ${db:Status-Status}\n"],
+            env=ENV, capture_output=True, text=True, errors="replace",
+            timeout=TOOL_WALL_SECONDS, check=False).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        # NONE, NOT EMPTY, AND THE DIFFERENCE IS A CLAIM ABOUT THE MACHINE.
+        # This used to return [], and the one caller then printed "no Kodachi
+        # packages are installed, the pin alone is now in force" and exited 0.
+        # That is a POSITIVE STATEMENT about the machine derived from a
+        # question that could not be asked: a dpkg database being rebuilt, a
+        # missing dpkg-query, or a 60-second timeout all produced the sentence
+        # "nothing is installed" and a green result. The caller cannot tell the
+        # two apart from a list, so the list stops being the channel for it.
+        # `None` means "could not ask", `[]` means "asked, none installed".
+        return None
+    found = []
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[1] == "installed" and parts[0] in allowed:
+            found.append(parts[0].split(":")[0])
+    return sorted(set(found))
+
+
+def write_conf(path, body):
+    """Atomically write one root-owned 0644 config file.
+
+    THE DIRECTORY IS THE PATH'S OWN, AND IT IS CHECKED. This created PIN_DIR
+    unconditionally, whatever `path` pointed at, and never called
+    `require_safe_dir`. That check guarded exactly one code path, the
+    source-enable/disable/remove one through `check_source`, while the pin
+    writes, `verb_system`, `verb_enable`'s new-source write and
+    `verb_source_add` all reached this function and skipped it. The atomic
+    write is still symlink-race-safe on its own (O_EXCL|O_NOFOLLOW plus an
+    unpredictable suffix), so this is the stated defence-in-depth being
+    applied where it was already claimed to apply, not a demonstrated
+    escalation. The file's own comment on `require_safe_dir` says why it is
+    cheaper to assert than to reason about: `mkdir -p` and `install -D` have
+    manufactured 0775 directories on this project before.
+    """
+    directory = os.path.dirname(path) or "."
+    os.makedirs(directory, exist_ok=True)
+    require_safe_dir(directory)
+    atomic_replace(path, body, 0o644)
+    say("wrote %s" % path)
+
+
+def pin_package(package, channel):
+    path = os.path.join(PIN_DIR, PIN_PREFIX + package + ".pref")
+    write_conf(path, (
+        "# Written by kodachi-repo-apt. Remove this file to stop tracking the\n"
+        "# %s channel for this package.\n"
+        "Package: %s\n"
+        "Pin: release o=%s,a=%s\n"
+        "Pin-Priority: 1001\n"
+    ) % (channel, package, ORIGIN, CHANNEL_SUITE[channel]))
+
+
+def clear_package_pins():
+    if not os.path.isdir(PIN_DIR):
+        return
+    for entry in sorted(os.listdir(PIN_DIR)):
+        if entry.startswith(PIN_PREFIX) and entry.endswith(".pref"):
+            os.remove(os.path.join(PIN_DIR, entry))
+            say("removed %s" % os.path.join(PIN_DIR, entry))
+
+
+def snapshot_pins():
+    """Capture the exact pin files so a failed transaction can restore them."""
+    snapshot = {}
+    try:
+        entries = sorted(os.listdir(PIN_DIR))
+    except FileNotFoundError:
+        return snapshot
+    for entry in entries:
+        if entry == os.path.basename(SYSTEM_PIN) or (
+                entry.startswith(PIN_PREFIX) and entry.endswith(".pref")):
+            path = os.path.join(PIN_DIR, entry)
+            with open(path, "rb") as handle:
+                snapshot[path] = handle.read()
+    return snapshot
+
+
+def restore_pins(snapshot):
+    """Replace the current managed pin set with one exact snapshot."""
+    os.makedirs(PIN_DIR, exist_ok=True)
+    require_safe_dir(PIN_DIR)
+    for entry in sorted(os.listdir(PIN_DIR)):
+        if entry == os.path.basename(SYSTEM_PIN) or (
+                entry.startswith(PIN_PREFIX) and entry.endswith(".pref")):
+            os.remove(os.path.join(PIN_DIR, entry))
+    for path, body in snapshot.items():
+        atomic_replace(path, body, 0o644, binary=True)
+    say("restored the previous repository pin state")
+
+
+def verb_update():
+    return trusted_update()
+
+
+def verb_upgrade():
+    code = trusted_update()
+    if code != 0:
+        say("apt update failed, not attempting the upgrade")
+        return code
+    return apt("-y", "upgrade")
+
+
+def verb_full_upgrade():
+    """`upgrade` cannot install a package that needs a new dependency.
+
+    THE GAP THIS CLOSES, in apt's own words: `apt-get upgrade` never installs a
+    new package and never removes one, so anything whose new version pulls in a
+    dependency it did not have before is "kept back" and stays kept back
+    FOREVER. Nothing in this window could install it, while the rail's
+    Upgradable count kept counting it, so the number could never reach zero and
+    the user had no action that would move it.
+
+    A channel switch is exactly the case where this is normal rather than
+    exotic: beta and stable routinely differ in their dependency sets.
+
+    Kept separate from `upgrade` rather than replacing it, because
+    `full-upgrade` is permitted to REMOVE packages to satisfy a dependency and
+    that is a materially different promise. The window asks before calling this
+    one and says what apt reported it would remove.
+    """
+    code = trusted_update()
+    if code != 0:
+        say("apt update failed, not attempting the upgrade")
+        return code
+    return apt("-y", "full-upgrade")
+
+
+def verb_fix_broken():
+    """Repair an interrupted dpkg transaction. The counterpart of our own kill.
+
+    WHY THIS BELONGS HERE AND NOT IN A TERMINAL. `run()` above deliberately
+    SIGKILLs the apt process GROUP when a run outlives APT_WALL_SECONDS, and the
+    window's own close handler documents that cutting apt off mid `dpkg
+    --unpack` leaves the machine needing `sudo dpkg --configure -a` before
+    anything else can be installed. So this application can CREATE the broken
+    state, by design, on a path it chose. Until now it could not repair it: it
+    printed the command and left the user to find a terminal, which on a
+    privacy distribution whose whole point is that the dock replaces terminal
+    work is the wrong answer twice over.
+
+    ORDER IS LOAD-BEARING. `dpkg --configure -a` first, because a half
+    configured package is the state our own SIGKILL produces and apt refuses to
+    do anything else while it exists. `apt-get -f install` second, for the
+    dependency breakage that a partial unpack leaves behind. Running them the
+    other way round makes apt try to resolve dependencies against a database it
+    cannot read consistently.
+
+    Both are run even if the first reports a problem, and the FIRST NON-ZERO
+    code is returned, because "configure worked and -f install did not" is still a
+    machine that needs attention and must not be reported as repaired.
+    """
+    say("repairing an interrupted package transaction")
+    first = run([DPKG, "--configure", "-a"])
+    if first == 0:
+        say("dpkg --configure -a completed")
+    else:
+        say("dpkg --configure -a exited %d" % first)
+    second = apt("-y", "-f", "install")
+    if second == 0:
+        say("apt-get -f install completed")
+    else:
+        say("apt-get -f install exited %d" % second)
+    # THE FIRST NON-ZERO, and the name and the comment above now say so.
+    # `first or second` is not a maximum; it returns dpkg's code whenever dpkg
+    # failed, whatever apt then did. That is the RIGHT answer here (the caller
+    # only needs "did either leg fail", and dpkg's code is the more diagnostic
+    # of the two), but the docstring claimed a max that is never computed, and
+    # an identifier asserting one thing while the expression does another is
+    # how a later edit "fixes" the wrong half.
+    worst = first or second
+    if worst == 0:
+        say("the package system is consistent again")
+    else:
+        say("the package system is still not consistent. The two repair "
+            "commands above are the ones apt itself recommends; if they cannot "
+            "fix it the cause is usually a package whose postinst fails, and "
+            "its name is in the output above.")
+    return worst
+
+
+def verb_autoremove():
+    """Remove packages nothing depends on any more. Never purges."""
+    return apt("-y", "--purge=false", "autoremove")
+
+
+def verb_clean():
+    """Drop the downloaded .deb cache. Frees disk, changes nothing installed."""
+    return apt("clean")
+
+
+def verb_hold(package, hold=True):
+    """Pin a package at its installed version, or release it.
+
+    Distinct from the CHANNEL pins this file already writes to
+    /etc/apt/preferences.d: a channel pin says which repository a package
+    tracks, a hold says do not move it at all. The window had the first and not
+    the second, so there was no way to keep one package where it is while
+    upgrading everything else.
+    """
+    return run([APT_MARK, "hold" if hold else "unhold", package])
+
+
+def verb_system_clear():
+    """Undo `system <channel>`: remove the machine-wide origin pin.
+
+    `system` was ONE WAY. It writes SYSTEM_PIN and, for as long as that file
+    exists, every Kodachi package on the machine tracks that channel. Nothing in
+    this helper removed it, and the pin file's own comment told the user to go
+    and `sudo rm` it in a terminal. An irreversible button in a GUI is a trap,
+    and this one is reachable in two clicks from the window's foot.
+
+    The per-package pins are left exactly where they are: they are a different
+    decision, made per package, and clearing them here would silently undo work
+    the user did one package at a time.
+    """
+    # THE FOURTH SITE OF THE SAME FAMILY, AND THE ONE I WALKED PAST THREE
+    # TIMES. `verb_enable` got this guard in round three, `verb_disable` in
+    # round four, and each time I fixed the function I was looking at instead
+    # of enumerating the family. The inspector enumerated it mechanically and
+    # found this: SYSTEM_PIN is a DERIVED root-owned constant, and the shape
+    # below is `backup_source` then `os.remove` with only an `os.path.exists`
+    # test, identical to the two already repaired.
+    #
+    # Both halves apply verbatim. `backup_source` opens the path for reading,
+    # so it follows a link and copies the TARGET's bytes, while `os.remove`
+    # unlinks the LINK and leaves the target: that backup restores as a
+    # duplicate of a file that never moved. And `os.path.exists` is False for a
+    # DANGLING link, so this verb printed "no machine-wide channel pin is in
+    # force", exited 0, and left the link in place, which is a cheerful no-op
+    # over a file that is really there. It is a shipped button, two clicks from
+    # the window's foot, and it had no contract at all.
+    if os.path.islink(SYSTEM_PIN):
+        say("%s is a symbolic link. Removing it would delete the link and "
+            "leave what it points at, and a backup of it would copy that "
+            "target rather than the link, so nothing was removed. Move or "
+            "delete the link by hand." % SYSTEM_PIN)
+        return 6
+    if not os.path.exists(SYSTEM_PIN):
+        say("no machine-wide channel pin is in force, nothing to clear")
+        return 0
+    backup_source(SYSTEM_PIN)
+    try:
+        os.remove(SYSTEM_PIN)
+    except OSError as error:
+        die("could not remove %s: %s" % (SYSTEM_PIN, error))
+    say("removed %s; Kodachi packages now follow normal apt resolution"
+        % SYSTEM_PIN)
+    say("per-package channel pins, if you set any, are untouched")
+    return trusted_update()
+
+
+TIMESHIFT = "/usr/bin/timeshift"
+
+# A timeshift snapshot name is its creation timestamp, and nothing else. The
+# regex is here to validate what timeshift GAVE US back, not to sanitise a
+# caller's input, because no caller supplies one: see the module docstring.
+SNAPSHOT_RE = re.compile(r"^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$")
+
+
+def is_snapshot_name(value):
+    """True only for a timestamp that is BOTH the right shape and a real date.
+
+    The regex alone counts digits, so it accepts 2026-13-99_99-99-99. That
+    string cannot come from timeshift, but this name is the sole argument to a
+    command that rewrites the entire root filesystem, and "cannot happen"
+    is not the standard to hold a destructive path to. A real strptime makes
+    the guard mean what it looks like it means, and it fails CLOSED: an
+    unrecognised name refuses the restore rather than passing it through.
+
+    Caught by this helper's own negative control, which asserted an impossible
+    timestamp must not parse and found that it did.
+    """
+    if not SNAPSHOT_RE.match(value or ""):
+        return False
+    try:
+        datetime.datetime.strptime(value, "%Y-%m-%d_%H-%M-%S")
+    except ValueError:
+        return False
+    return True
+
+
+def timeshift_snapshots():
+    """Every snapshot timeshift reports, oldest first, as (name, comment).
+
+    `timeshift --list` prints a table whose rows look like
+
+        Num     Name                 Tags  Description
+        ------------------------------------------------
+        0    >  2026-09-06_23-30-01  O     baseline: first boot
+
+    The parse anchors on a NAME that matches SNAPSHOT_RE rather than on column
+    positions or on the '>' marker, because column widths move with the
+    contents and the marker is absent in some timeshift versions. A row whose
+    name does not match is skipped rather than guessed at.
+    """
+    if not os.path.exists(TIMESHIFT):
+        return []
+    proc = subprocess.run([TIMESHIFT, "--list"], capture_output=True,
+                          text=True, timeout=120)
+    out = []
+    for line in (proc.stdout or "").splitlines():
+        fields = line.replace(">", " ").split()
+        for idx, field in enumerate(fields):
+            if is_snapshot_name(field):
+                comment = " ".join(fields[idx + 1:]).strip()
+                # the tag column is a short flag group (O, B, H, D, W, M) and is
+                # not a comment; drop it when it is clearly the tag rather than
+                # prose the user wrote.
+                parts = comment.split(None, 1)
+                if parts and len(parts[0]) <= 3 and parts[0].isupper():
+                    comment = parts[1] if len(parts) > 1 else ""
+                out.append((field, comment))
+                break
+    return out
+
+
+def verb_snapshot_list():
+    """Read only. Shows what an undo would have to choose from."""
+    if not os.path.exists(TIMESHIFT):
+        say("timeshift is not installed, so this system takes no snapshots.")
+        return 1
+    snaps = timeshift_snapshots()
+    if not snaps:
+        say("No system snapshots exist yet.")
+        say("The first one is taken automatically after installation, and one "
+            "is taken before each system upgrade.")
+        return 1
+    say("%d system snapshot(s), oldest first:" % len(snaps))
+    for name, comment in snaps:
+        say("    %s  %s" % (name, comment))
+    say("")
+    say("Undo the last update restores the newest of these: %s"
+        % snaps[-1][0])
+    return 0
+
+
+def verb_snapshot_create():
+    """Take a snapshot now, on the user's own initiative."""
+    if not os.path.exists(TIMESHIFT):
+        die("timeshift is not installed on this system.")
+    say("Creating a system snapshot. The FIRST one copies the whole system and "
+        "can take 15 minutes; later ones copy only what changed and take about "
+        "a minute.")
+    return run([TIMESHIFT, "--create", "--scripted",
+                "--comments", "manual: from Repository Manager"],
+               timeout=7200)
+
+
+def verb_snapshot_restore_latest():
+    """Roll the system back to the newest snapshot.
+
+    NO ARGUMENT. The newest snapshot is resolved here, as root, from
+    timeshift's own output. The unprivileged window can ask for an undo and
+    cannot ask for a particular target, so there is no caller-supplied string
+    anywhere in the argv of a command that rewrites the root filesystem.
+    """
+    if not os.path.exists(TIMESHIFT):
+        die("timeshift is not installed on this system.")
+    snaps = timeshift_snapshots()
+    if not snaps:
+        die("There are no system snapshots to restore. Nothing has been "
+            "changed.")
+    name = snaps[-1][0]
+    if not is_snapshot_name(name):
+        die("refusing to restore %r: timeshift returned a name this helper "
+            "does not recognise as a snapshot" % name)
+    say("Restoring the system to %s (%s)." % (name, snaps[-1][1] or "no comment"))
+    say("The machine must be rebooted when this finishes.")
+    return run([TIMESHIFT, "--restore", "--snapshot", name, "--scripted",
+                "--yes"], timeout=14400)
+
+
+def verb_install(package, channel, reinstall=False):
+    code = trusted_update()
+    if code != 0:
+        return code
+    return install_package(package, channel, reinstall)
+
+
+def install_package(package, channel, reinstall=False):
+    target = "%s/%s" % (package, CHANNEL_SUITE[channel])
+    args = ["-y", "--allow-downgrades"]
+    if reinstall:
+        args.append("--reinstall")
+    return apt(*(args + ["install", target]))
+
+
+def verb_remove(package):
+    code = apt("-y", "remove", package)
+    if code != 0:
+        return code
+    # DROP THE PIN WITH THE PACKAGE. Measured on the test VM 2026-08-20: after
+    # install -> switch to beta -> remove, the pin file survived the removal.
+    # A pin for a package that is not installed is not merely litter: it
+    # silently decides which channel a LATER install comes from, so a user who
+    # removes a package to "start clean" and installs it again gets the old
+    # channel back with nothing on screen to explain it.
+    path = os.path.join(PIN_DIR, PIN_PREFIX + package + ".pref")
+    if os.path.exists(path):
+        os.remove(path)
+        say("removed the channel pin %s" % path)
+    return 0
+
+
+def verb_switch(package, channel):
+    code = trusted_update()
+    if code != 0:
+        return code
+    before = snapshot_pins()
+    pin_package(package, channel)
+    code = install_package(package, channel)
+    if code != 0:
+        restore_pins(before)
+    return code
+
+
+def verb_system(channel, allowed):
+    code = trusted_update()
+    if code != 0:
+        return code
+    before = snapshot_pins()
+    write_conf(SYSTEM_PIN, (
+        "# Written by kodachi-repo-apt. Every Kodachi package tracks the %s\n"
+        "# channel while this file exists. To return to the apt default,\n"
+        "# which prefers the highest version across all channels, use the\n"
+        "# Repository Manager's \"Clear system channel\" button, or run\n"
+        "#     pkexec /usr/local/libexec/kodachi/kodachi-repo-apt system-clear\n"
+        "# Deleting this file by hand also works and is equivalent.\n"
+        "Package: *\n"
+        "Pin: release o=%s,a=%s\n"
+        "Pin-Priority: 1001\n"
+    ) % (channel, ORIGIN, CHANNEL_SUITE[channel]))
+    clear_package_pins()
+    packages = installed_kodachi(allowed)
+    if packages is None:
+        # The pin IS written by this point, so say what stands and what did
+        # not, rather than reporting either a clean success or a clean failure.
+        restore_pins(before)
+        die("could not ask dpkg which Kodachi packages are installed, so the "
+            "installed set was not aligned to %s. The previous pin state has "
+            "been restored. This is usually a dpkg database being rebuilt by "
+            "another process: wait for it to finish and try again." % channel,
+            9)
+    if not packages:
+        say("no Kodachi packages are installed, the pin alone is now in force")
+        return 0
+    say("aligning %d installed Kodachi package(s) to %s"
+        % (len(packages), channel))
+    targets = ["%s/%s" % (name, CHANNEL_SUITE[channel]) for name in packages]
+    code = apt(*(["-y", "--allow-downgrades", "install"] + targets))
+    if code != 0:
+        restore_pins(before)
+    return code
+
+
+def _deb822_stanzas(text):
+    """The file split into stanzas, because deb822 is not a flat key/value map.
+
+    A BLANK LINE ENDS A STANZA AND STARTS A NEW ONE, and every stanza in a
+    `.sources` file is an INDEPENDENT repository. Reading the whole file into
+    one dict and letting later keys overwrite earlier ones loses every stanza
+    but the last, which is a duplicate-source generator: measured 2026-08-26, a
+    file whose FIRST stanza was the kodachi beta source and whose second was
+    `deb.debian.org` read back as `configured = False`, so `verb_enable` would
+    have written a second beta source beside the one already there and apt
+    would print "Target Packages is configured multiple times" on every update,
+    which is exactly the outcome `channel_sources` exists to prevent.
+
+    Each stanza comes back as a dict of lower-cased key -> raw value. A
+    continuation line (leading whitespace) is appended to the previous value,
+    which is how deb822 spells a long list, and a comment line is dropped.
+
+    ONLY A TRULY EMPTY LINE SEPARATES. A line holding a space, a tab, or three
+    spaces DOES NOT, and this is not a style choice: it is what apt does, asked
+    directly rather than assumed. Measured on <lab-host> with apt itself as
+    the oracle, one kodachi stanza and one deb.debian.org stanza in a single
+    file, counting the URIs apt says it would fetch:
+
+        separator          kodachi URIs   debian URIs   apt's reading
+        "" (empty)              7              7        TWO stanzas
+        " " (one space)         0              7        ONE stanza
+        "\t" (one tab)          0              7        ONE stanza
+        "   " (three spaces)    0              7        ONE stanza
+        no separator            0              7        ONE stanza  (neg control)
+
+    So a whitespace-only line leaves apt reading ONE stanza in which the later
+    `URIs:` overwrites the kodachi one, and apt then fetches NOTHING from
+    kodachi.cloud. `line.strip()` here would split it into two, find the kodachi
+    stanza, and report the channel configured when apt cannot see it at all,
+    which puts `verb_enable` back on its "already configured" branch: rc 0, an
+    apt update, and no source written. That is the same silent no-op shape as
+    the trailing-comment defect, reached by a different route.
+    """
+    stanzas, current, last_key = [], {}, None
+    for line in apt_lines(text):
+        if not line:
+            if current:
+                stanzas.append(current)
+            current, last_key = {}, None
+            continue
+        if line.lstrip().startswith("#"):
+            continue
+        if line[:1].isspace() and last_key is not None:
+            current[last_key] = current[last_key] + " " + line.strip()
+            continue
+        head, sep, value = line.partition(":")
+        if not sep:
+            continue
+        last_key = head.strip().lower()
+        current[last_key] = value.strip()
+    if current:
+        stanzas.append(current)
+    return stanzas
+
+
+def _stanza_is_switched_off(stanza):
+    """True when apt will ignore this stanza because `Enabled:` says so.
+
+    apt reads `Enabled: no` as "this stanza does not exist". A stanza that is
+    switched off must NOT count as configuring the channel: `verb_enable` would
+    print "already configured by <path>" at exit 0 over a channel that is off,
+    which is the same fail-open shape as the disable defect, in the arm the
+    contract suite calls a second control.
+    """
+    return stanza.get("enabled", "").strip().lower() in DISABLING_VALUES
+
+
+def _channel_sources_split(channel):
+    """(live, switched_off) sources files for `channel`.
+
+    `live` is what apt will actually fetch from. `switched_off` is a file that
+    HOLDS the channel with the switch off: a `.sources` stanza with `Enabled:
+    no`, or a `.list` line this helper commented with DISABLED_MARK. The two
+    are separated rather than merged because they need OPPOSITE handling, and
+    merging them is how both fail-open shapes below were reachable:
+
+      counted as live      -> `enable` says "already configured" over a channel
+                              that is switched off, at exit 0, having done
+                              nothing (F3, and DISABLED_MARK lines by the same
+                              logic)
+      counted as absent    -> `enable` writes a SECOND source beside the one
+                              already in the file, and re-enabling the first
+                              one later produces the duplicate apt complains
+                              about (F4, F5)
+
+    BINARY ONLY. A `deb-src` entry configures the SOURCE-package channel and
+    says nothing about the binary one, so it must not suppress a binary add:
+    measured 2026-08-26, a file holding only `deb-src <beta url> beta main`
+    made `channel_sources("beta")` return the path, and `verb_enable` then
+    refused to write the binary source and exited 0. `_one_line_source_type`
+    already returns the discriminating value; the old call site threw it away.
+    """
+    spec_url = CHANNEL_URL[channel]
+    suite = CHANNEL_SUITE[channel]
+    live, off = [], []
+    try:
+        entries = sorted(os.listdir(SOURCES_DIR))
+    except OSError:
+        return live, off
+    for entry in entries:
+        if not SOURCE_NAME_RE.fullmatch(entry):
+            continue
+        path = os.path.join(SOURCES_DIR, entry)
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as handle:
+                text = handle.read()
+        except OSError:
+            continue
+        if "kodachi.cloud" not in text:
+            continue
+        if entry.endswith(".sources"):
+            for stanza in _deb822_stanzas(text):
+                types = stanza.get("types", "").split()
+                if types and "deb" not in types:
+                    continue
+                if stanza.get("uris", "").strip().rstrip("/") != spec_url:
+                    continue
+                if suite not in stanza.get("suites", "").split():
+                    continue
+                (off if _stanza_is_switched_off(stanza) else live).append(path)
+                break
+        elif entry.endswith(".list"):
+            for line in apt_lines(text):
+                stripped = line.strip()
+                switched_off = stripped.startswith(DISABLED_MARK)
+                body = (stripped[len(DISABLED_MARK):]
+                        if switched_off else stripped)
+                # TOKENS, NOT SUBSTRINGS. See _one_line_uri_and_suites for the
+                # three shapes the substring form got wrong, two of them in the
+                # direction that writes a duplicate source.
+                if _one_line_source_type(
+                        _one_line_strip_comment(body)) != "deb":
+                    continue
+                uri, suites = _one_line_uri_and_suites(body)
+                if uri.rstrip("/") == spec_url and suite in suites:
+                    (off if switched_off else live).append(path)
+                    break
+    return live, off
+
+
+def channel_sources(channel):
+    """Every sources file on this machine from which apt FETCHES `channel`.
+
+    Used to avoid writing a SECOND source for a channel that is already
+    configured. apt does not fail on a duplicate, it prints
+    "Target Packages is configured multiple times" on every single update and
+    the user reasonably reads that as something being broken.
+
+    A file that holds the channel with the switch OFF is deliberately NOT in
+    here; ask `channel_sources_switched_off` for those. See
+    `_channel_sources_split` for why merging the two is a fail-open in both
+    directions at once.
+    """
+    return _channel_sources_split(channel)[0]
+
+
+def channel_sources_switched_off(channel):
+    """Files that hold `channel` with the switch off, so apt ignores them.
+
+    `verb_enable` refuses to write over one of these rather than adding a
+    second source beside it, because switching the existing entry back on later
+    is what would then produce the duplicate.
+    """
+    return _channel_sources_split(channel)[1]
+
+
+def channel_source_bindings(channel):
+    """Every live official binary source and the keyring apt will use."""
+    spec_url = CHANNEL_URL[channel]
+    suite = CHANNEL_SUITE[channel]
+    found = []
+    try:
+        entries = sorted(os.listdir(SOURCES_DIR))
+    except OSError:
+        return found
+    for entry in entries:
+        if not SOURCE_NAME_RE.fullmatch(entry):
+            continue
+        path = os.path.join(SOURCES_DIR, entry)
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as handle:
+                text = handle.read()
+        except OSError:
+            continue
+        if entry.endswith(".sources"):
+            for stanza in _deb822_stanzas(text):
+                if (_stanza_is_switched_off(stanza)
+                        or "deb" not in stanza.get("types", "").split()
+                        or stanza.get("uris", "").strip().rstrip("/") != spec_url
+                        or suite not in stanza.get("suites", "").split()):
+                    continue
+                found.append((path, stanza.get("signed-by", "").strip()))
+        elif entry.endswith(".list"):
+            for line in apt_lines(text):
+                body = _one_line_strip_comment(line.strip())
+                if _one_line_source_type(body) != "deb":
+                    continue
+                uri, suites = _one_line_uri_and_suites(body)
+                if uri.rstrip("/") != spec_url or suite not in suites:
+                    continue
+                fields = _one_line_fields(body)
+                options = fields[1] if len(fields) > 1 and fields[1].startswith("[") else ""
+                match = re.search(r"(?:^|\s)signed-by=([^\s\]]+)", options[1:-1], re.I)
+                found.append((path, match.group(1) if match else ""))
+    return found
+
+
+def ensure_repository_trust():
+    """Rejudge the key and every live official source binding before apt."""
+    bindings = {
+        channel: channel_source_bindings(channel)
+        for channel in sorted(CHANNEL_SUITE)
+    }
+    if not any(bindings.values()):
+        return 0
+    code = ensure_keyring()
+    if code != 0:
+        return code
+    for channel, rows in bindings.items():
+        for path, binding in rows:
+            if (not binding or os.path.realpath(binding) != KEYRING
+                    or binding != KEYRING):
+                say("official %s source %s is not bound to %s (found %s); refusing apt"
+                    % (channel, path, KEYRING, binding or "no Signed-By"))
+                return 4
+    return 0
+
+
+def trusted_update():
+    code = ensure_repository_trust()
+    return code if code != 0 else apt("update")
+
+
+def keyring_carries_only_the_pinned_key(binary):
+    """(ok, detail) for the BYTES THAT WILL BE INSTALLED, never for the .asc.
+
+    THE ORACLE MUST BE THE CONSUMER. This function is handed the dearmored
+    keyring, which is the object apt will later honour through `Signed-By`,
+    and every judgement below is made about those exact bytes. The previous
+    version asked `gpg --show-keys` about the ARMORED download and then ran a
+    SECOND parser, `gpg --dearmor`, over the same text to produce the file. Two
+    parsers, one decision: anything the first ignores and the second keeps is
+    installed without ever being looked at.
+
+    Measured by <agent> on 2026-08-21, five fixtures, real kodachi key
+    with the real Debian trixie archive key appended. The old predicate here
+    ACCEPTED all four attacker variants and wrote a TWO-KEY keyring each time,
+    and it did not even need the armor-header trick to do it: with no count at
+    all, the plain two-key file was enough. The same defect is in
+    `installers/build-repo.sh`, which generates the public
+    `curl ... | sudo sh` one-liner.
+
+    Two things are checked, and the count is the one that matters:
+
+    1. EXACTLY ONE primary key. A pin on a fingerprint says nothing about what
+       ELSE came in the same file, and a keyring apt trusts is trusted whole.
+    2. The fingerprint of THAT key, gated on `pub:`. The old walk took the
+       first `fpr:` line in the colon stream with no gate, so a signing SUBKEY
+       fingerprint could be the value compared against the pin.
+
+    Do NOT "fix" this by enumerating armor headers. That is a denylist, and
+    this bug is what a denylist looks like from the inside.
+    """
+    if not binary:
+        return False, "the key is empty"
+    # A THROWAWAY GNUPGHOME, BECAUSE `--show-keys` WRITES BEFORE IT READS.
+    # gpg creates `$HOME/.gnupg`, `pubring.kbx` and `trustdb.gpg` merely to
+    # parse a key on stdin. `ENV["HOME"]` is `/root`, which is right under
+    # pkexec and is now consulted on EVERY app-install and app-remove rather
+    # than once, so an unwritable or absent `/root/.gnupg` would make this
+    # predicate refuse the repository's own legitimate key. Safe, but an
+    # availability coupling to a directory that has nothing to do with the
+    # decision, and it leaves a keyring behind as a side effect of a read.
+    # Found by <agent> 2026-08-21, who measured all three states:
+    # writable HOME rc=0 pub=1 pin matches, absent HOME rc=2, HOME mode 555
+    # rc=2. My own first contract hit the same wall and passed for the wrong
+    # reason, which is why the honest-key assertion sits above the attack one.
+    home = tempfile.mkdtemp(prefix="kodachi-keyjudge-")
+    try:
+        try:
+            shown = subprocess.run(["/usr/bin/gpg", "--show-keys",
+                                    "--with-colons"],
+                                   env=dict(ENV, GNUPGHOME=home), input=binary,
+                                   capture_output=True,
+                                   timeout=TOOL_WALL_SECONDS, check=False)
+        except subprocess.TimeoutExpired:
+            # FAIL CLOSED. This function decides whether a keyring may be
+            # trusted, so a gpg that never answers must not read as a yes.
+            return False, "gpg did not answer within %d seconds" % TOOL_WALL_SECONDS
+    finally:
+        shutil.rmtree(home, ignore_errors=True)
+    if shown.returncode != 0:
+        return False, "gpg could not read the dearmored key"
+    primaries, fingerprint, at_primary = 0, "", False
+    for line in shown.stdout.decode("utf-8", "replace").splitlines():
+        if line.startswith("pub:"):
+            primaries += 1
+            at_primary = True
+        elif line.startswith("sub:"):
+            at_primary = False
+        elif line.startswith("fpr:") and at_primary and not fingerprint:
+            fingerprint = line.split(":")[9]
+    if primaries != 1:
+        return False, ("the key file carries %d primary keys, not 1, so "
+                       "trusting it would trust every one of them" % primaries)
+    if fingerprint != KEY_FINGERPRINT:
+        return False, ("FINGERPRINT MISMATCH: %s is not %s"
+                       % (fingerprint or "nothing", KEY_FINGERPRINT))
+    return True, "one key, fingerprint matches the pinned value"
+
+
+def ensure_keyring():
+    """Install the repository key, verified against the pinned fingerprint."""
+    # AN EXISTING KEYRING IS RE-JUDGED, NOT ASSUMED. This used to return 0 on
+    # the mere existence of the file, so a keyring written by any earlier path,
+    # including the vulnerable one above this fix, stayed trusted forever and
+    # repairing the fetch path would not have retired it. Re-verifying costs
+    # one gpg call on a file that is already local.
+    if os.path.exists(KEYRING):
+        try:
+            with open(KEYRING, "rb") as handle:
+                existing = handle.read()
+        except OSError as error:
+            say("cannot read %s: %s" % (KEYRING, error))
+            return 4
+        ok, detail = keyring_carries_only_the_pinned_key(existing)
+        if ok:
+            say("keyring already present and still matches the pin: %s"
+                % KEYRING)
+            return 0
+        say("keyring present but NOT trustworthy (%s), replacing it" % detail)
+        # REMOVE IT NOW, NOT AFTER A SUCCESSFUL REPLACEMENT. Every exit
+        # between here and the `os.replace` below returns 4 and used to leave
+        # the untrusted file exactly where it was: a failed curl, a failed
+        # dearmor, a fresh key that fails the judge. Returning 4 is
+        # fail-closed for THIS helper and wide open for the product, because
+        # the file lives under /usr/share/keyrings and apt honours it through
+        # `Signed-By` for every apt invocation on the machine: a user typing
+        # `sudo apt update`, the dashboard's own install paths, an unattended
+        # job. None of them ask this helper's opinion. On a box that already
+        # ran the vulnerable path and has blocked or flaky network the repair
+        # would then never happen, and nothing would say so again after that
+        # one line of output. Found by <agent> 2026-08-21.
+        #
+        # The trade is deliberate: a machine with an untrusted keyring and no
+        # network loses the repository until it can re-fetch. That is the
+        # correct trade for a file we have just decided must not be trusted.
+        try:
+            os.unlink(KEYRING)
+        except OSError as error:
+            say("cannot remove the untrusted keyring %s: %s"
+                % (KEYRING, error))
+            return 4
+        say("removed the untrusted keyring before fetching a replacement")
+    say("fetching the repository key")
+    try:
+        fetch = subprocess.run(
+            ["/usr/bin/curl", "-fsSL", "--max-time", "30", KEY_URL],
+            env=ENV, capture_output=True, timeout=TOOL_WALL_SECONDS,
+            check=False)
+    except subprocess.TimeoutExpired:
+        say("the repository key download did not finish in time")
+        return 4
+    if fetch.returncode != 0 or not fetch.stdout:
+        say("could not download the repository key")
+        return 4
+    # DEARMOR FIRST, JUDGE SECOND, INSTALL THE BYTES THAT WERE JUDGED.
+    try:
+        dearmored = subprocess.run(["/usr/bin/gpg", "--dearmor"], env=ENV,
+                                   input=fetch.stdout, capture_output=True,
+                                   timeout=TOOL_WALL_SECONDS, check=False)
+    except subprocess.TimeoutExpired:
+        say("gpg did not finish dearmoring the repository key in time")
+        return 4
+    if dearmored.returncode != 0 or not dearmored.stdout:
+        say("could not dearmor the repository key")
+        return 4
+    ok, detail = keyring_carries_only_the_pinned_key(dearmored.stdout)
+    if not ok:
+        say("%s, refusing to trust this key" % detail)
+        return 4
+    say(detail)
+    # The same check every other write path now takes. A group-writable
+    # /usr/share/keyrings would let an ordinary user pre-create entries in the
+    # directory this root helper is about to write a TRUST ANCHOR into.
+    require_safe_dir(os.path.dirname(KEYRING) or "/")
+    atomic_replace(KEYRING, dearmored.stdout, 0o644, binary=True)
+    say("wrote %s" % KEYRING)
+    return 0
+
+
+def dev_credentials_present():
+    """True when the auth stanza exists AND carries both fields.
+
+    An EXISTS check alone is not enough: a truncated or hand-edited file is the
+    state that produces `apt update` 401s with a configured-looking window.
+    """
+    try:
+        with open(AUTH_FILE, encoding="utf-8", errors="replace") as handle:
+            body = handle.read()
+    except OSError:
+        return False
+    fields = {}
+    for line in body.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[0] in ("login", "password"):
+            fields[parts[0]] = parts[1]
+    return bool(fields.get("login") and fields.get("password"))
+
+
+def verb_dev_credentials():
+    """Write the dev Basic-Auth stanza, reading BOTH fields from stdin.
+
+    THE PASSWORD NEVER REACHES ARGV. Every other verb in this file takes its
+    arguments from argv, which is correct for a package name and fatal for a
+    secret: /proc/<pid>/cmdline is world readable, so a password passed as an
+    argument is visible to every local process for as long as this helper runs,
+    and to `ps` for anyone watching. It is the same rule build-iso.sh and the
+    acceptance harness already follow with `curl -K` instead of `curl --user`.
+
+    stdin is two lines, login then password, which is what the window writes
+    into the pipe. Trailing newlines are stripped; nothing else is.
+    """
+    raw = bytearray()
+    login = bytearray()
+    secret = bytearray()
+    body = bytearray()
+    try:
+        raw.extend(sys.stdin.buffer.read(DEV_CREDENTIALS_MAX_BYTES + 1))
+        if len(raw) > DEV_CREDENTIALS_MAX_BYTES:
+            die("dev-credentials input is too large")
+        if raw.endswith(b"\n"):
+            raw.pop()
+        lines = raw.split(b"\n")
+        if len(lines) != 2:
+            die("dev-credentials reads exactly one login line and one password line")
+        login.extend(lines[0])
+        secret.extend(lines[1])
+        for line in lines:
+            line[:] = b"\0" * len(line)
+        if not LOGIN_BYTES_RE.fullmatch(login):
+            die("that login is not in the alphabet apt's auth.conf can carry: "
+                "letters, digits, dot, underscore, plus and hyphen, up to 64")
+        if not SECRET_BYTES_RE.fullmatch(secret):
+            die("that password cannot be stored in apt's auth.conf: it must be 8 "
+                "to 512 printable characters with no space, tab or newline. The "
+                "credentials issued for the dev channel are base64 and always fit")
+        body.extend(b"# Written by kodachi-repo-apt for the Kodachi Repository Manager.\n")
+        body.extend(b"machine ")
+        body.extend(AUTH_MACHINE.encode("ascii"))
+        body.extend(b"\nlogin ")
+        body.extend(login)
+        body.extend(b"\npassword ")
+        body.extend(secret)
+        body.extend(b"\n")
+        os.makedirs(AUTH_DIR, exist_ok=True)
+        os.chmod(AUTH_DIR, 0o755)
+        atomic_replace(AUTH_FILE, body, 0o600, binary=True)
+    finally:
+        raw[:] = b"\0" * len(raw)
+        login[:] = b"\0" * len(login)
+        secret[:] = b"\0" * len(secret)
+        body[:] = b"\0" * len(body)
+    say("wrote repository credentials to %s" % AUTH_FILE)
+    if channel_sources("dev"):
+        return trusted_update()
+    say("the dev channel is not configured yet, run `enable dev` to add it")
+    return 0
+
+
+def dev_index_residue():
+    """Every dev-channel file apt has already fetched onto this machine.
+
+    Named off the SAME prefix convention `known_packages()` uses, because that
+    is the convention apt itself imposes on /var/lib/apt/lists: the URL with
+    the separators replaced. `repo-dev` is what distinguishes the private
+    channel from `repo` (stable) and `repo-beta`, and the underscore after it
+    is load-bearing: without it the prefix `kodachi.cloud_repo` matches STABLE
+    too and clearing dev credentials would delete the stable index, which is
+    the "my normalizer deleted more than it was aiming at" class. Measured on
+    <lab-host> the four dev entries are:
+
+        kodachi.cloud_repo-dev_dists_dev_InRelease
+        kodachi.cloud_repo-dev_dists_dev_main_binary-amd64_Packages
+        kodachi.cloud_repo-dev_dists_dev_apps_binary-amd64_Packages
+        kodachi.cloud_repo-dev_dists_dev_thirdparty_binary-amd64_Packages
+
+    while stable's carry `kodachi.cloud_repo_dists_stable_` and beta's
+    `kodachi.cloud_repo-beta_dists_beta_`. Neither can match this prefix.
+    """
+    prefix = DEV_INDEX_PREFIX
+    try:
+        entries = os.listdir(LISTS_DIR)
+    except OSError:
+        return []
+    return sorted(os.path.join(LISTS_DIR, name) for name in entries
+                  if name.startswith(prefix))
+
+
+def verb_dev_credentials_clear():
+    """Clear the key AND the private metadata it fetched.
+
+    WHY REMOVING THE AUTH FILE WAS NEVER ENOUGH, and this is the operator's
+    complaint of 2026-08-29 in its exact form. The dev channel is genuinely
+    protected at the SERVER: /repo-dev answers 401 without Basic Auth
+    (measured, against stable and beta answering 200 in the same run), so no
+    amount of reading this file or the GTK source lets anyone FETCH a dev
+    package. But apt writes what it fetched into /var/lib/apt/lists as
+    0644 root:root, and those files outlive the credential. Deleting only the
+    auth file therefore revoked the ability to DOWNLOAD while leaving the
+    complete private catalogue, names, versions, byte sizes, SHA256 digests,
+    pool filenames and descriptions, readable by every local user and still
+    listed in the window, forever.
+
+    A gate that can be revoked but leaves its data behind is not revocable.
+
+    The dev SOURCE is deliberately left in place, unchanged from the previous
+    behaviour: removing a source the user or the installer wrote is a bigger
+    decision than clearing a key, `disable dev` is the verb for it, and the
+    window now says which of the two it is offering.
+    """
+    residue = dev_index_residue()
+    had_auth = os.path.exists(AUTH_FILE)
+    if had_auth:
+        try:
+            os.remove(AUTH_FILE)
+        except OSError as error:
+            die("could not remove %s: %s" % (AUTH_FILE, error))
+        say("removed %s" % AUTH_FILE)
+    else:
+        say("no dev credentials are stored")
+
+    removed, failed = 0, []
+    for path in residue:
+        try:
+            os.remove(path)
+            removed += 1
+        except OSError as error:
+            failed.append("%s: %s" % (path, error))
+    if removed:
+        say("removed %d fetched dev index file(s); the dev channel's package "
+            "list is no longer readable on this machine" % removed)
+    elif not failed:
+        say("no fetched dev index files were present")
+    if failed:
+        for line in failed:
+            say("could not remove %s" % line)
+        # LOUD, because the whole point of this verb is now that the private
+        # metadata is gone. Reporting success while a readable dev Packages
+        # file survives would restate the defect this verb was changed to fix.
+        say("the dev credential is cleared but private package metadata is "
+            "still on disk at the path(s) above")
+        return 7
+    if not had_auth and not removed:
+        return 0
+    return 0
+
+
+def verb_enable(channel):
+    # DEV WITHOUT A CREDENTIAL IS A GUARANTEED 401, and an `apt update` that
+    # 401s on one source makes EVERY later apt command on this machine print an
+    # error, including the ones about stable. So the credential is a
+    # precondition of writing the source, not something to discover afterwards.
+    if channel == "dev" and not dev_credentials_present():
+        say("the dev channel answers 401 without credentials. Store them "
+            "first: kodachi-repo-apt dev-credentials, with the login on the "
+            "first line of stdin and the password on the second")
+        return 5
+    existing = channel_sources(channel)
+    if existing:
+        # NOT ZERO, BECAUSE NOTHING WAS ADDED. This returned
+        # `trusted_update()` and therefore 0 on its success path, so a caller
+        # that asked to add a channel already present got a green "done: add
+        # the Stable repository" over an operation that added nothing. Its
+        # sibling `verb_source_state` was changed to return 8 for precisely
+        # this pairing. The apt refresh still runs, because re-reading is
+        # useful and is what the caller was implicitly asking for; only the
+        # verdict changes. Found by the inspector, 2026-08-30.
+        say("the %s channel is already configured by %s"
+            % (channel, ", ".join(existing)))
+        code = trusted_update()
+        return code if code != 0 else EXIT_UNCHANGED
+    # PRESENT BUT SWITCHED OFF IS NOT ABSENT, AND WRITING A SECOND SOURCE HERE
+    # IS WHAT MANUFACTURES THE DUPLICATE. The entry already in that file comes
+    # back the moment anything switches it on again (this window's own Enable
+    # on the sources view, or a human uncommenting it), and apt then prints
+    # "Target Packages is configured multiple times" on every update, which is
+    # the exact outcome `channel_sources` exists to prevent. Refusing is not a
+    # dead end: the message names the file and the command that switches it
+    # back on, and that path is one verb away.
+    dormant = channel_sources_switched_off(channel)
+    if dormant:
+        say("the %s channel is already present in %s but is switched off. "
+            "Switch that entry back on instead of adding a second source: "
+            "kodachi-repo-apt source-enable d %s"
+            % (channel, ", ".join(dormant),
+               os.path.basename(dormant[0])))
+        return 4
+    code = ensure_keyring()
+    if code != 0:
+        return code
+    path = os.path.join(SOURCES_DIR, "kodachi-%s.sources" % channel)
+    os.makedirs(SOURCES_DIR, exist_ok=True)
+    # A FILE ALREADY AT THIS PATH IS COPIED ASIDE BEFORE IT IS REPLACED.
+    #
+    # Everything above this line asks whether the CHANNEL is configured, and
+    # nothing asked whether the PATH is occupied. Those are different
+    # questions, and a `kodachi-stable.sources` holding an unrelated
+    # repository, or a stanza too malformed for either matcher to recognise,
+    # answers no to the first and yes to the second. `atomic_replace` then
+    # overwrote it, as root, with no copy kept. Its sibling `verb_source_add`
+    # has refused exactly this since it was written, on
+    # `os.path.lexists(target)`, so the two verbs disagreed about a
+    # destructive act, and it was the GUI's only reachable writer of a Kodachi
+    # source that had the weaker one. Found by the inspector, 2026-08-30,
+    # after the Add repository dialog gained a route to this verb.
+    #
+    # BACKUP RATHER THAN REFUSE, deliberately, and the two verbs stay
+    # different for a reason. `source-add` takes a file name the user typed,
+    # so refusing is a correction he can act on. `enable` takes a channel and
+    # DERIVES this name, so refusing would strand him at a path he never chose
+    # and cannot rename, with the CHANNELS button as his only route. The copy
+    # goes where every other backup in this file goes, is announced by path,
+    # and loses nothing.
+    if os.path.islink(path):
+        # A SYMLINK CANNOT BE MADE SAFE BY COPYING IT, so it is refused rather
+        # than backed up. `lexists` sees the link but `backup_source` opens it
+        # for reading and therefore copies the TARGET's bytes; `atomic_replace`
+        # then destroys the link and leaves the target untouched, so restoring
+        # that backup would MANUFACTURE a duplicate of a file that never
+        # moved, not restore what was there. A dangling link is worse again:
+        # nothing to copy and nothing to restore. Refusing is honest here in a
+        # way it would not be for a regular file, because the thing to move
+        # aside is one the user can see and name. Found by the inspector,
+        # 2026-08-30, when I claimed the backup "loses nothing".
+        say("%s is a symbolic link. Backing it up would copy what it points "
+            "at rather than the link, so it was NOT replaced. Remove or move "
+            "the link and try again." % path)
+        return 6
+    if os.path.lexists(path):
+        try:
+            backup_source(path)
+        except OSError as error:
+            # FAIL CLOSED. If the thing that makes the overwrite safe did not
+            # happen, the overwrite does not happen either.
+            #
+            # `OSError` IS NOT THE ONLY WAY THIS FAILS. `open_unique_sibling`
+            # calls `die()` on a refused open (EACCES, EROFS, EDQUOT, or
+            # ENOSPC at create rather than at write), which raises SystemExit
+            # and does NOT pass through here. That path is still fail-closed,
+            # because the exception leaves the function before anything is
+            # written, but it exits 2 and this sentence never prints. Both
+            # directions are safe; only the message differs, and saying so
+            # beats implying this branch catches everything.
+            say("%s already exists and could not be backed up (%s), so it was "
+                "NOT replaced. Move it aside and try again." % (path, error))
+            return 6
+    write_conf(path, (
+        "# Written by kodachi-repo-apt for the Kodachi Repository Manager.\n"
+        "Types: deb\n"
+        "URIs: %s\n"
+        "Suites: %s\n"
+        "Components: %s\n"
+        "Architectures: amd64\n"
+        "Signed-By: %s\n"
+    ) % (CHANNEL_URL[channel], CHANNEL_SUITE[channel], COMPONENTS, KEYRING))
+    return trusted_update()
+
+
+def verb_disable(channel):
+    """Remove only the source this helper wrote.
+
+    kodachi.sources comes from the official setup.sh and is left alone on
+    purpose: a user who disables a channel here should not silently lose the
+    configuration they installed by the documented route.
+    """
+    path = os.path.join(SOURCES_DIR, "kodachi-%s.sources" % channel)
+    # THE SAME SYMLINK REFUSAL AS `verb_enable`, AND IT IS HERE BECAUSE I
+    # LEFT IT OUT THE FIRST TIME. `verb_enable` gained an islink guard when
+    # the inspector showed that backing up a link copies its TARGET's bytes;
+    # this verb has the identical shape one function below, `backup_source`
+    # then `os.remove`, and I fixed the one I was looking at and not the
+    # family. Found by the inspector on the NEXT round, which is the third
+    # time in this lane that fixing an instance left a sibling standing.
+    #
+    # `os.remove` unlinks the LINK and leaves the target in place, so a
+    # backup taken through it restores as a DUPLICATE of a file that never
+    # moved. `verb_source_remove` is safe only because `check_source` refuses
+    # a link before it is reached; this verb DERIVES its path and never goes
+    # through that check.
+    #
+    # `os.path.exists` IS FALSE FOR A DANGLING LINK, which is why this sits
+    # ABOVE the not-configured branch rather than beside the backup. Without
+    # it a dangling link at the managed path made this verb print "the
+    # channel is not configured", exit 0, and leave the link in place: a
+    # cheerful no-op over a file that is really there.
+    if os.path.islink(path):
+        # ONE MESSAGE CHANGE THIS CAUSES, NAMED RATHER THAN DISCOVERED LATER.
+        # With a DANGLING link here and the channel configured by some other
+        # file, this used to fall through to `channel_sources` and return 2
+        # with "the %s channel is configured by ..., which this helper did not
+        # write and will not remove". It now returns 6 about the link and the
+        # external configuration is reported only on the next run. The link is
+        # the thing standing between the user and any further progress, so it
+        # is the right thing to say first, but it IS less information in one
+        # go and the inspector was right to make me say so.
+        say("%s is a symbolic link. Removing it would delete the link and "
+            "leave what it points at, and a backup of it would copy that "
+            "target rather than the link, so nothing was removed. Move or "
+            "delete the link by hand, then run this again: if the channel is "
+            "configured by some other file this will then say which." % path)
+        return 6
+    if not os.path.exists(path):
+        others = channel_sources(channel)
+        if others:
+            say("the %s channel is configured by %s, which this helper did not "
+                "write and will not remove" % (channel, ", ".join(others)))
+            return 2
+        say("the %s channel is not configured" % channel)
+        # NOT `EXIT_UNCHANGED`, AND THE ASYMMETRY IS DELIBERATE, so nobody has
+        # to guess whether it was an oversight. Three no-op sites exist in this
+        # file: this one, `verb_source_state`'s "already in the desired state",
+        # and `verb_enable`'s "already configured". Only the last one carries
+        # the new code, because only the last one is reached by a control that
+        # PROMISED to write a file, which is what made a green "done" actively
+        # misleading there. Changing these two would repaint them in the dock's
+        # `classify_exit` as well, for a gain that is cosmetic where it is not
+        # misleading. Raised by the inspector, 2026-08-30.
+        return 0
+    # A ROOT `os.remove` OF A DERIVED PATH, WITH A COPY KEPT. This was the
+    # unfixed sibling of the clobber in `verb_enable`: `verb_source_remove`
+    # backs up before deleting and `verb_enable` now backs up before
+    # overwriting, and this one, reachable from a shipped dock cell with no
+    # "is it ours" precondition, simply deleted. The file at this path is
+    # ASSUMED to be the one this helper wrote and nothing verifies it, so the
+    # very fixture the clobber contract uses, an unrelated repository living at
+    # kodachi-stable.sources, was destroyed here with nothing kept. Found by
+    # the inspector, 2026-08-30, one function below the one I had just fixed.
+    #
+    # FAIL CLOSED, same as enable: if the copy did not happen, the delete does
+    # not happen either.
+    try:
+        backup_source(path)
+    except OSError as error:
+        say("%s could not be backed up (%s), so it was NOT removed. Move it "
+            "aside by hand if you want it gone." % (path, error))
+        return 6
+    os.remove(path)
+    say("removed %s" % path)
+    return trusted_update()
+
+
+# ══════════════════════════════════════════════════════════════════════
+# The machine's OTHER repositories
+# ══════════════════════════════════════════════════════════════════════
+#
+# Everything above this line is about Kodachi's own channels. These three
+# verbs are about the rest of the machine: Debian, Debian security, backports,
+# Whonix, and whatever the user added himself. He can already edit these files
+# with an editor and sudo; the point of doing it here is that the window shows
+# him what each file actually contains first, and that every change is backed
+# up before it is made.
+
+
+def check_source(where, name):
+    """Resolve a caller-supplied (directory, name) pair to one apt source file.
+
+    The name is a BARE FILE NAME, never a path. It is matched against a strict
+    alphabet, rejected if it contains any separator at all, joined to a fixed
+    directory, and then the result is required to be a regular file that is not
+    a symlink.
+
+    THE SYMLINK CHECK DOES NOT DO WHAT THIS DOCSTRING USED TO CLAIM, and the
+    difference is worth writing down because the wrong claim is load bearing.
+    It said a link here would let the verb "rewrite any file on the system as
+    root". It would not: both mutations act on the NAME, and neither follows a
+    link. verb_source_state finishes with `os.replace`, and rename(2) replaces
+    the link itself; verb_source_remove finishes with `os.remove`, which unlinks
+    the link. What the check actually buys is narrower and still worth having,
+    because the READ side does follow a link: `open(path)` here and
+    `open(path, "rb")` in backup_source would copy an arbitrary root-readable
+    file into a root-owned 0600 backup, and the write would then silently
+    destroy a link somebody put there deliberately.
+
+    The escalation the old sentence described was real, but it was one file
+    over: the TEMPORARY, whose plain `open(..., "w")` did follow a link. That
+    is fixed in open_new(), and require_safe_dir() below asserts the directory
+    assumption that the whole check-then-use shape rests on rather than leaving
+    it implicit.
+
+    `where` IS PART OF THE IDENTITY, and adds nothing user-controlled: it is
+    one of exactly two fixed words. Without it this function mapped the literal
+    name "sources.list" to /etc/apt/sources.list unconditionally, and
+    /etc/apt/sources.list.d/sources.list is a legal file that apt reads, so
+    disabling THAT file would have commented out the distribution's own
+    sources.list instead while the window reported acting on the other one.
+    """
+    if where == "main":
+        if name != "sources.list":
+            die("the main list is %s, got %r" % (MAIN_LIST, name))
+        target = MAIN_LIST
+    elif where == "d":
+        no_line_breaks("the source name", name)
+        if not SOURCE_NAME_RE.fullmatch(name or ""):
+            die("rejected source name %r" % name)
+        target = os.path.join(SOURCES_DIR, name)
+    else:
+        die("a source lives in %r or %r, got %r" % ("main", "d", where))
+    require_safe_dir(os.path.dirname(target))
+    if os.path.islink(target):
+        die("%s is a symlink, refusing to follow it" % target)
+    if not os.path.isfile(target):
+        die("no such source file: %s" % target)
+    if os.path.realpath(target) != target:
+        die("%s does not resolve to itself, refusing" % target)
+    return target
+
+
+def backup_source(path):
+    """Copy a source file aside before touching it, and say where it went."""
+    os.makedirs(SOURCE_BACKUP_DIR, exist_ok=True)
+    os.chmod(SOURCE_BACKUP_DIR, 0o700)
+    stamp = time.strftime("%Y%m%dT%H%M%S", time.gmtime())
+    base = os.path.join(SOURCE_BACKUP_DIR,
+                        "%s.%s" % (os.path.basename(path), stamp))
+    copy, target = open_unique_sibling(base, "kodachi-backup", binary=True)
+    try:
+        with open(path, "rb") as source, target:
+            target.write(source.read())
+    except BaseException:
+        try:
+            os.unlink(copy)
+        except OSError:
+            pass
+        raise
+    os.chmod(copy, 0o600)
+    say("backed up %s to %s" % (path, copy))
+    return copy
+
+
+def _commented_block_is_a_stanza(block):
+    """True when a wholly-commented block is a disabled repository, not prose.
+
+    The structural predicate kodachi_repo._deb822_stanzas() uses, restated
+    here: every non-blank line must be a known deb822 field once one `#` is
+    removed, and Types and URIs must both be present. It has to stay the same
+    predicate, because that one decides which rows the window DRAWS an Enable
+    button on and this one decides which blocks the button may uncomment.
+    Looser here and the button acts on a block no row exists for; tighter and
+    the button is inert on a row it is drawn for, which is the defect this
+    function exists to close.
+    """
+    seen = {}
+    for raw in block:
+        line = raw.rstrip()
+        if not line.strip():
+            continue
+        if not line.lstrip().startswith("#"):
+            return False
+        line = line.lstrip()[1:]
+        if line[:1] == " ":
+            line = line[1:]
+        if not line.strip():
+            continue
+        if line[:1] in (" ", "\t"):
+            if not seen:
+                return False              # a continuation of nothing
+            continue
+        key, sep, value = line.partition(":")
+        if not sep or key.strip().lower() not in DEB822_FIELDS:
+            return False
+        seen[key.strip().lower()] = value.strip()
+    # THE SAME REQUIRED SET THE WINDOW USES, which is what the docstring above
+    # has always promised and what this line did not deliver. The window
+    # requires types+uris+suites+components (kodachi_repo._deb822_scan);
+    # this required only types+uris, and THIS is the side that writes.
+    #
+    # Measured 2026-08-26 on one file holding a live disabled stanza plus
+    #
+    #     # Description: how to add one
+    #     # Types: deb
+    #     # URIs: https://example.com/apt
+    #
+    # the window declined the block, drew it as "commented block, not read by
+    # this window", and told the operator so; the helper returned changed=4
+    # and turned that example URL into a LIVE apt source. He pressed Enable on
+    # the real repository in the same file and got a second one he had just
+    # been told the window could not read. Looser here is precisely the defect
+    # the docstring names.
+    #
+    # The flat-repository exemption travels with it, for the same reason as in
+    # the window: a Suites value ending in `/` has no components by design.
+    required = {"types", "uris", "suites", "components"}
+    if seen.get("suites", "").endswith("/"):
+        required.discard("components")
+    return not required.difference(seen)
+
+
+def _uncomment_deb822(lines):
+    """Uncomment every wholly-commented stanza. Returns (lines, count).
+
+    P1, raised by <agent> 2026-08-21 and measured: enabling a commented
+    deb822 stanza returned changed=0 and a byte-identical file, while the
+    one-line path uncommented its row and reported changed=1. The same operator
+    gesture, on two rows the sources page presents identically as "disabled",
+    worked in one format and was a silent no-op in the other, and changed=0
+    then trips the "must not be rewritten" branch so there was no backup, no
+    new mtime and nothing to notice except that the row stayed off.
+
+    The stanza is uncommented AS WRITTEN, including a `Types: deb deb-src`.
+    The one-line path refuses to switch a `deb-src` line on, and that asymmetry
+    is deliberate rather than an oversight: there, `# deb-src ...` is its own
+    row that the operator did not select, and here the stanza IS the row they
+    did select, so rewriting its Types would enable something other than what
+    the row they pressed the button on says.
+    """
+    result, block, count = [], [], 0
+
+    def flush():
+        nonlocal count
+        if not block:
+            return
+        if _commented_block_is_a_stanza(block):
+            for raw in block:
+                body = raw.lstrip()[1:]
+                if body[:1] == " ":
+                    body = body[1:]
+                result.append(body)
+            count += len(block)
+        else:
+            result.extend(block)
+        del block[:]
+
+    for line in lines:
+        if not line.strip():
+            flush()
+            result.append(line)
+        else:
+            block.append(line)
+    flush()
+    return result, count
+
+
+def _toggle_deb822(text, enable):
+    out, dropped = [], 0
+    for line in apt_lines(text):
+        stripped = line.strip().lower()
+        if stripped.startswith("enabled:"):
+            # COUNT ONLY THE LINES THAT SWITCH SOMETHING OFF. P3, same report:
+            # `changed = dropped` counted EVERY `Enabled:` line, `Enabled: yes`
+            # included, so a file that explicitly declared itself enabled was
+            # rewritten, backed up and given a fresh mtime for no semantic
+            # change at all. That is precisely the outcome the comment below
+            # says must not happen, in the one case where the file was most
+            # explicit about its state.
+            disabling = stripped.partition(":")[2].strip() in DISABLING_VALUES
+            if disabling:
+                dropped += 1
+            if disabling or not enable:
+                # The disable leg writes its own `Enabled: no` below, so every
+                # one of these goes; the enable leg KEEPS a line that already
+                # says yes, so the body it returns is never a different file
+                # from the one it reports as unchanged.
+                continue
+        out.append(line)
+
+    if enable:
+        result, uncommented = _uncomment_deb822(out)
+        # Removing a disabling `Enabled:` line and uncommenting a stanza are
+        # both the change, so the count is both. Zero means the file was
+        # already enabled and must not be rewritten: a needless rewrite would
+        # leave a backup and a fresh mtime for a file nobody changed, and then
+        # "was it modified" stops meaning anything.
+        return "\n".join(result).rstrip("\n") + "\n", dropped + uncommented
+
+    result, stanza_open, changed = [], False, 0
+    for line in out:
+        if line.strip() and not line.lstrip().startswith("#"):
+            if not stanza_open:
+                stanza_open = True
+                result.append(line)
+                result.append("Enabled: no")
+                changed += 1
+                continue
+        elif not line.strip():
+            stanza_open = False
+        result.append(line)
+    return "\n".join(result).rstrip("\n") + "\n", changed
+
+
+# THE MARK THIS WINDOW PUTS ON A LINE IT SWITCHED OFF ITSELF, so that switching
+# the file back on restores EXACTLY what was switched off and nothing else.
+#
+# C3/C4, <agent> 2026-08-21, both executed. Disable commented out every
+# `deb` AND every `deb-src` line; enable uncommented `deb` only. Two consequences,
+# and neither of them announced itself:
+#
+#   THE ROUND TRIP WAS LOSSY. Disable then Enable on a file with active deb-src
+#   entries left those entries commented FOREVER, indistinguishable from the ones
+#   the distribution ships commented. The file quietly stopped meaning what it
+#   meant before the operator touched it.
+#
+#   THE BUTTON ACTED ON A ROW NOBODY SELECTED. A .list holding a commented deb and
+#   a commented deb-src for the same URI draws TWO rows. Select the deb-src row,
+#   press Enable: changed=1, the helper reports real success, and after the reload
+#   the row that was clicked is still disabled while a DIFFERENT row went live.
+#   Nothing anywhere said which one moved. It fails while looking correct, which is
+#   why it is worse than the dead button in C1.
+#
+# The mark fixes both without ever switching on a `deb-src` line the DISTRIBUTION
+# shipped commented, which is the behaviour the old exclusion existed to protect:
+# a plain `# deb-src ...` has no mark, so enable still leaves it alone. apt reads
+# a marked line as an ordinary comment, and a human reading the file can see who
+# commented it and why.
+DISABLED_MARK = "#kodachi-disabled# "
+
+
+def _one_line_source_type(body):
+    """`deb`, `deb-src`, or None. THE TYPE IS A TOKEN, NEVER A PREFIX.
+
+    The prefix form (`startswith("deb ")` and friends) is false for
+    `deb\thttp://host/debian trixie main`, which apt reads as a live
+    repository: measured 2026-08-26, apt-get --print-uris returns rc=0 and 7
+    URIs for exactly those bytes. THIS IS THE FAIL-OPEN HALF and it is why the
+    predicate moved here from four startswith calls. `_toggle_one_line(text,
+    False)` walked past the tab line and returned changed=0; `_observed_enabled`
+    uses the same predicate so it agreed; `verb_source_state` therefore took its
+    changed=0 branch and printed "<path> is already disabled, nothing to do" at
+    exit 0, and the window painted a green `done:` over a repository that was
+    still being fetched, trusted and installed from. In a file holding two
+    entries the sibling count even told him "all of them are switched off
+    together" while one of them stayed live.
+
+    kodachi_repo._source_type() is the same predicate on the window's side and
+    the two are pinned to each other by contract.
+    """
+    head = body.split(None, 1)[0] if body.split(None, 1) else ""
+    if head in ("deb", "deb-src"):
+        return head
+    # `deb[arch=amd64]` with no space is not something apt accepts, and
+    # `deb [arch=amd64] ...` splits to `deb` above, so nothing further is
+    # needed here; the bracket forms the old predicate listed separately are
+    # already covered by the token split.
+    return None
+
+
+def _one_line_is_a_source(body):
+    """True for a deb or deb-src entry, with or without an [options] block."""
+    return _one_line_source_type(body) is not None
+
+
+def _one_line_fields(body):
+    """Split an entry the way apt's ParseQuoteWord does: `[...]` is ONE word.
+
+    The window's kodachi_repo._source_fields() is the same split and the two
+    are pinned to each other by contract.
+    """
+    fields, token, depth = [], "", 0
+    for char in body:
+        if char == "[":
+            depth += 1
+        elif char == "]":
+            depth = max(0, depth - 1)
+        if char.isspace() and depth == 0:
+            if token:
+                fields.append(token)
+                token = ""
+            continue
+        token += char
+    if token:
+        fields.append(token)
+    return fields
+
+
+def _one_line_strip_comment(body):
+    """Everything before the first bare `#`, which is what apt actually parses.
+
+    APT STRIPS THE COMMENT BEFORE IT SPLITS WORDS, AND IT DOES SO WITH NO
+    BRACKET AWARENESS: `pkgSourceList` erases from the first `#` on the line and
+    then tokenises what is left. The window does the identical thing at
+    kodachi_repo.py:1526 (`line.split("#", 1)[0].rstrip()`) BEFORE it calls
+    `_source_fields`, so the strip belongs at the call site on this side too and
+    NOT inside `_one_line_fields`, whose job is only the ParseQuoteWord split.
+
+    WITHOUT THIS THE TOKEN REWRITE IS A FAIL-OPEN REGRESSION AGAINST THE
+    SUBSTRING FORM IT REPLACED, in the same function and in the same direction
+    as the disable defect the rewrite exists to fix. Measured 2026-08-26 with
+    apt itself as the oracle, on `deb https://kodachi.cloud/repo-beta stable
+    main # beta`:
+
+        _one_line_fields  -> ['deb', '...repo-beta', 'stable', 'main', '#', 'beta']
+        suites            -> ['stable', 'main', '#', 'beta']   <- '#' and 'beta'
+                                                                  are comment words
+        apt --print-uris  -> rc=0, 7 URIs, EVERY ONE under /dists/stable/,
+                             and not one under /dists/beta/
+
+    So apt fetches the stable suite from that line and nothing else, while
+    `channel_sources("beta")` returned the path. `verb_enable("beta")` then took
+    its `if existing:` branch, printed "the beta channel is already configured
+    by <path>", ran `apt update` and returned 0 WITHOUT EVER WRITING THE BETA
+    SOURCE. The operator sees success and the channel is not enabled.
+
+    The old substring test could not make this mistake, because it required
+    `" beta "` with a space on BOTH sides and a trailing comment word ends the
+    line. That is what makes this a regression rather than a pre-existing gap,
+    and it is why a rewrite needs an arm per shape it newly ACCEPTS, not only
+    per shape it newly finds.
+    """
+    return body.split("#", 1)[0].rstrip()
+
+
+def _one_line_uri_and_suites(body):
+    """(uri, [suites]) for one .list entry, or ("", []) when it is not one.
+
+    WRITTEN BECAUSE THE SUBSTRING TEST IT REPLACES MISSED THREE REAL SHAPES,
+    and every miss makes `channel_sources` say "not configured" about a channel
+    that IS configured, which is the one answer that causes a SECOND source to
+    be written. apt then prints "Target Packages is configured multiple times"
+    on every update, which is precisely what that function's docstring says it
+    exists to prevent. The old test was
+    `line.strip().startswith("deb") and spec_url in line and (" %s " % suite) in line`:
+
+      deb\thttp://u\ttrixie\tmain   MISSED, no space anywhere to match
+      deb http://u trixie            MISSED, the suite is last so there is no
+                                     trailing space and " trixie " is absent
+      deb http://u/x trixie main     matched on a URL that merely CONTAINS the
+                                     spec as a substring, e.g. a different host
+                                     whose path repeats it
+
+    The first two are the fail-open direction. The third is the opposite and
+    would refuse to add a source that is genuinely absent.
+    """
+    body = _one_line_strip_comment(body)
+    if _one_line_source_type(body) is None:
+        return "", []
+    fields = _one_line_fields(body)[1:]
+    while fields and fields[0].startswith("["):
+        fields = fields[1:]
+    if not fields:
+        return "", []
+    return fields[0], fields[1:]
+
+
+def _toggle_one_line(text, enable):
+    out, changed = [], 0
+    for line in apt_lines(text):
+        stripped = line.strip()
+        if enable:
+            # A line this window switched off comes back exactly as it was,
+            # deb-src included: that is what makes Disable and Enable inverses.
+            if stripped.startswith(DISABLED_MARK):
+                body = stripped[len(DISABLED_MARK):]
+                # THE PREDICATE READS THE STRIPPED BODY, THE FILE KEEPS THE
+                # RAW ONE. Disable writes `DISABLED_MARK + line` with `line`
+                # RAW, so an indented `  deb ...` comes back as
+                # `#kodachi-disabled#   deb ...` and this body still carries
+                # the indent. Testing the unstripped body made Enable a no-op
+                # on every indented entry, and apt honours leading whitespace
+                # (measured 2026-08-26: rc=0, 7 URIs). The consequence was a
+                # one-way door: the window drew the row as switchable, Enable
+                # returned changed=0, `_one_line_left_switched_off` had
+                # nothing to say about it so there was no explanation, no
+                # backup and no new mtime, and the repository could only be
+                # recovered by editing the file by hand. Appending `body`
+                # rather than `body.strip()` keeps the operator's own
+                # indentation, so Disable and Enable are byte-level inverses.
+                #
+                # THE ARGUMENT IS DELIBERATELY NOT `body.strip()`, AND THAT IS
+                # A MEASUREMENT, NOT A PREFERENCE. It used to be, as a second
+                # guard against the indented shape above. A three-way revert
+                # matrix (tests/sabotage_repo_sources_contract.py, run
+                # 2026-08-26) proved the strip pinned nothing:
+                #
+                #   revert the token predicate only   -> arm RED
+                #   revert the strip only             -> arm GREEN
+                #   revert both                       -> arm RED
+                #
+                # `_one_line_source_type` reads its head with
+                # `body.split(None, 1)[0]`, which already ignores leading and
+                # trailing whitespace, so the strip was a no-op that a green
+                # arm appeared to protect. Two guards for one property is a
+                # maintenance trap: whoever later deletes the token predicate
+                # as redundant would find the arm still green. One guard plus
+                # one arm that actually fails when it is removed is what
+                # survives. Do not put the strip back.
+                if _one_line_is_a_source(body):
+                    out.append(body)
+                    changed += 1
+                    continue
+            # And a plain `# deb ` line can still be switched on, which is how
+            # an operator turns on something the distribution shipped disabled.
+            # `# deb-src ` is NOT switched on here, on purpose: it would double
+            # every index fetch and 404 on repositories that publish no sources.
+            elif stripped.startswith("#"):
+                body = stripped.lstrip("#").strip()
+                # Token, not prefix, for the same reason as
+                # `_one_line_source_type`; `deb-src` is still deliberately
+                # left alone here.
+                if _one_line_source_type(body) == "deb":
+                    out.append(body)
+                    changed += 1
+                    continue
+        else:
+            if _one_line_is_a_source(stripped):
+                out.append(DISABLED_MARK + line)
+                changed += 1
+                continue
+        out.append(line)
+    return "\n".join(out).rstrip("\n") + "\n", changed
+
+
+def _one_line_left_switched_off(text):
+    """Entries in a .list that this window will not switch on, by shape.
+
+    Used to explain a changed=0 enable instead of claiming the file is already
+    enabled. Returns the `# deb-src ...` bodies, which are the only commented
+    entries the enable leg deliberately walks past.
+    """
+    left = []
+    for line in apt_lines(text):
+        stripped = line.strip()
+        if stripped.startswith(DISABLED_MARK) or not stripped.startswith("#"):
+            continue
+        body = stripped.lstrip("#").strip()
+        # THE LAST PREFIX TEST IN THIS FILE, AND IT IS THE SAME CLASS AS THE
+        # ONE THAT MADE Disable A NO-OP. `startswith("deb-src ")` cannot see
+        # `deb-src\thttp://...`, so a .list whose only commented entries are
+        # tab-separated deb-src lines produced an EMPTY `left`, the caller
+        # skipped its explaining sentence, and the operator was told "nothing
+        # in it could be switched on" with no reason given. Not fail-open like
+        # its sibling was, but the identical predicate mistake, found by
+        # sweeping the file for the shape rather than by hitting it.
+        if _one_line_source_type(body) == "deb-src":
+            left.append(body)
+    return left
+
+
+def _observed_enabled(path, text):
+    """True when the file as written on disk still activates something.
+
+    Read by the changed=0 branch of `source-state`, which used to describe the
+    file with the state the operator ASKED for. A file is enabled when apt
+    would act on at least one entry in it: an uncommented deb/deb-src line for
+    a .list, or a stanza that is neither commented out nor carrying a
+    disabling `Enabled:` for a .sources.
+    """
+    if path.endswith(".sources"):
+        # Per STANZA, never per file: a `Enabled: no` line reached AFTER a
+        # field line still disables the stanza it belongs to, so the two facts
+        # have to be collected together and judged when the stanza ends. An
+        # earlier draft accumulated `active` across the whole file and would
+        # have called a wholly disabled file enabled whenever any stanza put a
+        # field above its Enabled line, which is the ordinary way apt writes
+        # them.
+        fields, disabled, stanzas = False, False, []
+        for line in apt_lines(text) + [""]:
+            stripped = line.strip()
+            if not stripped:
+                stanzas.append(fields and not disabled)
+                fields, disabled = False, False
+                continue
+            if stripped.startswith("#"):
+                continue
+            name, sep, value = stripped.partition(":")
+            if not sep:
+                continue
+            name = name.strip().lower()
+            if name == "enabled" and value.strip().lower() in DISABLING_VALUES:
+                disabled = True
+            elif name in DEB822_FIELDS:
+                fields = True
+        return any(stanzas)
+    for line in apt_lines(text):
+        if _one_line_is_a_source(line.strip()):
+            return True
+    return False
+
+
+def check_keyring(name):
+    """`none`, or one existing keyring file named by bare basename."""
+    if name == "none":
+        return ""
+    no_line_breaks("the keyring name", name)
+    if not KEYRING_NAME_RE.match(name or ""):
+        die("rejected keyring name %r" % name)
+    for directory in KEYRING_DIRS:
+        candidate = os.path.join(directory, name)
+        if os.path.islink(candidate):
+            die("%s is a symlink, refusing to follow it" % candidate)
+        if os.path.isfile(candidate):
+            if os.path.realpath(candidate) != candidate:
+                die("%s does not resolve to itself, refusing" % candidate)
+            return candidate
+    die("no such keyring: %s in %s" % (name, " or ".join(KEYRING_DIRS)))
+
+
+def verb_source_add(name, types, uri, suite, components, keyring):
+    """Write one new deb822 source file in /etc/apt/sources.list.d.
+
+    The window could REMOVE a repository and could not ADD one, so a person who
+    removed a repository had no way back to it from this application, which is
+    the opposite of managing them. Every field is whitelisted above; the file
+    must not already exist, because silently replacing somebody else's source
+    file is exactly the surprise the backup-before-write rule exists to stop.
+    """
+    # EVERY caller-supplied field of the stanza, before anything is parsed.
+    # A single loop, so a sixth field added later cannot be forgotten the way
+    # the anchor was.
+    for field, value in (("the source name", name), ("types", types),
+                         ("the repository URI", uri), ("the suite", suite),
+                         ("the components", components),
+                         ("the keyring name", keyring)):
+        no_line_breaks(field, value)
+    if not SOURCE_NAME_RE.fullmatch(name or ""):
+        die("rejected source name %r" % name)
+    if not name.endswith(".sources"):
+        die("a new source file must end in .sources, got %r" % name)
+    if types not in ("deb", "deb-src"):
+        die("types must be deb or deb-src, got %r" % types)
+    if not SOURCE_URI_RE.match(uri or ""):
+        die("rejected repository URI %r" % uri)
+    try:
+        parsed_uri = urllib.parse.urlsplit(uri)
+        hostname = parsed_uri.hostname
+        username = parsed_uri.username
+        password = parsed_uri.password
+    except ValueError:
+        die("repository URI must name a host and must not contain userinfo credentials")
+    if not hostname or username is not None or password is not None:
+        die("repository URI must name a host and must not contain userinfo credentials")
+    if not SOURCE_TOKEN_RE.match(suite or ""):
+        die("rejected suite %r" % suite)
+    parts = (components or "").split()
+    if not parts:
+        die("at least one component is required")
+    for part in parts:
+        if not SOURCE_TOKEN_RE.match(part):
+            die("rejected component %r" % part)
+    signed_by = check_keyring(keyring)
+    official_channel = next(
+        (channel for channel in CHANNEL_SUITE
+         if uri.rstrip("/") == CHANNEL_URL[channel]
+         and suite == CHANNEL_SUITE[channel]), None)
+    if official_channel is not None:
+        if signed_by != KEYRING:
+            die("official %s sources must use Signed-By: %s"
+                % (official_channel, KEYRING))
+        code = ensure_keyring()
+        if code != 0:
+            return code
+
+    target = os.path.join(SOURCES_DIR, name)
+    if os.path.lexists(target):
+        die("%s already exists, remove or disable it first" % target)
+    os.makedirs(SOURCES_DIR, exist_ok=True)
+    body = ("# Written by kodachi-repo-apt for the Kodachi Repository Manager.\n"
+            "Types: %s\nURIs: %s\nSuites: %s\nComponents: %s\n"
+            % (types, uri, suite, " ".join(parts)))
+    if signed_by:
+        body += "Signed-By: %s\n" % signed_by
+    else:
+        say("no keyring given: apt will refuse this repository unless it is "
+            "signed by a key it already trusts")
+    write_conf(target, body)
+    return trusted_update()
+
+
+def verb_source_state(where, name, enable):
+    path = check_source(where, name)
+    with open(path, "r", encoding="utf-8", errors="replace") as handle:
+        text = handle.read()
+    if path.endswith(".sources"):
+        body, changed = _toggle_deb822(text, enable)
+    else:
+        body, changed = _toggle_one_line(text, enable)
+    if not changed:
+        # C1, <agent> 2026-08-21, executed. This sentence used to be
+        # built from the REQUESTED state ("enabled" if enable else "disabled"),
+        # so a file that could not be switched on was reported as "already
+        # ENABLED" while the badge two inches above it still read Disabled, and
+        # the window printed a green "done:" over the top of it. It asserted
+        # the exact opposite of the truth, which is worse than saying nothing.
+        # It is now built from what the file ACTUALLY contains, and when the
+        # observed state contradicts the request it says why nothing moved.
+        state = "enabled" if _observed_enabled(path, text) else "disabled"
+        if state == ("enabled" if enable else "disabled"):
+            say("%s is already %s, nothing to do" % (path, state))
+            return 0
+        say("%s is still %s: nothing in it could be switched %s"
+            % (path, state, "on" if enable else "off"))
+        if enable and not path.endswith(".sources"):
+            left = _one_line_left_switched_off(text)
+            if left:
+                say("%d source line(s) are commented out here and are left "
+                    "that way on purpose: deb-src entries are not switched on "
+                    "by this window" % len(left))
+        # NON-ZERO, AND THIS IS A CORRECTNESS FIX RATHER THAN A TIDY-UP.
+        # The window decides success on the EXIT CODE alone: `if code == 0:
+        # append_log("done: %s")`. Returning 0 here printed a green `done:
+        # enable <file>` over a repository that is still switched off, which is
+        # the worst possible pairing, an honest sentence in the log and a
+        # verdict line above it contradicting it. The "already in the desired
+        # state" branch a few lines up keeps returning 0, because there the
+        # requested state genuinely holds; this branch is the one where it does
+        # not and the file could not be changed.
+        return 8
+    backup_source(path)
+    atomic_replace(path, body, 0o644)
+    say("%s %s" % ("enabled" if enable else "disabled", path))
+    if enable and not path.endswith(".sources"):
+        # ONLY WHEN IT IS TRUE. A deb-src line this window switched off is
+        # restored by the mark like any other, so the blanket sentence would
+        # now contradict the file it is describing.
+        left = _one_line_left_switched_off(body)
+        if left:
+            say("%d deb-src line(s) shipped commented out were left as they "
+                "were" % len(left))
+    say("run a refresh so apt re-reads the indexes")
+    return 0
+
+
+def verb_source_remove(where, name):
+    path = check_source(where, name)
+    if path == MAIN_LIST:
+        die("refusing to remove %s, it is the distribution's own file. "
+            "Disable it instead." % MAIN_LIST)
+    backup_source(path)
+    os.remove(path)
+    say("removed %s" % path)
+    say("run a refresh so apt re-reads the indexes")
+    return 0
+
+
+CHANNEL_USAGE = "|".join(CHANNEL_SUITE)
+USAGE = ("usage: kodachi-repo-apt update\n"
+         "       kodachi-repo-apt upgrade\n"
+         "       kodachi-repo-apt full-upgrade   "
+         "(may remove packages to satisfy new dependencies)\n"
+         "       kodachi-repo-apt fix-broken     "
+         "(dpkg --configure -a, then apt-get -f install)\n"
+         "       kodachi-repo-apt autoremove\n"
+         "       kodachi-repo-apt clean\n"
+         "       kodachi-repo-apt install|reinstall <package> <%s>\n"
+         "       kodachi-repo-apt remove <package>\n"
+         "       kodachi-repo-apt hold|unhold <package>\n"
+         "       kodachi-repo-apt app-install <package>...\n"
+         "       kodachi-repo-apt app-remove <package>...\n"
+         "       kodachi-repo-apt switch <package> <%s>\n"
+         "       kodachi-repo-apt system <%s>\n"
+         "       kodachi-repo-apt system-clear\n"
+         "       kodachi-repo-apt snapshot-list\n"
+         "       kodachi-repo-apt snapshot-create\n"
+         "       kodachi-repo-apt snapshot-restore-latest  "
+         "(rolls the whole system back, then reboot)\n"
+         "       kodachi-repo-apt enable|disable <%s>\n"
+         "       kodachi-repo-apt dev-credentials      "
+         "(login and password on stdin, two lines)\n"
+         "       kodachi-repo-apt dev-credentials-clear\n"
+         "       kodachi-repo-apt dev-credentials-status\n"
+         "       kodachi-repo-apt source-enable|source-disable "
+         "main|d <file>\n"
+         "       kodachi-repo-apt source-remove main|d <file>\n"
+         "       kodachi-repo-apt source-add <file> <types> <uri> <suite> "
+         "<components> <keyring|none>\n") % (
+             CHANNEL_USAGE, CHANNEL_USAGE, CHANNEL_USAGE, CHANNEL_USAGE)
+
+
+# THE FAVOURITE-APPS ALLOWLIST, DUPLICATED FROM kodachi_repo.FAVOURITE_APPS
+# FOR THE SAME REASON apt_lines() AND DEB822_FIELDS ARE DUPLICATED ABOVE: this
+# helper runs as root under pkexec and imports NOTHING from /usr/local/lib, so
+# it cannot read the window's catalog even though the window derives its own
+# copy from exactly this list. A contract in tests/test_repo_manager.py asserts
+# the two are equal, which is what makes the duplication safe rather than a
+# second source of truth.
+#
+# THIS LIST IS WHY THE NEW VERBS ARE NOT A ROOT SHELL. `app-install` takes
+# package NAMES from an unprivileged caller, so without an allowlist it would
+# be a general "apt-get install anything, as root, past the authentication
+# dialog" primitive, and every Debian package with a maintainer script would be
+# reachable through it. THE TWO BOUNDS ARE DIFFERENT AND THE DIFFERENCE IS
+# EASY TO OVERSTATE: this table bounds `app-install` and `app-remove` ONLY.
+# The five older verbs that reach apt as root, `install`, `reinstall`,
+# `remove`, `switch` and `system`, are bounded by known_packages() instead,
+# which admits anything published in a Kodachi index and is a much larger set
+# than these eighteen. Saying "the helper cannot install anything off an
+# eighteen-name allowlist" is therefore false about the helper and true only
+# about the Favourite Apps verbs; an inspector caught exactly that sentence on
+# 2026-08-22.
+FAVOURITE_PACKAGES = (
+    "vlc",
+    "audacity",
+    "gimp",
+    "inkscape",
+    "bluefish",
+    "docker.io",
+    "docker-compose",
+    "virt-manager",
+    "qemu-system-x86",
+    "qemu-utils",
+    "libvirt-daemon-system",
+    "libvirt-clients",
+    "virtinst",
+    "bridge-utils",
+    "spice-vdagent",
+    "qemu-guest-agent",
+    "hyperv-daemons",
+    "nautilus-dropbox",
+)
+
+
+def check_favourite(name):
+    """A package name the Favourite Apps page is allowed to act on.
+
+    Deliberately a DIFFERENT function from check_package(). That one refuses
+    anything not published in a Kodachi index, and every name here is a Debian
+    package that will never appear in one, so reusing it would refuse all
+    eighteen. Two allowlists, because there are two populations.
+    """
+    no_line_breaks("the package name", name)
+    if not NAME_RE.match(name or ""):
+        die("%r is not a Debian package name" % name)
+    if name not in FAVOURITE_PACKAGES:
+        die("%s is not a Kodachi favourite application. Refusing: this verb "
+            "installs only the packages listed on the Favourite Apps page."
+            % name)
+    return name
+
+
+def verb_app_install(packages):
+    """Plain apt install from whatever repository already offers the package.
+
+    NO CHANNEL, NO PIN, and that is the point. verb_install() targets
+    `package/suite` to pin a Kodachi package to a Kodachi channel; every name
+    here comes from Debian, where that target does not exist and the pin would
+    be meaningless. Writing one would also make a Debian package look, to the
+    rest of this window, like something Kodachi publishes.
+    """
+    code = trusted_update()
+    if code != 0:
+        return code
+    return apt(*(["-y", "install"] + list(packages)))
+
+
+def verb_app_remove(packages):
+    """Remove, never purge.
+
+    A purge would take the user's configuration with it, and this page's own
+    button says "Remove". apt-get remove leaves config files exactly where the
+    equivalent command in a terminal would.
+    """
+    return apt(*(["-y", "remove"] + list(packages)))
+
+
+def main(argv):
+    if not argv:
+        sys.stderr.write(USAGE)
+        return 2
+    # THE FLAG IS CONSUMED FIRST AND ONLY IN FIRST POSITION, so it can never be
+    # confused with a verb or swallow one of a verb's own arguments.
+    speak_protocol = bool(argv) and argv[0] == PROTOCOL_FLAG
+    if speak_protocol:
+        argv = argv[1:]
+        if not argv:
+            sys.stderr.write(USAGE)
+            return 2
+    verb = argv[0]
+    rest = argv[1:]
+
+    if verb in ("-h", "--help", "help"):
+        sys.stdout.write(USAGE)
+        return 0
+    if os.geteuid() != 0:
+        die("must run as root, it is meant to be started by pkexec", 3)
+
+    # STARTUP SENTINEL, AND IT IS A CORRECTNESS FIX IN THE WINDOW, NOT A LOG
+    # LINE. The window reads this pipe to decide why a run produced nothing.
+    # Silence alone CANNOT distinguish "pkexec is still waiting for a password"
+    # from "the helper authenticated and is alive but has not spoken yet", and
+    # the second is a real state: the flock below can block for
+    # DPKG_LOCK_TIMEOUT while unattended-upgrades finishes, and the trust and
+    # captured-tool paths do work before their first say(). Reporting the
+    # second as the first tells the user nothing ran when something did, which
+    # is the same false-diagnosis class the window was just fixed for, and it
+    # is the more dangerous direction because "nothing ran" invites a retry of
+    # a mutating operation.
+    #
+    # Emitted BEFORE the lock rather than after it, deliberately and against
+    # the obvious reading of "after lock acquisition": waiting on the lock is
+    # precisely the long silent interval that would otherwise be misreported,
+    # so the window must already know the helper is alive by then.
+    #
+    # <agent>, 2026-08-30, inspector finding c804ba72.
+    # THE VERB IS FILTERED, NOT INTERPOLATED RAW. `verb` is argv[0] and this
+    # line runs BEFORE the dispatch that rejects an unknown one, so an argv
+    # carrying a newline would inject a second attacker-chosen line into a
+    # channel that two different consumers parse: the window's
+    # `consume_progress` and the dock transcript. No privilege boundary is
+    # crossed, since the caller already authenticated to root and owns its own
+    # argv, but a protocol channel should not be writable by its input.
+    # Filtering to the character class real verbs use costs nothing and makes
+    # the line unforgeable regardless of what argv holds.
+    if speak_protocol:
+        say(HELPER_STARTED + "".join(c for c in verb if c in VERB_SAFE))
+
+    # THE LOCK IS TAKEN HERE, ONCE, FOR EVERY VERB THAT CAN CHANGE ANYTHING.
+    # Held in a local whose lifetime is this function, so it is released by
+    # process exit on every path including die() and an unhandled exception.
+    # READ_ONLY_VERBS is an allowlist and not a denylist on purpose: a verb
+    # added later is serialised by default, and the failure mode of getting
+    # that wrong is a redundant wait rather than two concurrent apt runs.
+    # THE HANDLE MUST OUTLIVE THIS BLOCK, AND A LOCAL DOES NOT. flock is
+    # released when the file object is CLOSED, and CPython closes it as soon as
+    # the last reference goes away. A local named `lock` that falls out of use
+    # here, or is `del`d to signal "I am done with the name", drops the refcount
+    # to zero and unlocks the file WHILE THE OPERATION RUNS, which is worse than
+    # having no lock at all: it looks locked, it is not, and it fails only under
+    # the concurrency it exists to prevent. Binding it to the module keeps it
+    # alive until the interpreter exits.
+    # ONLY VERBS THAT EXIST. "preview" and "state" were listed here and are
+    # not implemented anywhere: no dispatch arm, no verb_ function, not in
+    # USAGE. Harmless today because both fall through to die("unknown verb"),
+    # but they INVERT the property the comment above claims. The allowlist is
+    # written so that a verb added later is serialised BY DEFAULT; a name
+    # already sitting in it means a future `state` verb would be born
+    # unlocked, and silently so, which is the one direction this design is
+    # meant to make impossible.
+    READ_ONLY_VERBS = ("dev-credentials-status", "snapshot-list")
+    global _LOCK_HANDLE
+    if verb not in READ_ONLY_VERBS:
+        _LOCK_HANDLE = take_exclusive_lock()
+
+    if verb == "update":
+        if rest:
+            die("update takes no arguments")
+        return verb_update()
+    if verb == "upgrade":
+        if rest:
+            die("upgrade takes no arguments")
+        return verb_upgrade()
+    if verb == "full-upgrade":
+        if rest:
+            die("full-upgrade takes no arguments")
+        return verb_full_upgrade()
+    if verb == "fix-broken":
+        if rest:
+            die("fix-broken takes no arguments")
+        return verb_fix_broken()
+    if verb == "autoremove":
+        if rest:
+            die("autoremove takes no arguments")
+        return verb_autoremove()
+    if verb == "clean":
+        if rest:
+            die("clean takes no arguments")
+        return verb_clean()
+    if verb == "system-clear":
+        if rest:
+            die("system-clear takes no arguments")
+        return verb_system_clear()
+
+    if verb == "snapshot-list":
+        if rest:
+            die("snapshot-list takes no arguments")
+        return verb_snapshot_list()
+    if verb == "snapshot-create":
+        if rest:
+            die("snapshot-create takes no arguments")
+        return verb_snapshot_create()
+    if verb == "snapshot-restore-latest":
+        # NO ARGUMENTS, BY DESIGN, and the check is here as well as in the verb.
+        # The name of the snapshot to restore is resolved by the helper from
+        # timeshift's own output; accepting one from the window would put an
+        # unprivileged caller's string into the argv of a command that rewrites
+        # the root filesystem as root.
+        if rest:
+            die("snapshot-restore-latest takes no arguments: the target is the "
+                "newest snapshot and is chosen by this helper, not by the "
+                "caller")
+        return verb_snapshot_restore_latest()
+
+    if verb == "dev-credentials":
+        if rest:
+            die("dev-credentials takes no arguments: the login and password "
+                "are read from stdin so they never reach argv")
+        return verb_dev_credentials()
+    if verb == "dev-credentials-clear":
+        if rest:
+            die("dev-credentials-clear takes no arguments")
+        return verb_dev_credentials_clear()
+    if verb == "dev-credentials-status":
+        if rest:
+            die("dev-credentials-status takes no arguments")
+        present = dev_credentials_present()
+        say("dev credentials are %s"
+            % ("stored in %s" % AUTH_FILE if present else "not stored"))
+        return 0 if present else 1
+
+    if verb == "enable":
+        if len(rest) != 1:
+            die("enable needs a channel")
+        return verb_enable(check_channel(rest[0]))
+    if verb == "disable":
+        if len(rest) != 1:
+            die("disable needs a channel")
+        return verb_disable(check_channel(rest[0]))
+
+    if verb in ("source-enable", "source-disable"):
+        if len(rest) != 2:
+            die("%s needs a location and one source file name" % verb)
+        return verb_source_state(rest[0], rest[1],
+                                 enable=(verb == "source-enable"))
+    if verb == "source-remove":
+        if len(rest) != 2:
+            die("source-remove needs a location and one source file name")
+        return verb_source_remove(rest[0], rest[1])
+    if verb == "source-add":
+        if len(rest) != 6:
+            die("source-add needs a file name, types, URI, suite, components "
+                "and a keyring name or the word none")
+        return verb_source_add(rest[0], rest[1], rest[2], rest[3], rest[4],
+                               rest[5])
+
+    allowed = known_packages()
+
+    if verb in ("install", "reinstall"):
+        if len(rest) != 2:
+            die("%s needs a package and a channel" % verb)
+        package = check_package(rest[0], allowed)
+        channel = check_channel(rest[1])
+        return verb_install(package, channel, reinstall=(verb == "reinstall"))
+    if verb == "remove":
+        if len(rest) != 1:
+            die("remove needs exactly one package")
+        return verb_remove(check_package(rest[0], allowed))
+    if verb in ("hold", "unhold"):
+        if len(rest) != 1:
+            die("%s needs exactly one package" % verb)
+        return verb_hold(check_package(rest[0], allowed),
+                         hold=(verb == "hold"))
+    if verb == "switch":
+        if len(rest) != 2:
+            die("switch needs a package and a channel")
+        package = check_package(rest[0], allowed)
+        channel = check_channel(rest[1])
+        return verb_switch(package, channel)
+    if verb == "system":
+        if len(rest) != 1:
+            die("system needs a channel")
+        return verb_system(check_channel(rest[0]), allowed)
+
+    if verb in ("app-install", "app-remove"):
+        if not rest:
+            die("%s needs at least one package" % verb)
+        packages = [check_favourite(name) for name in rest]
+        if verb == "app-install":
+            return verb_app_install(packages)
+        return verb_app_remove(packages)
+
+    die("unknown verb %r\n%s" % (verb, USAGE))
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except KeyboardInterrupt:
+        sys.exit(130)

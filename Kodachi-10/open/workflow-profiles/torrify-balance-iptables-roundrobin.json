@@ -1,0 +1,45 @@
+{
+  "schema_version": "1.1",
+  "id": "torrify-balance-iptables-roundrobin",
+  "name": "torrify-balance-iptables-roundrobin",
+  "description": "Load-balanced Tor torrification with iptables using ROUND-ROBIN algorithm: Distributes traffic evenly across all Tor instances in sequential order.",
+  "metadata": {
+    "created": "2025-10-30T00:00:00Z",
+    "modified": "2025-10-30T00:00:00Z",
+    "version": "1.0"
+  },
+  "global_settings": {
+    "kill_policy": "stop",
+    "continue_policy": false,
+    "max_log_size": 10485760,
+    "default_timeout": 300,
+    "working_dir": "."
+  },
+  "includes": [
+    "base-tor-load-balance"
+  ],
+  "parameters": {
+    "firewall": {
+      "type": "choice",
+      "description": "Firewall backend",
+      "options": [
+        "iptables",
+        "nftables"
+      ],
+      "default": "iptables",
+      "required": false
+    },
+    "balancing_mode": {
+      "type": "choice",
+      "description": "Load balancing algorithm",
+      "options": [
+        "consistent-hashing",
+        "round-robin",
+        "weighted"
+      ],
+      "default": "round-robin",
+      "required": false
+    }
+  },
+  "steps": []
+}

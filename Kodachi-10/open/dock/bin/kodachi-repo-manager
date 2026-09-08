@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Kodachi Repository Manager - launcher
+#
+# SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.1
+# Copyright (c) 2013-2026 Warith Al Maawali
+#
+# This file is part of Kodachi OS.
+# For full license terms, see LICENSE.md or visit:
+# https://kodachi.cloud/docs/license.html
+#
+# Commercial or organizational use requires a written license.
+# Contact: warith@digi77.com
+#
+# Description:
+# The name the dock cell and the XFCE panel entry both call. It replaces three
+# launchers that each opened a terminal:
+#
+#     xfce4-terminal -e /usr/local/bin/kodachi-system-update
+#     xfce4-terminal -e /usr/local/bin/kodachi-binary-install
+#     xfce4-terminal -e /usr/local/bin/kodachi-deps-install
+#
+# Nothing here needs a terminal, so nothing here opens one. Errors that used to
+# scroll past in a terminal that closed on exit now land in the window's own
+# command log, where they stay readable.
+#
+# The two installers themselves are NOT removed. kodachi-binary-install is the
+# tarball pack installer and remains the correct route on Fedora, Arch and any
+# other system with no apt.
+#
+# Author: Warith Al Maawali
+# Version: 1.0.0
+# Last updated: 2026-08-20
+
+set -euo pipefail
+
+readonly APP="/usr/local/libexec/kodachi/kodachi-repo-manager"
+
+if [ ! -x "$APP" ]; then
+    MESSAGE="The Repository Manager is not installed at ${APP}."
+    if command -v zenity >/dev/null 2>&1; then
+        zenity --error --title="Kodachi Repository Manager" --text="$MESSAGE"
+    else
+        printf '%s\n' "$MESSAGE" >&2
+    fi
+    exit 1
+fi
+
+# The GTK application owns one well-known session-bus name. A second launcher
+# activation is delivered to that process, which presents its existing window;
+# no optional wmctrl dependency or title-string race is involved.
+exec "$APP" "$@"

@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "commands": {
+    "hostname_short": {
+      "command": "hostname",
+      "args": [
+        "-s"
+      ],
+      "default": "Unknown",
+      "timeout_ms": 800,
+      "ttl_seconds": 2,
+      "requires_sudo": false
+    },
+    "timezone_name": {
+      "command": "timedatectl",
+      "args": [
+        "show",
+        "-p",
+        "Timezone",
+        "--value"
+      ],
+      "default": "Unknown",
+      "timeout_ms": 1000,
+      "ttl_seconds": 2,
+      "requires_sudo": false
+    },
+    "uptime_pretty": {
+      "command": "uptime",
+      "args": [
+        "-p"
+      ],
+      "default": "N/A",
+      "timeout_ms": 1200,
+      "ttl_seconds": 15,
+      "requires_sudo": false
+    }
+  }
+}

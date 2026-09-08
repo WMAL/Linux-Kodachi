@@ -1,0 +1,690 @@
+#!/bin/bash
+# Kodachi Dock Control - rootless Podman container manager
+#
+# SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.1
+# Copyright (c) 2013-2026 Warith Al Maawali
+#
+# This file is part of Kodachi OS.
+# For full license terms, see LICENSE.md or visit:
+# https://kodachi.cloud/docs/license.html
+#
+# Commercial or organizational use requires a written license.
+# Contact: warith@digi77.com
+#
+
+# Fixed-profile rootless Podman manager for the Kodachi Cairo Containers group.
+
+set -euo pipefail
+
+readonly IMAGE_REF="localhost/kodachi/workbench:13.6-slim"
+readonly PERSISTENT_NAME="kodachi-workbench"
+# PID 1 MUST INSTALL A SIGTERM HANDLER, OR THE KERNEL DISCARDS THE SIGNAL.
+# The workbench used to idle on `sleep infinity`, which installs no handler, and a
+# process with no handler is exempt from the default action WHEN IT IS PID 1. So
+# `podman stop` waited its full 10 seconds and then resorted to SIGKILL on every
+# stop-all and every confirmed reset-workbench, and the container always died
+# Exited (137). Measured on the shipped image, real store, <lab-host>:
+#     sleep infinity                       stop=10.32s  exit=137
+#     this trap-based idle loop            stop= 0.44s  exit=0
+# `--init` is NOT the fix here even though it is the usual one: catatonit is absent
+# from this product (no /usr/libexec/podman/catatonit, no /usr/bin/catatonit, and
+# containers.conf ships init_path commented out), so `--init` would turn a slow stop
+# into a container that refuses to be created at all.
+# THE DISPOSABLE PROFILE HAS THE IDENTICAL DEFECT. I first wrote here that it does
+# not, on a 0.23s/exit=0 reading, and that reading was wrong: it cannot have been a
+# live container, because `--rm` removes an exited one and stopping an absent
+# container returns instantly at exit 0. Re-measured with `podman ps` showing the
+# container Up immediately before the stop, and with the old sleep-infinity
+# workbench in the SAME run as a positive control that the rig can see the failure:
+#     interactive /bin/bash, --stop-signal default   stop=10.23s  exit=137
+#     interactive /bin/bash, --stop-signal=SIGHUP    stop= 0.22s  exit=129
+#     interactive /bin/bash, --stop-signal=SIGINT    stop=10.19s  exit=137
+#     the trap idle loop above, same rig            stop= 0.15s  exit=0
+# An INTERACTIVE bash does not handle SIGTERM, it IGNORES it (SigIgn 0x384004 has
+# the SIGTERM bit set; a non-interactive `bash -c` reads 0x0). Ignoring is the same
+# discard condition as installing no handler, not a milder one. Independently
+# re-derived by <agent> with `unshare -Urpf --mount-proc`, no podman
+# involved. It also ignores SIGINT, which is why --stop-signal=SIGINT changes
+# nothing; SIGHUP is the one an interactive shell acts on.
+# This is NOT cosmetic. common_security_args puts $MANAGED_LABEL on the disposable
+# too, and stop_all selects on exactly that label, so Stop All matches the
+# operator's LIVE disposable shell, hangs 10s, SIGKILLs it, and `--rm` then deletes
+# it with whatever was in it. The workbench at least survives as a stopped
+# container. A trap is not available here because the user drives this shell
+# interactively, so the signal is changed instead of the handler.
+readonly PERSISTENT_IDLE_COMMAND='trap "exit 0" TERM INT; while :; do sleep 86400 & wait $!; done'
+readonly MANAGED_LABEL="io.kodachi.managed=true"
+readonly PROFILE_LABEL_KEY="io.kodachi.profile"
+ASSET_DIR="/usr/share/kodachi/containers"
+TEST_TRUST_ROOT=""
+if [[ -n "${KODACHI_CONTAINER_TEST_ASSET_DIR:-}" ]]; then
+    [[ "$(/usr/bin/readlink -f "$0")" != "/usr/local/libexec/kodachi/kodachi-container-manager" ]] || {
+        printf 'Kodachi Containers: test asset override is unavailable in the installed manager\n' >&2
+        exit 1
+    }
+    ASSET_DIR="$KODACHI_CONTAINER_TEST_ASSET_DIR"
+    TEST_TRUST_ROOT="$(/usr/bin/realpath -m -- "${ASSET_DIR%/*}")"
+fi
+readonly ASSET_DIR TEST_TRUST_ROOT
+readonly ARCHIVE="${ASSET_DIR}/kodachi-workbench.oci.tar"
+readonly METADATA="${ASSET_DIR}/kodachi-workbench.json"
+readonly CONTAINERS_CONF_FILE="${ASSET_DIR}/containers.conf"
+STORAGE_CONF_FILE="/usr/share/containers/storage.conf"
+if [[ -n "${KODACHI_CONTAINER_TEST_ASSET_DIR:-}" ]]; then
+    STORAGE_CONF_FILE="${ASSET_DIR}/storage.conf"
+fi
+readonly STORAGE_CONF_FILE
+readonly SAFE_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+PODMAN_BIN="/usr/bin/podman"
+ID_BIN="/usr/bin/id"
+GETENT_BIN="/usr/bin/getent"
+ZENITY_BIN="/usr/bin/zenity"
+if [[ -n "${KODACHI_CONTAINER_TEST_ASSET_DIR:-}" ]]; then
+    PODMAN_BIN="${KODACHI_CONTAINER_TEST_PODMAN_BIN:-$PODMAN_BIN}"
+    ID_BIN="${KODACHI_CONTAINER_TEST_ID_BIN:-$ID_BIN}"
+    GETENT_BIN="${KODACHI_CONTAINER_TEST_GETENT_BIN:-$GETENT_BIN}"
+    ZENITY_BIN="${KODACHI_CONTAINER_TEST_ZENITY_BIN:-$ZENITY_BIN}"
+fi
+RUNTIME_UID=""
+RUNTIME_USER=""
+RUNTIME_HOME=""
+RUNTIME_DIR=""
+VERIFIED_IMAGE_ID=""
+PERSISTENT_CONTAINER_ID=""
+TEST_ENV_ARGS=()
+if [[ -n "${KODACHI_CONTAINER_TEST_ASSET_DIR:-}" ]]; then
+    for variable in \
+        PODMAN_LOG PODMAN_CONF_LOG PODMAN_ENV_LOG PODMAN_STATE \
+        STUB_ROOTLESS STUB_IMAGE_DIGEST STUB_IMAGE_ID \
+        STUB_POST_LOAD_IMAGE_DIGEST STUB_POST_LOAD_IMAGE_ID \
+        STUB_LOAD_RC STUB_CONTAINER_LABELS STUB_CONTAINER_ID STUB_PERSISTENT_RUNNING \
+        STUB_PERSISTENT_CMD STUB_RUNNING_ROWS STUB_EMPTY_PS \
+        STUB_GRAPH_ROOT STUB_RUN_ROOT STUB_STORAGE_CONFIG; do
+        if declare -p "$variable" &>/dev/null; then
+            TEST_ENV_ARGS+=("$variable=${!variable}")
+        fi
+    done
+fi
+
+die() {
+    printf 'Kodachi Containers: %s\n' "$*" >&2
+    exit 1
+}
+
+refuse_ambient_overrides() {
+    local variable
+    for variable in \
+        CONTAINERS_CONF_OVERRIDE \
+        CONTAINER_CONNECTION \
+        CONTAINER_HOST \
+        CONTAINER_PROXY \
+        PODMAN_USERNS \
+        CONTAINERS_STORAGE_CONF \
+        STORAGE_DRIVER \
+        STORAGE_OPTS \
+        REGISTRY_AUTH_FILE \
+        DOCKER_CONFIG \
+        CONTAINERS_AUTH_FILE \
+        CONTAINERS_REGISTRIES_CONF \
+        CONTAINERS_POLICY; do
+        [[ -z "${!variable:-}" ]] \
+            || die "environment override '$variable' is refused for the fixed Kodachi profile"
+    done
+}
+
+validate_trusted_path_chain() {
+    local path="$1"
+    local description="$2"
+    local ownership_policy="${3:-root-or-user}"
+    local trust_boundary="${4:-${TEST_TRUST_ROOT:-/}}"
+    local cursor owner mode mode_value
+
+    [[ ! -L "$path" ]] || die "$description path contains a symlink: $path"
+    [[ "$path" == /* && "$(/usr/bin/realpath -m -- "$path")" == "$path" ]] \
+        || die "$description path is not canonical and absolute: $path"
+    [[ "$trust_boundary" == /* && "$(/usr/bin/realpath -m -- "$trust_boundary")" == "$trust_boundary" ]] \
+        || die "internal trust boundary is not canonical and absolute"
+    if [[ "$trust_boundary" != "/" &&
+          "$path" != "$trust_boundary" &&
+          "$path" != "$trust_boundary"/* ]]; then
+        die "$description path escapes its test trust boundary: $path"
+    fi
+    cursor="$path"
+    while :; do
+        [[ ! -L "$cursor" ]] || die "$description path contains a symlink: $cursor"
+        [[ -e "$cursor" ]] || die "$description path does not exist: $cursor"
+        owner="$(/usr/bin/stat -c '%u' -- "$cursor")" || die "could not inspect $description owner: $cursor"
+        mode="$(/usr/bin/stat -c '%a' -- "$cursor")" || die "could not inspect $description mode: $cursor"
+        mode_value=$((8#$mode))
+        case "$ownership_policy" in
+            root-only)
+                [[ "$owner" == "0" ]] \
+                    || die "$description path is not root-owned: $cursor"
+                ;;
+            root-or-user)
+                [[ "$owner" == "0" || "$owner" == "$RUNTIME_UID" ]] \
+                    || die "$description path has an untrusted owner: $cursor"
+                ;;
+            *)
+                die "internal path ownership policy error"
+                ;;
+        esac
+        if (( (mode_value & 0022) != 0 )); then
+            (( owner == 0 && (mode_value & 01000) != 0 )) \
+                || die "$description path is group/world writable: $cursor"
+        fi
+        [[ "$cursor" == "$trust_boundary" ]] && break
+        cursor="${cursor%/*}"
+        [[ -n "$cursor" ]] || cursor="/"
+    done
+}
+
+validate_trusted_file() {
+    local path="$1"
+    local description="$2"
+    local trust_boundary="${3:-${TEST_TRUST_ROOT:-/}}"
+    validate_trusted_path_chain "$path" "$description" root-or-user "$trust_boundary"
+    [[ -f "$path" && ! -L "$path" ]] || die "$description is not a regular file: $path"
+}
+
+validate_fixed_policy() {
+    if [[ -n "${KODACHI_CONTAINER_TEST_ASSET_DIR:-}" ]]; then
+        validate_trusted_file "$CONTAINERS_CONF_FILE" "fixed Podman policy" "$TEST_TRUST_ROOT"
+        return
+    fi
+    validate_trusted_path_chain "$CONTAINERS_CONF_FILE" "fixed Podman policy" root-only /
+    [[ -f "$CONTAINERS_CONF_FILE" && ! -L "$CONTAINERS_CONF_FILE" ]] \
+        || die "fixed Podman policy is not a regular file: $CONTAINERS_CONF_FILE"
+}
+
+validate_fixed_storage_policy() {
+    if [[ -n "${KODACHI_CONTAINER_TEST_ASSET_DIR:-}" ]]; then
+        validate_trusted_file "$STORAGE_CONF_FILE" "fixed Podman storage policy" "$TEST_TRUST_ROOT"
+        return
+    fi
+    validate_trusted_path_chain "$STORAGE_CONF_FILE" "fixed Podman storage policy" root-only /
+    [[ -f "$STORAGE_CONF_FILE" && ! -L "$STORAGE_CONF_FILE" ]] \
+        || die "fixed Podman storage policy is not a regular file: $STORAGE_CONF_FILE"
+}
+
+validate_user_storage_dir() {
+    local path="$1"
+    local description="$2"
+    local owner mode mode_value
+    validate_trusted_path_chain "$path" "$description" root-or-user "${TEST_TRUST_ROOT:-/}"
+    [[ -d "$path" && ! -L "$path" ]] || die "$description is not a directory: $path"
+    owner="$(/usr/bin/stat -c '%u' -- "$path")"
+    mode="$(/usr/bin/stat -c '%a' -- "$path")"
+    mode_value=$((8#$mode))
+    [[ "$owner" == "$RUNTIME_UID" && $((mode_value & 0200)) -ne 0 ]] \
+        || die "$description must be owned and writable by UID $RUNTIME_UID: $path"
+}
+
+normalize_image_id() {
+    local image_id="$1"
+    [[ "$image_id" =~ ^(sha256:)?[0-9a-f]{64}$ ]] || return 1
+    printf 'sha256:%s\n' "${image_id#sha256:}"
+}
+
+podman_env() {
+    /usr/bin/env -i \
+        "${TEST_ENV_ARGS[@]}" \
+        HOME="$RUNTIME_HOME" \
+        USER="$RUNTIME_USER" \
+        LOGNAME="$RUNTIME_USER" \
+        XDG_RUNTIME_DIR="$RUNTIME_DIR" \
+        PATH="$SAFE_PATH" \
+        TERM="${TERM:-dumb}" \
+        LANG="C.UTF-8" \
+        CONTAINERS_CONF="$CONTAINERS_CONF_FILE" \
+        CONTAINERS_STORAGE_CONF="$STORAGE_CONF_FILE" \
+        "$@"
+}
+
+podman_local() {
+    podman_env "$PODMAN_BIN" --remote=false "$@"
+}
+
+podman_exec_local() {
+    exec /usr/bin/env -i \
+        "${TEST_ENV_ARGS[@]}" \
+        HOME="$RUNTIME_HOME" \
+        USER="$RUNTIME_USER" \
+        LOGNAME="$RUNTIME_USER" \
+        XDG_RUNTIME_DIR="$RUNTIME_DIR" \
+        PATH="$SAFE_PATH" \
+        TERM="${TERM:-dumb}" \
+        LANG="C.UTF-8" \
+        CONTAINERS_CONF="$CONTAINERS_CONF_FILE" \
+        CONTAINERS_STORAGE_CONF="$STORAGE_CONF_FILE" \
+        "$PODMAN_BIN" --remote=false "$@"
+}
+
+need_rootless_podman() {
+    local passwd_entry passwd_user passwd_uid passwd_home inherited_home
+    [[ -x "$ID_BIN" ]] || die "the fixed id executable is unavailable"
+    [[ -x "$GETENT_BIN" ]] || die "the fixed passwd lookup executable is unavailable"
+    RUNTIME_UID="$($ID_BIN -u)"
+    [[ "$RUNTIME_UID" -ne 0 ]] || die "root execution is refused; run this as the desktop user"
+    passwd_entry="$($GETENT_BIN passwd "$RUNTIME_UID")" \
+        || die "could not resolve UID $RUNTIME_UID in the passwd database"
+    IFS=: read -r passwd_user _ passwd_uid _ _ passwd_home _ <<<"$passwd_entry"
+    [[ "$passwd_uid" == "$RUNTIME_UID" && -n "$passwd_user" && "$passwd_home" == /* ]] \
+        || die "passwd database returned an invalid rootless identity"
+    RUNTIME_USER="$passwd_user"
+    RUNTIME_HOME="$(/usr/bin/realpath -m -- "$passwd_home")"
+    inherited_home="$(/usr/bin/realpath -m -- "${HOME:-/nonexistent}")"
+    [[ "$inherited_home" == "$RUNTIME_HOME" ]] \
+        || die "inherited HOME does not match the passwd database for UID $RUNTIME_UID"
+    RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$RUNTIME_UID}"
+    [[ -x "$PODMAN_BIN" ]] || die "Podman is not installed at the fixed local path"
+    [[ -x /usr/bin/jq ]] || die "jq is not installed"
+    refuse_ambient_overrides
+    validate_fixed_policy
+    validate_fixed_storage_policy
+    validate_user_storage_dir "$RUNTIME_HOME" "rootless home"
+    validate_user_storage_dir "$RUNTIME_DIR" "rootless runtime directory"
+
+    info_json="$(podman_local info --format json 2>/dev/null)" \
+        || die "rootless Podman is unavailable; check /etc/subuid and /etc/subgid"
+    /usr/bin/jq -e '.host.security.rootless == true' >/dev/null <<<"$info_json" \
+        || die "Podman did not report rootless mode"
+    graph_root="$(/usr/bin/jq -er '.store.graphRoot | select(type == "string" and length > 0)' <<<"$info_json")" \
+        || die "Podman did not report a graphRoot"
+    run_root="$(/usr/bin/jq -er '.store.runRoot | select(type == "string" and length > 0)' <<<"$info_json")" \
+        || die "Podman did not report a runRoot"
+    storage_config="$(/usr/bin/jq -er '.store.configFile | select(type == "string" and length > 0)' <<<"$info_json")" \
+        || die "Podman did not report a storage configuration file"
+    [[ "$storage_config" == "$STORAGE_CONF_FILE" ]] \
+        || die "Podman did not use the fixed storage policy"
+    validate_user_storage_dir "$graph_root" "Podman graphRoot"
+    validate_user_storage_dir "$run_root" "Podman runRoot"
+}
+
+inspect_verified_local_image() {
+    local failure_message="$1"
+    local inspect_json actual_manifest raw_image_id image_id
+    inspect_json="$(podman_local image inspect --format '{{json .}}' "$IMAGE_REF" 2>/dev/null)" \
+        || die "could not inspect the local workbench image"
+    actual_manifest="$(/usr/bin/jq -er '.Digest | select(test("^sha256:[0-9a-f]{64}$"))' <<<"$inspect_json")" \
+        || die "local workbench image has no valid manifest digest"
+    raw_image_id="$(/usr/bin/jq -er '.Id | select(type == "string")' <<<"$inspect_json")" \
+        || die "local workbench image has no immutable image ID"
+    image_id="$(normalize_image_id "$raw_image_id")" \
+        || die "local workbench image has no immutable image ID"
+    [[ "$actual_manifest" == "$expected_manifest" ]] || die "$failure_message"
+    VERIFIED_IMAGE_ID="$image_id"
+}
+
+ensure_image() {
+    [[ -r "$ARCHIVE" ]] || die "bundled OCI archive is missing: $ARCHIVE"
+    [[ -r "$METADATA" ]] || die "bundled OCI metadata is missing: $METADATA"
+
+    metadata_ref="$(/usr/bin/jq -er '.image_reference' "$METADATA" 2>/dev/null)" \
+        || die "bundled OCI metadata is invalid"
+    expected_sha="$(/usr/bin/jq -er '.archive_sha256 | select(test("^[0-9a-f]{64}$"))' "$METADATA" 2>/dev/null)" \
+        || die "bundled OCI metadata has no valid archive SHA-256"
+    expected_manifest="$(/usr/bin/jq -er '.source_manifest_digest | select(test("^sha256:[0-9a-f]{64}$"))' "$METADATA" 2>/dev/null)" \
+        || die "bundled OCI metadata has no valid source manifest digest"
+    [[ "$metadata_ref" == "$IMAGE_REF" ]] \
+        || die "bundled OCI metadata names unexpected image '$metadata_ref'"
+
+    sha_output="$(/usr/bin/sha256sum -- "$ARCHIVE")" \
+        || die "could not hash the bundled OCI archive"
+    actual_sha="${sha_output%% *}"
+    [[ "$actual_sha" == "$expected_sha" ]] \
+        || die "bundled OCI archive failed its SHA-256 integrity check"
+
+    if podman_local image exists "$IMAGE_REF"; then
+        inspect_verified_local_image "local image tag collision: '$IMAGE_REF' does not match the pinned manifest"
+        return 0
+    fi
+
+    podman_local load --input "$ARCHIVE" >/dev/null \
+        || die "Podman could not load the bundled OCI archive"
+    podman_local image exists "$IMAGE_REF" \
+        || die "loaded archive did not provide the expected image '$IMAGE_REF'"
+    inspect_verified_local_image "loaded workbench image does not match the pinned manifest"
+}
+
+common_security_args() {
+    SECURITY_ARGS=(
+        --pull=never
+        --network=none
+        --hosts-file=none
+        --http-proxy=false
+        --image-volume=ignore
+        --ipc=private
+        --pid=private
+        --uts=private
+        --cgroupns=private
+        --userns=nomap
+        --cap-drop=all
+        --security-opt=no-new-privileges
+        --pids-limit=256
+        --memory=1536m
+        --cpus=2
+        --log-driver=none
+        --label "$MANAGED_LABEL"
+    )
+}
+
+create_persistent_if_missing() {
+    if podman_local container exists "$PERSISTENT_NAME"; then
+        require_persistent_ownership
+        return 0
+    fi
+    common_security_args
+    podman_local create \
+        --name "$PERSISTENT_NAME" \
+        "${SECURITY_ARGS[@]}" \
+        --label "${PROFILE_LABEL_KEY}=persistent" \
+        --hostname kodachi-workbench \
+        --env HOME=/root \
+        "$VERIFIED_IMAGE_ID" /bin/bash -c "$PERSISTENT_IDLE_COMMAND" >/dev/null
+    require_persistent_ownership
+}
+
+require_persistent_ownership() {
+    local inspect_json labels_json raw_container_image container_image container_id
+    inspect_json="$(podman_local inspect --format '{{json .}}' "$PERSISTENT_NAME" 2>/dev/null)" \
+        || die "could not inspect existing container '$PERSISTENT_NAME'"
+    labels_json="$(/usr/bin/jq -c '.Config.Labels' <<<"$inspect_json")" \
+        || die "could not inspect labels for existing container '$PERSISTENT_NAME'"
+    /usr/bin/jq -e \
+        '."io.kodachi.managed" == "true" and ."io.kodachi.profile" == "persistent"' \
+        >/dev/null <<<"$labels_json" \
+        || die "container name collision: '$PERSISTENT_NAME' is not the Kodachi persistent workbench"
+    raw_container_image="$(/usr/bin/jq -er '.Image | select(type == "string")' <<<"$inspect_json")" \
+        || die "existing container '$PERSISTENT_NAME' has no immutable image identity"
+    container_image="$(normalize_image_id "$raw_container_image")" \
+        || die "existing container '$PERSISTENT_NAME' has no immutable image identity"
+    [[ "$container_image" == "$VERIFIED_IMAGE_ID" ]] \
+        || die "container image collision: '$PERSISTENT_NAME' does not use the verified Kodachi image"
+    container_id="$(/usr/bin/jq -er '.Id | select(test("^[0-9a-f]{64}$"))' <<<"$inspect_json")" \
+        || die "existing container '$PERSISTENT_NAME' has no immutable container ID"
+    PERSISTENT_CONTAINER_ID="$container_id"
+    # THE FIX ABOVE DOES NOT REACH A WORKBENCH THAT ALREADY EXISTS, and nothing
+    # would ever say so. This function's whole purpose is to REUSE the container,
+    # so an operator who created one before the graceful-stop fix keeps `sleep
+    # infinity` as PID 1 forever and keeps paying the 10s + SIGKILL on every Stop
+    # All. NON-FATAL BY DESIGN: `die` here would brick a working workbench over a
+    # ten-second annoyance, and the recreate is the operator's call, not ours,
+    # because the container is the thing whose entire point is persistence.
+    if ! /usr/bin/jq -e --arg cmd "$PERSISTENT_IDLE_COMMAND" \
+            '(.Config.Cmd // []) | index($cmd) != null' >/dev/null <<<"$inspect_json"; then
+        printf 'Notice: this workbench predates the graceful-stop fix, so stopping it still takes about 10 seconds and ends in SIGKILL.\n' >&2
+        printf '        Run "reset-workbench" when convenient to recreate it; nothing else is affected.\n' >&2
+    fi
+}
+
+require_managed_image() {
+    local requested_id="$1"
+    local inspect_json actual_id raw_container_image container_image
+    inspect_json="$(podman_local inspect --format '{{json .}}' "$requested_id" 2>/dev/null)" \
+        || die "could not inspect managed container '$requested_id'"
+    /usr/bin/jq -e '.Config.Labels."io.kodachi.managed" == "true"' >/dev/null <<<"$inspect_json" \
+        || die "managed container label changed before start: $requested_id"
+    raw_container_image="$(/usr/bin/jq -er '.Image | select(type == "string")' <<<"$inspect_json")" \
+        || die "managed container '$requested_id' has no immutable image identity"
+    container_image="$(normalize_image_id "$raw_container_image")" \
+        || die "managed container '$requested_id' has no immutable image identity"
+    [[ "$container_image" == "$VERIFIED_IMAGE_ID" ]] \
+        || die "managed container '$requested_id' does not use the verified Kodachi image"
+    actual_id="$(/usr/bin/jq -er '.Id | select(test("^[0-9a-f]{64}$"))' <<<"$inspect_json")" \
+        || die "managed container '$requested_id' has no immutable container ID"
+    printf '%s\n' "$actual_id"
+}
+
+disposable_shell() {
+    ensure_image
+    common_security_args
+    disposable_name="kodachi-disposable-$$-${RANDOM}"
+    podman_exec_local run --rm --interactive --tty \
+        --name "$disposable_name" \
+        --stop-signal=SIGHUP \
+        "${SECURITY_ARGS[@]}" \
+        --label "${PROFILE_LABEL_KEY}=disposable" \
+        --hostname kodachi-disposable \
+        --env HOME=/root \
+        "$VERIFIED_IMAGE_ID" /bin/bash
+}
+
+persistent_workbench() {
+    ensure_image
+    create_persistent_if_missing
+    running="$(podman_local inspect --format '{{.State.Running}}' "$PERSISTENT_CONTAINER_ID")"
+    if [[ "$running" != "true" ]]; then
+        podman_local start "$PERSISTENT_CONTAINER_ID" >/dev/null
+    fi
+    podman_exec_local exec --interactive --tty "$PERSISTENT_CONTAINER_ID" /bin/bash
+}
+
+managed_ids() {
+    local state="$1"
+    case "$state" in
+        all)
+            podman_local ps --all --quiet --filter "label=$MANAGED_LABEL"
+            ;;
+        running)
+            # DEAD SINCE 2026-08-26, AND KEPT ONLY SO THIS WARNING HAS SOMEWHERE TO
+            # LIVE. It has NO callers: `stop_all` was the only one, and it now uses
+            # running_by_profile. DO NOT WIRE THIS BACK UP. It is the pre-fix
+            # selector, it returns the operator's live DISPOSABLE shell along with
+            # everything else, and feeding it to a stop path is exactly the defect
+            # that destroyed a disposable and whatever was inside it. It also has no
+            # test arm, so restoring it would be silent. If you want running managed
+            # containers WITHOUT the profile field, add a new case rather than
+            # reusing this one, and give it an arm.
+            podman_local ps --quiet --filter "label=$MANAGED_LABEL"
+            ;;
+        running_by_profile)
+            # `id profile`, SPACE separated, for every RUNNING managed container.
+            # (The separator is asserted below and it is NOT a tab.) Written because
+            # PROFILE_LABEL_KEY was being stamped onto both profiles at creation and
+            # read by NO lifecycle selector, so the one fact that distinguishes a
+            # background workbench from a shell the operator is typing in existed on
+            # every container and was consulted by nothing.
+            #
+            # NOT `--filter label=io.kodachi.profile=persistent`, deliberately. That
+            # is the include form, and it would silently stop stopping any container
+            # created before the profile label existed (it was added 2026-08-24,
+            # after this tool shipped). Those carry MANAGED_LABEL and no profile, so
+            # an include filter drops them and Stop All quietly becomes a no-op on
+            # the operator's older workbench. The exclude form below spares ONLY a
+            # container that explicitly says it is disposable, which is the
+            # fail-safe direction: an unlabelled container is still stopped.
+            # A SPACE, NOT \t. Whether podman expands a backslash escape inside a
+            # NON-table --format is an assumption I would be betting the operator's
+            # shell on: if it does not, id and profile arrive glued together, `read`
+            # leaves profile EMPTY, and an empty profile is not "disposable", so the
+            # shell gets stopped and deleted. That is the destructive direction, and
+            # it would look like a working filter. A space needs no expansion, and
+            # neither label value contains one.
+            #
+            # An ABSENT profile label renders as "<no value>", which is also not
+            # "disposable", so a container predating the label is stopped exactly as
+            # it was before. That is the same fail-safe direction, on purpose.
+            podman_local ps --filter "label=$MANAGED_LABEL" \
+                --format "{{.ID}} {{index .Labels \"$PROFILE_LABEL_KEY\"}}"
+            ;;
+        *)
+            die "internal lifecycle selector error"
+            ;;
+    esac
+}
+
+start_all() {
+    local id verified_id
+    local -a verified_ids=()
+    ensure_image
+    ids_text="$(managed_ids all)" || die "could not list managed containers"
+    mapfile -t ids <<<"$ids_text"
+    if [[ -z "$ids_text" ]]; then
+        # ITEM 9 OF THE OPERATOR'S SCREENSHOT LIST, ROUTED TO ME BY <agent>
+        # WHO REPRODUCED IT ON .198 AS THE DESKTOP USER. His words at this screen:
+        # "what the [expletive] is this". The old sentence was "No Kodachi-managed
+        # containers exist." It is TRUE, and that is exactly the problem: on a fresh
+        # machine Start All is the first affordance an operator reaches for, and it
+        # answered with something that reads like an error and names nothing to do
+        # next. The two verbs that CREATE a container are on the same page and the
+        # message mentioned neither. Same class as F2 on the reset dialog: the
+        # mechanism is correct and the thing the human sees is wrong.
+        printf 'No Kodachi-managed containers exist yet, so there is nothing to start.\n'
+        printf 'Open Persistent Workbench to create one that survives stop and start,\n'
+        printf 'or Disposable Shell for a throwaway session.\n'
+        return 0
+    fi
+    for id in "${ids[@]}"; do
+        verified_id="$(require_managed_image "$id")"
+        verified_ids+=("$verified_id")
+    done
+    podman_local start "${verified_ids[@]}"
+}
+
+stop_all() {
+    # THE STOP-SIGNAL FIX ABOVE CLOSED THE LATENCY HALF OF THIS DEFECT AND LEFT THE
+    # DESTRUCTION HALF EXACTLY WHERE IT WAS, which <agent> caught by reading
+    # my own header comment back to me. Before the fix: Stop All matched the
+    # operator's live disposable shell, hung 10s, SIGKILLed it, and podman's
+    # auto-remove deleted it with its contents. After it: same match, same delete,
+    # 0.22s instead of 10s. The operator loses the identical shell and the identical
+    # contents; the only thing that changed is how long they had to notice. The
+    # ten-second hang was arguably the ONLY observable signal that Stop All was
+    # eating something it should not, so on the destructive axis the fast path was
+    # not an improvement at all.
+    #
+    # A disposable shell IS its terminal window, and podman removes it on exit, so
+    # there is no such thing as stopping one and getting it back. "Stop" and
+    # "destroy" are the same operation for that profile and different operations for
+    # the workbench, so one verb cannot honestly cover both. Stop All now means the
+    # thing that is reversible, and SAYS SO on screen when it spares something,
+    # because a literal reading of "Stop All" no longer holds and the operator must
+    # not have to discover that from a container list.
+    local rows_text id profile
+    local -a stoppable=() spared=()
+    rows_text="$(managed_ids running_by_profile)" \
+        || die "could not list running managed containers"
+    if [[ -z "$rows_text" ]]; then
+        printf 'No Kodachi-managed containers are running, so there is nothing to stop.\n'
+        printf 'Open Persistent Workbench or Disposable Shell to start one.\n'
+        return 0
+    fi
+    # A here-string, NEVER a pipe: a `while read` on the right of a pipe runs in a
+    # subshell and both arrays would come back empty, which would read as "nothing
+    # to stop and nothing spared" and is the silent-success direction.
+    while read -r id profile; do
+        [[ -n "$id" ]] || continue
+        if [[ "$profile" == "disposable" ]]; then
+            spared+=("$id")
+        else
+            stoppable+=("$id")
+        fi
+    done <<<"$rows_text"
+    if [[ ${#stoppable[@]} -gt 0 ]]; then
+        podman_local stop --time 10 "${stoppable[@]}"
+    else
+        printf 'No stoppable Kodachi-managed containers are running.\n'
+    fi
+    if [[ ${#spared[@]} -gt 0 ]]; then
+        printf 'Left running: %d disposable shell(s). Stop All does not close them.\n' \
+            "${#spared[@]}"
+        printf 'A disposable shell is removed the moment it ends, so stopping one would\n'
+        printf 'discard whatever is inside it. Type "exit" in that window to end it.\n'
+    fi
+}
+
+status() {
+    ensure_image
+    printf 'Kodachi Podman image: verified\n'
+    printf 'Managed containers:\n'
+    podman_local ps --all --filter "label=$MANAGED_LABEL" \
+        --format 'table {{.Names}}\t{{.Status}}\t{{.Labels}}'
+}
+
+confirm_reset() {
+    if [[ "${1:-}" == "--yes" ]]; then
+        return 0
+    fi
+    if [[ -n "${DISPLAY:-}" && -x "$ZENITY_BIN" ]]; then
+        # --default-cancel BECAUSE THE FOCUSED BUTTON IS THE ONE Return ACTIVATES.
+        # Without it zenity focuses the OK button, so pressing Return on a destructive
+        # confirmation DESTROYS. Measured on <lab-host>: Return removed the
+        # workbench with no further input. The safe answer is now the default one.
+        #
+        # 2>/dev/null BECAUSE THIS CELL RUNS UNDER `xfce4-terminal --hold`, so whatever
+        # zenity writes to stderr is what the operator reads. GTK/libadwaita emit 8+
+        # lines of Adwaita-WARNING and Gtk-WARNING here that say nothing about the
+        # reset and bury the one line that does. The ANSWER travels in the exit
+        # status, never in stderr, so discarding it cannot hide a decision: a zenity
+        # that fails to start still exits non-zero and is still read as "cancel",
+        # which is the fail-closed direction.
+        "$ZENITY_BIN" --question \
+            --title="Reset Podman Workbench" \
+            --text="Delete only the persistent Kodachi Podman workbench?\n\nThe bundled image and unrelated containers are not removed." \
+            --ok-label="Reset Workbench" \
+            --cancel-label="Cancel" \
+            --default-cancel 2>/dev/null
+        return $?
+    fi
+    if [[ -t 0 ]]; then
+        printf 'Type RESET to delete only %s: ' "$PERSISTENT_NAME" >&2
+        read -r answer
+        [[ "$answer" == "RESET" ]]
+        return $?
+    fi
+    die "reset requires a desktop confirmation, an interactive terminal, or --yes"
+}
+
+reset_workbench() {
+    if ! podman_local container exists "$PERSISTENT_NAME"; then
+        printf 'Persistent Kodachi workbench does not exist.\n'
+        return 0
+    fi
+    ensure_image
+    require_persistent_ownership
+    if ! confirm_reset "${1:-}"; then
+        printf 'Reset cancelled.\n'
+        return 0
+    fi
+    podman_local rm --force --time 10 "$PERSISTENT_CONTAINER_ID" >/dev/null
+    printf 'Persistent Kodachi workbench reset.\n'
+}
+
+usage() {
+    cat <<'USAGE'
+Usage: kodachi-container-manager <command>
+
+Commands:
+  disposable-shell             Open an offline disposable shell; removed on exit
+  persistent-workbench         Open the offline persistent Kodachi workbench
+  status                       Show the bundled image and managed containers
+  start-all                    Start only containers labelled io.kodachi.managed=true
+  stop-all                     Stop managed containers, except disposable shells
+  reset-workbench [--yes]      Confirm, then remove only kodachi-workbench
+USAGE
+}
+
+command_name="${1:-}"
+case "$command_name" in
+    -h|--help)
+        usage
+        exit 0
+        ;;
+    disposable-shell|persistent-workbench|status|start-all|stop-all|reset-workbench)
+        need_rootless_podman
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+esac
+
+case "$command_name" in
+    disposable-shell) disposable_shell ;;
+    persistent-workbench) persistent_workbench ;;
+    status) status ;;
+    start-all) start_all ;;
+    stop-all) stop_all ;;
+    reset-workbench) reset_workbench "${2:-}" ;;
+esac

@@ -1,0 +1,44 @@
+{
+  "schema_version": "1.1",
+  "id": "torrify-dns-iptables-simple",
+  "name": "torrify-dns-iptables-simple",
+  "description": "Simple Tor DNS torrification with iptables: auth check, torrify system and DNS, verify connection",
+  "metadata": {
+    "created": "2025-10-09T08:57:20.549564779Z",
+    "modified": "2025-10-22T00:00:00Z",
+    "version": "2.0"
+  },
+  "global_settings": {
+    "kill_policy": "stop",
+    "continue_policy": false,
+    "max_log_size": 10485760,
+    "default_timeout": 300,
+    "working_dir": "."
+  },
+  "includes": [
+    "base-torrify-full"
+  ],
+  "parameters": {
+    "firewall": {
+      "type": "choice",
+      "description": "Firewall backend",
+      "options": [
+        "iptables",
+        "nftables"
+      ],
+      "default": "iptables",
+      "required": false
+    },
+    "complexity": {
+      "type": "choice",
+      "description": "Complexity level",
+      "options": [
+        "simple",
+        "full"
+      ],
+      "default": "full",
+      "required": false
+    }
+  },
+  "steps": []
+}

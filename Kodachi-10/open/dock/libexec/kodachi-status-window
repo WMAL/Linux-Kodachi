@@ -1,0 +1,560 @@
+#!/usr/bin/env python3
+# Kodachi Dock Control - Session Status Window
+#
+# SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.1
+# Copyright (c) 2013-2026 Warith Al Maawali
+#
+# This file is part of Kodachi OS.
+# For full license terms, see LICENSE.md or visit:
+# https://kodachi.cloud/docs/license.html
+#
+# Commercial or organizational use requires a written license.
+# Contact: warith@digi77.com
+#
+# Description:
+# Renders the session status report, and any other long cell output the dock
+# hands it, in Kodachi's own design system instead of a stock dialog. zenity
+# --text-info draws a white GTK window with black serif text on a desktop
+# themed black and lime, which looks like a foreign application rather than
+# part of Kodachi.
+#
+# Reads the tagged stream produced by `kodachi-dock-status report` on stdin:
+#
+#   #TITLE   <text>
+#   #AGE     <text>
+#   #SECTION <title>
+#   #ROW     <label> <value> <state>      state: ok | warn | bad | neutral
+#
+# A line that is not tagged is rendered verbatim as monospace body text, so the
+# window degrades safely if the producer ever emits something unexpected.
+#
+# GTK 3 ON THE SHARED DESIGN LIBRARY, SINCE 2026-09-03. This file was born
+# GTK 4 on 2026-08-18, twenty hours BEFORE kodachi_ui.py and the command
+# windows were written on GTK 3, and it stayed there: cairo-dock itself is
+# GTK 3, the other two dock windows are GTK 3, and this one could not import
+# the library they share (a second gi.require_version raises before a widget
+# exists), so its scroller and its clipboard copy were retyped by hand and
+# every shared fix had to be made twice. The operator asked for one toolkit
+# across all three windows. Everything visual now comes from kodachi_ui: the
+# Design 1 shell, the sidebar that lists the report's sections as
+# destinations, the header mark, the footer, the pills and the tokens. The
+# stdin protocol, the KODACHI_WINDOW_TOKEN handshake, Copy, Close and Escape
+# are unchanged, so kodachi-dock-action and kodachi-dock-status need no edit.
+#
+# THE GTK 4 TYPELIB THIS FILE USED TO NEED WAS ON THE ISO BY LUCK. Measured
+# 2026-09-03 in the built chroot: nothing in any package list named
+# gir1.2-gtk-4.0; it arrived only through mat2 -> metadata-cleaner ->
+# gir1.2-adw-1. Dropping metadata-cleaner would have made this window fail at
+# import, and the launcher's fallback would have turned every long report into
+# a truncated notification with no error anywhere. GTK 3 is what the dock, the
+# desktop and 223 other packages on the image already link, and both
+# python3-gi and gir1.2-gtk-3.0 are now named in gui-xfce.list.chroot.
+#
+# Author: Warith Al Maawali
+# Version: <lab-host>
+# Last updated: 2026-09-03
+
+import os
+import sys
+
+# The shared design system lives beside the other two windows in
+# /usr/local/lib/kodachi. Resolved relative to THIS file first, so a tree
+# pushed to a test VM runs its own copy of the library rather than whatever is
+# installed there, exactly as kodachi-command-window resolves it.
+sys.path.insert(0, os.path.abspath(os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "../../lib/kodachi")))
+
+import gi  # noqa: E402
+
+# EVERY namespace this file imports is pinned BEFORE the import, not just Gtk.
+# gi defaults Gdk to 4.0 on this image, and mixing it with Gtk 3.0 is a hard
+# RepositoryError at import time, so the window never appears at all. Found on
+# a test VM by the command window; the same trap applies here now that this
+# file is GTK 3.
+gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
+from gi.repository import Gdk, GLib, Gtk  # noqa: E402
+
+try:
+    import kodachi_ui as ui  # noqa: E402
+except ImportError as exc:
+    # This file ships from the `common` overlay and kodachi_ui from `gui-xfce`,
+    # so a headless image carries the window without the library. It can never
+    # be launched there (kodachi-dock-action requires a DISPLAY first), but if
+    # it ever is, say what is missing and exit WITHOUT writing the map token:
+    # the launcher then falls back to a notification instead of hanging on a
+    # traceback it cannot see.
+    print(f"kodachi-status-window: the shared design system is not installed: "
+          f"{exc}", file=sys.stderr)
+    sys.exit(3)
+
+# The tallest a single run of untagged lines may be before it scrolls inside
+# its own box, in pixels. 560 leaves the header, the section heading and the
+# footer visible in the 760px window the shell opens.
+PLAIN_MAX_PX = 560
+
+# The label column of a #ROW, in pixels. 190 is what the GTK 4 version used
+# and what the operator accepted; report_text() below mirrors it as 22
+# characters so a pasted report still reads as two columns.
+LABEL_COLUMN_PX = 190
+
+# Wire state -> the design system's pill tone, and the word the pill shows.
+# Colour was the ONLY signal in the GTK 4 window; the pill adds the word, so a
+# reader who cannot tell lime from amber still gets the state.
+STATE_TONE = {"ok": "on", "warn": "warn", "bad": "err"}
+STATE_WORD = {"ok": "OK", "warn": "WARN", "bad": "BAD"}
+
+# Five rules the shared stylesheet does not have, written against ITS tokens
+# so the report can never drift from the family palette. Everything else on
+# this surface (ground, header, sidebar, cards, rows, pills, footer, buttons,
+# scrollbars) is kodachi_ui's own CSS, installed once by install_css().
+REPORT_CSS = f"""
+.report-value {{ color: {ui.TEXT_SECONDARY}; }}
+.report-value.ok {{ color: {ui.SUCCESS}; font-weight: 700; }}
+.report-value.warn {{ color: {ui.WARNING}; }}
+.report-value.bad {{ color: {ui.ERROR}; font-weight: 700; }}
+textview.report-plain, textview.report-plain text {{
+    background-color: transparent;
+    color: {ui.TEXT_SECONDARY};
+    font-family: {ui.FONT_MONO};
+    font-size: 13px;
+    caret-color: transparent;
+}}
+textview.report-plain text selection {{
+    background-color: rgba(159, 239, 0, 0.28);
+    color: {ui.TEXT_PRIMARY};
+}}
+"""
+
+
+# ── EVERY DESTINATION IN THE RAIL GETS ITS OWN MARK ───────────────────────
+#
+# Operator, 2026-09-04: "ech item shoudl have its unqiue icon ! what the [expletive]
+# is this", and on the standalone pool window "fuckinghave tor icon or somethng
+# better !". He is right: build() called win.section(title) with no icon, so
+# every destination fell back to the process mark and the rail read as eight
+# copies of the same badge.
+#
+# The titles are the JOIN and they are stable: kodachi_session_report.py emits
+# seven of them and kodachi_session_pool.py the eighth, and both are pinned by
+# tests/test_window_presentation.py. A title this map does not know KEEPS THE
+# FALLBACK rather than losing its row, because a producer may add a section and
+# the window must still draw it.
+#
+# Same shape kodachi-command-window already uses for its own rails
+# (NETWORK_NAV_ICONS, ISOLATION_NAV_ICONS, nav_icon_for), so the three windows
+# stay one family rather than each inventing a scheme.
+ICON_ROOT = "/usr/share/kodachi/dock/icons"
+SECTION_ICONS = {
+    "IDENTITY": "papirus/seahorse.svg",
+    "MACHINE": "papirus/computer.svg",
+    "NETWORK IDENTITY": "papirus/network-workgroup.svg",
+    "ROUTING": "fluent-emoji/shuffle-tracks-button.png",
+    "TOR": "papirus/tor.svg",
+    # NOT papirus/tor.svg, which TOR already has. Both sections render in the
+    # SAME Full Session Report window, because _session_report_stream appends
+    # the pool rows to the report body, so sharing a mark would leave eight
+    # destinations wearing seven icons against an explicit "unique icon"
+    # instruction. Boxes is the mark kodachi_windows already gives the
+    # "Pool overview" row, so the pool reads the same in both surfaces.
+    "TOR INSTANCE POOL": "papirus/org.gnome.Boxes.svg",
+    "DNS": "fluent-emoji/magnifying-glass-tilted-right.png",
+    "PROTECTION": "papirus/yast-security.svg",
+    "SYSTEM": "papirus/preferences-desktop.svg",
+    "REPORT": "papirus/utilities-system-monitor.svg",
+}
+
+
+def section_icon(title):
+    """One shipped icon path for a report section, or None for the fallback.
+
+    THE FILE IS CHECKED, NOT ASSUMED. The ISO ships a FILTERED icon set while
+    the project folder keeps the whole library (playbook s.27), so a path that
+    exists in the checkout can be absent on the image. A missing file returns
+    None and the rail draws its usual mark, which is the behaviour this window
+    had for its whole life; pointing GTK at a path that is not there would
+    trade a dull rail for an empty one.
+    """
+    relative = SECTION_ICONS.get((title or "").strip().upper())
+    if not relative:
+        return None
+    path = os.path.join(ICON_ROOT, relative)
+    return path if os.path.isfile(path) else None
+
+
+def install_report_css():
+    """The five report rules above, on top of the shared design system."""
+    provider = Gtk.CssProvider()
+    provider.load_from_data(REPORT_CSS.encode())
+    Gtk.StyleContext.add_provider_for_screen(
+        Gdk.Screen.get_default(), provider,
+        Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+    return provider
+
+
+def parse(stream):
+    title, age, blocks = "KODACHI SESSION STATUS", "", []
+    for raw in stream:
+        line = raw.rstrip("\n")
+        if not line:
+            continue
+        if line.startswith("#TITLE\t"):
+            title = line.split("\t", 1)[1]
+        elif line.startswith("#AGE\t"):
+            age = line.split("\t", 1)[1]
+        elif line.startswith("#SECTION\t"):
+            blocks.append(("section", line.split("\t", 1)[1], "", ""))
+        elif line.startswith("#ROW\t"):
+            parts = line.split("\t")
+            label = parts[1] if len(parts) > 1 else ""
+            value = parts[2] if len(parts) > 2 else ""
+            state = parts[3] if len(parts) > 3 else "neutral"
+            blocks.append(("row", label, value, state))
+        else:
+            blocks.append(("plain", line, "", ""))
+    return title, age, blocks
+
+
+def report_text(title, age, blocks):
+    """The report as the user SEES it, for the clipboard.
+
+    REBUILT FROM `blocks`, NEVER FROM THE INPUT STREAM. `parse()` consumes
+    stdin and keeps only the parsed tuples, so there is no raw text left to
+    hand a Copy button, and the raw text would be the wrong thing anyway: it
+    carries the `#SECTION` and `#ROW` wire markers, and a user pasting this
+    into a support ticket must send what the window showed them, not the
+    tagged protocol that produced it.
+    """
+    lines = [title]
+    if age:
+        lines.append(age)
+    for kind, first, second, _state in blocks:
+        if kind == "section":
+            lines.extend(["", first, "-" * len(first)])
+        elif kind == "row":
+            # The label column is 190px on screen; 22 characters is the plain
+            # text equivalent, so a pasted report still reads as two columns.
+            lines.append(f"{first:<22} {second}".rstrip())
+        else:
+            lines.append(first)
+    return "\n".join(lines) + "\n"
+
+
+def longest_line(blocks):
+    """The widest line the report will draw, in characters.
+
+    Only a hint for the opening width: the shell clamps it to the family's
+    940..1080 band and the horizontal scroller carries anything past that.
+    """
+    longest = 0
+    for kind, first, second, _state in blocks:
+        if kind == "plain":
+            longest = max(longest, len(first))
+        else:
+            longest = max(longest, len(first) + len(second) + 4)
+    return longest
+
+
+def normalize(blocks):
+    """The blocks the window DRAWS, which is what Copy must paste.
+
+    `build()` used to invent two things that were not in `blocks`: a synthetic
+    "Report" section when the producer emitted none, and a placeholder line
+    when it emitted nothing at all. `report_text()` never saw either, so its
+    docstring promise, "what the window showed them", was false in exactly the
+    two cases where the window shows something the producer did not send. On
+    empty input the window drew a heading and a placeholder while Copy yielded
+    the title alone.
+
+    Doing it here, once, means the two cannot drift again: `main()` normalizes
+    before either consumer runs, so the drawing path and the clipboard path
+    are handed the identical list.
+    """
+    blocks = list(blocks)
+    if not any(kind == "section" for kind, _f, _s, _t in blocks):
+        # The sidebar lists sections as destinations, so a report with none
+        # still gets one and the rail never reads "Preparing navigation".
+        blocks.insert(0, ("section", "Report", "", ""))
+    if not any(kind != "section" for kind, _f, _s, _t in blocks):
+        blocks.append(("plain", "(the producer returned no output)", "", ""))
+    return blocks
+
+
+def report_row(card, name, value, state):
+    """One `#ROW`: label column, selectable monospace value, state pill."""
+    row = ui.cls(ui.hbox(13), "row")
+    key = ui.lbl(name, "row-name")
+    key.set_size_request(LABEL_COLUMN_PX, -1)
+    key.set_valign(Gtk.Align.CENTER)
+    # `row-name` IS IN ELLIPSIZE_TEXT_CLASSES (kodachi_ui.py:702), and the
+    # library withholds the tooltip from it deliberately (:688-694) because a
+    # command-window row "ALREADY carries a whole-row tooltip through
+    # set_row_tooltip()". This window builds its rows itself and has no such
+    # tooltip, so a truncated label would be unreadable with no recourse. The
+    # longest label any producer emits today is 19 characters against a 190px
+    # column, so nothing truncates now; this holds when one does.
+    # `set_ellipsis_tooltip` shows it ONLY while the label is actually
+    # ellipsized, so a short label stays silent.
+    ui.set_ellipsis_tooltip(key, name)
+    row.pack_start(key, False, False, 0)
+    tone_class = state if state in STATE_TONE else "neutral"
+    val = ui.lbl(value, "mono", "report-value", tone_class)
+    # Selectable so an IP or a session id can be copied on its own. NO WRAP:
+    # this content is columnar and the body scrolls sideways instead.
+    val.set_selectable(True)
+    val.set_line_wrap(False)
+    val.set_valign(Gtk.Align.CENTER)
+    row.pack_start(val, True, True, 0)
+    if state in STATE_WORD:
+        row.pack_end(ui.pill(STATE_WORD[state], STATE_TONE[state]),
+                     False, False, 0)
+    card.pack_start(row, False, False, 0)
+    return row
+
+
+def plain_block(card, lines):
+    """A run of untagged lines as ONE read-only, selectable Gtk.TextView.
+
+    NOT A LABEL, AND NOT ONE LABEL PER LINE. MEASURED 2026-09-03 on VM
+    <lab-host> (seat :0, 3440x1440), time from construction to the
+    window's map-event on this exact shell, five strategies:
+
+        lines     one label   label per line   200-line chunks   TextView
+        25,000    >120s       >120s            9.0s              0.26s
+         2,000    3.5s        (not run)        0.8s              0.23s
+           200    0.5s        (not run)        (not run)         0.9s
+
+    One Pango layout over a whole run (first column) is WORSE than chunking
+    it, not better: layout cost is superlinear in lines. A TextView lays
+    lines out independently and validates them lazily, so the window maps at
+    once and finishes the tail afterwards. At 200 lines the label is FASTER,
+    0.5s against 0.9s, and that is a real 1.8x rather than noise; it is not
+    the deciding number, because the launcher's budget is 3 seconds and both
+    are far inside it, while at the top of the range only one of them is.
+
+    WHAT ACTUALLY REACHES THIS WINDOW, because the first version of this
+    comment got it wrong and an inspector caught it. `kodachi-soc snapshot`
+    is 24,935 lines and is the usual example, but it is NOT a producer here:
+    gtk-direct-operations.json routes `sudo kodachi-soc snapshot --text`
+    to the COMMAND window with handler `rofi-output`, and grepping
+    dock-actions.tsv for `kodachi-soc` returns zero rows. What this window
+    actually gets is the session report (40 rows plus the Tor instance pool)
+    and any cell whose output passes kodachi-dock-action's 4-line / 200-char
+    threshold, which is unbounded but has no large member today. So the
+    25,000-line column is HEADROOM, measured, not an observed regression.
+
+    Read-only, cursor hidden, no wrap: the columns stay intact because the
+    face is monospace, and a drag-select across the block copies whole lines
+    rather than stopping at a widget boundary.
+
+    IT NEEDS A SCROLLER OF ITS OWN, AND THE REASON IS THE SMALL END, NOT THE
+    LARGE ONE. Both siblings wrap their TextView in `ui.scroller` with a fixed
+    height (kodachi-command-window:4601, kodachi-repo-manager:3600). The first
+    version of this function packed the TextView straight into the card, and an
+    inspector asked whether the body viewport can allocate an UNBOUNDED child:
+    at 25,000 lines it wants 350,000px, past the 32767 an X11 drawable can
+    express, and a clipped tail would be silent. That half does NOT reproduce
+    here (GTK 3.24.49, X11), measured in pixels off the window's own drawable,
+    with head and tail lines drawn in different characters so the two ends
+    cannot look alike, and with a control in the same run (hide the body: ink
+    0.0000 and a different hash). Both shapes render the tail:
+
+        arm                     lines    ink at top   ink at bottom
+        no scroller               400      0.2887        0.3654
+        no scroller            25,000      0.2887        0.3678
+        own capped scroller       400      0.2893        0.3658
+        own capped scroller    25,000      0.2891        0.3680
+
+    Chasing that question found the REAL defect, at the other end. A TextView
+    outside a scrolled window reports a minimum height of ZERO, because it is a
+    GtkScrollable and expects a viewport to size it, so in a non-expanding box
+    a SHORT run collapses. Allocated height by line count, same shell:
+
+        lines            1     3      40      400
+        no scroller      1px   42px   560px   5600px
+        own scroller    90px   90px   537px    537px
+
+    One line rendered as a ONE PIXEL strip, and that case is reachable rather
+    than theoretical: kodachi-dock-action routes on 4 lines OR 200 characters
+    (:779-780), so a single 200-character line arrives here as exactly one
+    line, and `normalize()` hands this function a one-line placeholder whenever
+    a producer returns nothing at all. It was found by reading the widget back
+    after an empty-input run drew an empty box on the VM, not by any test.
+
+    So: the shared factory (never a raw Gtk.ScrolledWindow, see
+    tests/test_no_raw_scrollers.py), `propagate_natural_height` so a short run
+    still takes its own height rather than a fixed box, and a cap so a huge run
+    scrolls inside itself instead of pushing the footer down. The cap is
+    belt-and-braces rather than load-bearing, since 350,000px was measured to
+    work; the scroller is what makes a one-line run visible.
+    """
+    view = Gtk.TextView()
+    view.set_editable(False)
+    view.set_cursor_visible(False)
+    view.set_monospace(True)
+    view.set_wrap_mode(Gtk.WrapMode.NONE)
+    view.get_buffer().set_text("\n".join(lines))
+    ui.cls(view, "report-plain")
+    box = ui.scroller(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+    box.set_propagate_natural_height(True)
+    box.set_max_content_height(PLAIN_MAX_PX)
+    box.add(view)
+    row = ui.cls(ui.hbox(), "row")
+    row.pack_start(box, True, True, 0)
+    card.pack_start(row, False, False, 0)
+    return row
+
+
+def build(title, age, blocks):
+    """The report on the Design 1 shell. Returns the ui.Window, unshown."""
+    # WIDTH FOLLOWS THE CONTENT, CAPPED BY THE FAMILY RULE. The shell clamps
+    # whatever is asked for to the 940..1080 band every dock window opens in
+    # and centres it on the monitor, so there is no monitor arithmetic here
+    # and nothing to keep in step with a placement path. Anything wider than
+    # the cap scrolls sideways. CHAR_PX is the advance width of the monospace
+    # face at the shared 13px; an estimate is enough because the clamp covers
+    # any excess and the scroller covers any shortfall.
+    CHAR_PX = 8
+    win = ui.Window(title, age or "Read-only report. Nothing here changes the machine.",
+                    width=max(660, longest_line(blocks) * CHAR_PX + 90),
+                    height=780)
+    win.allow_horizontal_scroll()
+
+    # `blocks` is already normalized by main(): every section and every line
+    # this loop draws is in the list Copy will paste. Nothing is invented here.
+    card = None
+    pending = []
+
+    def flush():
+        nonlocal card, pending
+        if pending:
+            if card is None:
+                card = win.card()
+            plain_block(card, pending)
+            pending = []
+
+    for kind, first, second, state in blocks:
+        if kind == "section":
+            flush()
+            win.section(first, icon_path=section_icon(first))
+            card = win.card()
+        elif kind == "row":
+            flush()
+            if card is None:
+                card = win.card()
+            report_row(card, first, second, state)
+        else:
+            pending.append(first)
+    flush()
+
+    # ── footer: Close as the primary, Copy as the ghost beside it ──────────
+    # The shell's footer() builds ONE Close when the primary is Close (a
+    # report-only window has nothing to apply), tooltips it, and wires the
+    # accessible name. Copy goes beside it as a ghost, the same relationship
+    # the command windows draw between Apply and their ghost Close.
+    #
+    # COPY ONLY. NO WRAP, AND THAT IS DELIBERATE. The report is COLUMNAR (Tag,
+    # Tor_IP, Country, Flag, Status, Age) and wrapping would shear the columns
+    # apart, which is exactly why horizontal scrolling was chosen on
+    # 2026-08-18. The command output window gets Wrap because its content has
+    # no column structure; this one does, so it does not.
+    primary = win.footer("", "Close", lambda *_args: win.close())
+    copy_button = ui.cls(Gtk.Button(label="Copy"), "ghost")
+    copy_tip = "Copy this whole report to the clipboard. Nothing is changed."
+    copy_button.set_tooltip_text(copy_tip)
+    ui.set_control_accessibility(copy_button, "Copy", copy_tip)
+    copy_button.connect(
+        "clicked",
+        lambda button: ui.copy_with_feedback(
+            button, report_text(title, age, blocks)))
+    primary.get_parent().pack_end(copy_button, False, False, 0)
+    return win
+
+
+def touch_token(reason):
+    """Tell the launcher this process is alive and going to draw.
+
+    BUG-16, <agent>. The token used to be touched ONLY from an idle
+    handler after the whole window had been built, while the launcher waits
+    just 3 seconds for it. Building a long report is not free, and on a VM at
+    load 12-16 on 4 cores the layout alone can outlast the budget. The launcher
+    then falls back to a notification carrying the FIRST SIX LINES, and the
+    rest of the answer is gone.
+
+    So the token is touched as soon as the input has parsed and GTK has
+    imported, which is what the launcher actually needs to know: the process
+    started, its typelibs resolved, and it is about to draw. That still catches
+    every failure the handshake was added for, because a missing GTK typelib, a
+    missing kodachi_ui, a broken display or a traceback at import all happen
+    BEFORE this line.
+
+    The post-map touch is kept as well. Writing twice is harmless and the
+    second write is the stronger claim, so nothing is lost by keeping both.
+    """
+    token = os.environ.get("KODACHI_WINDOW_TOKEN")
+    if not token:
+        return
+    try:
+        with open(token, "w", encoding="utf-8", errors="replace") as handle:
+            handle.write(f"{reason}\n")
+    # ValueError for the ENCODE direction. This one writes the surface token
+    # kodachi-dock-action waits on, so letting an encode error out of here
+    # costs the caller its DOCK_WINDOW_WAIT_DS timeout for no reason.
+    except (OSError, ValueError):
+        pass
+
+
+def main():
+    # G51, THIRD VECTOR. This app gets its data on stdin, and `sys.stdin`
+    # decodes with the locale encoding, STRICTLY. One bad byte in the piped
+    # report raises UnicodeDecodeError at the first statement of main(),
+    # before the window exists. Dying at parse() writes no token, so the user
+    # gets a 3-second pause and a degraded but correct answer; replacing the
+    # byte gets them the whole report.
+    sys.stdin.reconfigure(errors="replace")
+    title, age, blocks = parse(sys.stdin)
+    blocks = normalize(blocks)
+
+    # Before build(), not after: see touch_token().
+    touch_token("starting")
+
+    # The design system once per process, then the five report rules on top.
+    # install_css() also sets the process default icon, which is what the
+    # taskbar and alt-tab show, and it is the SAME mark the other two dock
+    # windows wear, so the three are recognisably one family there too.
+    ui.install_css()
+    install_report_css()
+
+    win = build(title, age, blocks)
+    # Counts each sidebar destination's controls (zero here, so no suffix).
+    # Called after the tree is built, as the command window does, because a
+    # section registers its rail row before the card under it exists.
+    win.refresh_nav_counts()
+    win.show_all()
+    # Every value label is selectable and therefore focusable, and GTK treats
+    # the first focusable child as the initial focus target. Focusing Close
+    # keeps the top of the report visible; the adjustment is pinned to 0 on
+    # the next idle tick because the scroller has not been sized yet here.
+    win.primary_button.grab_focus()
+
+    def mapped():
+        # Second, stronger write. The first happens above, before build(),
+        # because waiting for the surface loses the race under load and costs
+        # the user the tail of their report. See touch_token().
+        win.scroll_body_to_top()
+        touch_token("mapped")
+        return False
+
+    GLib.idle_add(mapped)
+    # Escape closes it through the shell's key handler, which is what every
+    # other Kodachi surface does; Close and the window manager's close go
+    # through Window.close(), which quits this loop.
+    Gtk.main()
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except (KeyboardInterrupt, GLib.Error):
+        sys.exit(1)

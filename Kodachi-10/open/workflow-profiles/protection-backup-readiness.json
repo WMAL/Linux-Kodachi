@@ -1,0 +1,142 @@
+{
+  "schema_version": "1.1",
+  "id": "protection-backup-readiness",
+  "name": "protection-backup-readiness",
+  "description": "Backup readiness check: list mountable backup target volumes and the categories of user data that will be backed up (documents, wallets, keys, browser profile). Read-only. NOTE: running an actual encrypted backup needs your passphrase, which the dashboard Backup tab provides - workflows cannot prompt for it.",
+  "metadata": {
+    "created": "2026-06-25T00:00:00Z",
+    "modified": "2026-06-25T00:00:00Z",
+    "version": "1.0"
+  },
+  "global_settings": {
+    "kill_policy": "continue",
+    "continue_policy": true,
+    "max_log_size": 10485760,
+    "default_timeout": 300,
+    "working_dir": "."
+  },
+  "steps": [
+    {
+      "id": 1,
+      "type": "command",
+      "cmd": "echo '=== BACKUP READINESS CHECK ==='",
+      "description": "Run the typed workflow command 'echo '=== BACKUP READINESS CHECK ===''.",
+      "condition": {
+        "type": "always"
+      },
+      "timeout": 120,
+      "confirm": false,
+      "nice_level": 0,
+      "cell_store": "info",
+      "score_impact": 0,
+      "colonyops_safety": {
+        "danger_level": "safe",
+        "requires_auth": false,
+        "needs_sudo": false,
+        "execution_kind": "typed-arbitrary-workflow",
+        "destructive": false,
+        "workflow_safe": true,
+        "shell_safe": true,
+        "confirm_copy": "",
+        "rollback_hint": "Review the step result and restore the prior state before continuing if the command changed system state."
+      },
+      "command_id": "workflow.argv.echo.52e506ac7c956cc3",
+      "argv": [
+        "echo",
+        "=== BACKUP READINESS CHECK ==="
+      ]
+    },
+    {
+      "id": 2,
+      "type": "command",
+      "cmd": "kodachi-backup targets --json",
+      "description": "Run the typed workflow command 'kodachi-backup targets --json'.",
+      "condition": {
+        "type": "always"
+      },
+      "timeout": 120,
+      "confirm": false,
+      "nice_level": 0,
+      "cell_store": "recovery",
+      "score_impact": 1,
+      "colonyops_safety": {
+        "danger_level": "safe",
+        "requires_auth": false,
+        "needs_sudo": false,
+        "execution_kind": "typed-arbitrary-workflow",
+        "destructive": false,
+        "workflow_safe": true,
+        "shell_safe": true,
+        "confirm_copy": "",
+        "rollback_hint": "Review the step result and restore the prior state before continuing if the command changed system state."
+      },
+      "command_id": "workflow.argv.kodachi-backup.7e1f86f70ce9dbc9",
+      "argv": [
+        "kodachi-backup",
+        "targets",
+        "--json"
+      ]
+    },
+    {
+      "id": 3,
+      "type": "command",
+      "cmd": "kodachi-backup categories --json",
+      "description": "Run the typed workflow command 'kodachi-backup categories --json'.",
+      "condition": {
+        "type": "always"
+      },
+      "timeout": 120,
+      "confirm": false,
+      "nice_level": 0,
+      "cell_store": "recovery",
+      "score_impact": 1,
+      "colonyops_safety": {
+        "danger_level": "safe",
+        "requires_auth": false,
+        "needs_sudo": false,
+        "execution_kind": "typed-arbitrary-workflow",
+        "destructive": false,
+        "workflow_safe": true,
+        "shell_safe": true,
+        "confirm_copy": "",
+        "rollback_hint": "Review the step result and restore the prior state before continuing if the command changed system state."
+      },
+      "command_id": "workflow.argv.kodachi-backup.f9e29cfb4c5b5700",
+      "argv": [
+        "kodachi-backup",
+        "categories",
+        "--json"
+      ]
+    },
+    {
+      "id": 4,
+      "type": "command",
+      "cmd": "echo 'Note: run the actual encrypted backup from the dashboard Backup tab (needs your passphrase).'",
+      "description": "Run the typed workflow command 'echo 'Note: run the actual encrypted backup from the dashboard Backup tab (needs your passphrase).''.",
+      "condition": {
+        "type": "always"
+      },
+      "timeout": 120,
+      "confirm": false,
+      "nice_level": 0,
+      "cell_store": "info",
+      "score_impact": 0,
+      "colonyops_safety": {
+        "danger_level": "safe",
+        "requires_auth": false,
+        "needs_sudo": false,
+        "execution_kind": "typed-arbitrary-workflow",
+        "destructive": false,
+        "workflow_safe": true,
+        "shell_safe": true,
+        "confirm_copy": "",
+        "rollback_hint": "Review the step result and restore the prior state before continuing if the command changed system state."
+      },
+      "command_id": "workflow.argv.echo.52ac2aa780d9c2e4",
+      "argv": [
+        "echo",
+        "Note: run the actual encrypted backup from the dashboard Backup tab (needs your passphrase)."
+      ]
+    }
+  ]
+}

@@ -1,4 +1,36 @@
-# Kodachi 9 Development Roadmap
+# Kodachi 9
+
+The **current stable release**. Kodachi 9 is finished, released and production-ready: every
+component ships, from the standalone binaries and the terminal server edition to the desktop
+edition, the dashboard GUI, the AI layer and the cloud platform.
+
+The next line, Kodachi 10, is published in beta at **[../Kodachi-10](../Kodachi-10)**.
+The retired 8 line is archived at **[../Kodachi-8.27-legacy-EOL](../Kodachi-8.27-legacy-EOL)**.
+
+## What is in this folder
+
+```
+Kodachi-9/
+├── README.md                     This file: the 9 development roadmap and release record
+├── open/
+│   └── installers/               The 5 shell scripts as they shipped for the 9 line
+│                                   kodachi-binary-install.sh    binaries, no sudo needed
+│                                   kodachi-deps-install.sh      system dependencies, needs sudo
+│                                   kodachi-autoshield.sh        the login shell dashboard
+│                                   kodachi-autoshield-shell.sh  the standalone variant
+│                                   kodachi-debug-collector.sh   redacted diagnostic bundle
+└── v9-behind-scenes-progress/    Engineering write-ups and demo videos from the 9 build:
+                                    the challenge-response auth design, the IP-Fetch
+                                    utility, and the Tor Manager rewrite
+```
+
+These installer scripts are the **Kodachi 9 versions**, kept as the historical record of
+that line. The current ones live in
+**[../Kodachi-10/open/installers/](../Kodachi-10/open/installers)**.
+
+---
+
+## Development roadmap
 
 This roadmap provides an overview of the current status of key components in the Kodachi project. All code and infrastructure have been written from scratch; however, I have integrated the working code from the old version to avoid reinventing the wheel and accelerate development.
 
@@ -111,8 +143,16 @@ See the full [Changelog](https://www.kodachi.cloud/docs/changelog.html) for deta
 
 ## Installation Scripts
 
-- **[kodachi-binary-install.sh](kodachi-binary-install.sh)** - Downloads and installs Kodachi binaries without requiring sudo
-- **[kodachi-deps-install.sh](kodachi-deps-install.sh)** - Installs all system dependencies (requires sudo)
+All five scripts live in **[open/installers/](open/installers)**:
+
+- **[kodachi-binary-install.sh](open/installers/kodachi-binary-install.sh)** - Downloads and installs Kodachi binaries without requiring sudo
+- **[kodachi-deps-install.sh](open/installers/kodachi-deps-install.sh)** - Installs all system dependencies (requires sudo)
+- **[kodachi-autoshield.sh](open/installers/kodachi-autoshield.sh)** - The login shell dashboard, sourced from `/etc/profile.d`
+- **[kodachi-autoshield-shell.sh](open/installers/kodachi-autoshield-shell.sh)** - The standalone variant, run directly rather than sourced
+- **[kodachi-debug-collector.sh](open/installers/kodachi-debug-collector.sh)** - Collects a redacted diagnostic bundle for support
+
+These are the Kodachi 9 versions, kept as the historical record of that line. The
+current versions are in **[../Kodachi-10/open/installers/](../Kodachi-10/open/installers)**.
 
 ---
 

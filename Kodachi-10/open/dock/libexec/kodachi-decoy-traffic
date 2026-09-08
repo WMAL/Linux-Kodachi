@@ -1,0 +1,1371 @@
+#!/usr/bin/env bash
+# Kodachi Dock Control - Decoy Traffic Generator
+#
+# SPDX-License-Identifier: LicenseRef-Kodachi-SAN-1.1
+# Copyright (c) 2013-2026 Warith Al Maawali
+#
+# This file is part of Kodachi OS.
+# For full license terms, see LICENSE.md or visit:
+# https://kodachi.cloud/docs/license.html
+#
+# Commercial or organizational use requires a written license.
+# Contact: warith@digi77.com
+#
+# Lineage:
+# Kodachi has offered a traffic-noise capability since version 5.1, released
+# 09.11.2018 (Kodachi-Log.txt: "+ Added Noisy crawler"), and carried one
+# through the 8.x line. This file is the Kodachi 9 implementation of that
+# capability: original Bash, written for this OS, sharing no code with anything
+# that came before it. It is wholly Kodachi work and the Kodachi license above
+# is the only one that governs it.
+#
+# Description:
+# The Kodachi 9 decoy traffic generator. No Kodachi Rust verb covers decoy
+# traffic, so it is implemented here as a self-contained Bash daemon with no
+# dependency beyond curl.
+#
+# It issues low-rate HTTP requests to a fixed set of large, uncontroversial
+# public sites at randomised intervals, so that an observer watching connection
+# metadata sees cover traffic mixed with real browsing.
+#
+# Three deliberate limits, because a traffic generator on a privacy OS is easy
+# to get wrong:
+#   1. It never follows links found in responses. A crawler that follows
+#      arbitrary links can be steered onto content the user did not choose, and
+#      that is a liability, not cover.
+#   2. Response bodies are discarded and never written to disk.
+#   3. It inherits whatever routing is active. It never sets its own proxy, so
+#      it cannot accidentally bypass a Tor or VPN path the user has established.
+#
+# Runs entirely unprivileged and as a single background process guarded by a
+# PID file, so repeated dock clicks cannot stack generators.
+#
+# Author: Warith Al Maawali
+# Version: <lab-host>
+# Last updated: 2026-08-29
+
+set -uo pipefail
+
+# ── Configuration ─────────────────────────────────────────────
+
+readonly STATE_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/kodachi-dock"
+readonly PID_FILE="${STATE_DIR}/decoy-traffic.pid"
+readonly LOG_FILE="${STATE_DIR}/decoy-traffic.log"
+readonly STATS_FILE="${STATE_DIR}/decoy-traffic.stats"
+
+readonly MIN_DELAY=8
+readonly MAX_DELAY=45
+readonly REQUEST_TIMEOUT=20
+# COVER THAT NAMES A BROWSER THIS MACHINE DOES NOT RUN IS NOT COVER.
+#
+# This was a frozen `rv:128.0 ... Firefox/128.0` string, chosen when Firefox
+# 128 ESR was current and never revisited. MEASURED 2026-09-04 on the live
+# <lab-host> ISO, <lab-host>, by pointing the shipped browser at a local
+# one-shot HTTP listener and reading the request header it actually sent:
+#
+#     /usr/local/bin/librewolf --version   ->  LibreWolf 155.0-1
+#     User-Agent it sent                   ->  Mozilla/5.0 (X11; Linux x86_64;
+#                                              rv:155.0) Gecko/20100101 Firefox/155.0
+#
+# So it reports its REAL major and does not spoof to an ESR line, and the
+# decoy's constant differed from the user's real traffic by 27 major versions.
+# Every cover request was separable from every real request by one header,
+# which is the one thing cover traffic must not be. The file's own header
+# already treats a flat request rate as a signature for the same reason.
+#
+# DERIVED AT START, FROM THE BROWSER THAT SHIPS, and deliberately not at each
+# request: one `--version` per daemon start, so a browser upgrade is picked up
+# the next time the switch is turned on and the string cannot change mid-run.
+# The regex takes the leading major only, so `155.0-1` and `147.0.4-1` both
+# yield `155` and `147`; anything that does not parse leaves the fallback in
+# place rather than emitting a malformed header.
+# THE REAL BINARY FIRST, NEVER THE KODACHI WRAPPER, AND UNDER A TIMEOUT.
+#
+# `/usr/local/bin/librewolf` looks like the browser and is a 60-line /bin/sh
+# wrapper written by overlays/gui-xfce/hooks/live/9600-apply-xfce-customizations
+# .hook.chroot:429. It has NO `--version` fast path: it runs `mkdir -p
+# "$HOME/Desktop"`, cd's there, picks a profile directory, and execs through
+# kodachi-hmalloc-exec, and when EUID is 0 it goes out through `runuser` with
+# DISPLAY, XAUTHORITY and a dbus address. `/usr/bin/librewolf` is the binary
+# that wrapper itself execs, so it prints the SAME version string with none of
+# that work. Asking the wrapper was measured to work and was still wrong: it
+# was the longest path to a string the short path already has.
+#
+# `timeout 5` because this substitution runs at LOAD TIME below, before the
+# verb is even parsed, so a browser that wedges would hang `stop` as well as
+# `start` and the user could not turn the daemon off from the dock. A version
+# read that cannot answer in five seconds has nothing to tell us; the fallback
+# is correct and instant.
+decoy_user_agent() {
+    local browser major
+    for browser in /usr/bin/librewolf /usr/local/bin/librewolf /usr/bin/firefox; do
+        [ -x "$browser" ] || continue
+        major="$(timeout 5 "$browser" --version 2>/dev/null \
+                 | /usr/bin/grep -oE '[0-9]+' | head -n 1)"
+        if [ -n "$major" ] && [ "$major" -ge 1 ] 2>/dev/null; then
+            printf 'Mozilla/5.0 (X11; Linux x86_64; rv:%s.0) Gecko/20100101 Firefox/%s.0\n' \
+                   "$major" "$major"
+            return 0
+        fi
+    done
+    # No readable browser: keep a plausible, widely-used ESR string rather than
+    # emitting nothing, because curl's own default UA would be far louder.
+    printf 'Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0\n'
+}
+readonly USER_AGENT="$(decoy_user_agent)"
+
+# Large, high-traffic, non-sensitive destinations. Requesting these looks like
+# ordinary browsing and does not associate the user with any niche interest.
+#
+# EVERY URL HERE WAS MEASURED, NOT ASSUMED. On 2026-08-29, 136 candidates were
+# fetched with the exact user agent and timeout below, across three rounds, and
+# only those answering HTTP 200 were kept. 93 survived. Any entry that failed on
+# one round was re-probed at least three times before being judged, because a
+# single refusal is as likely to be a rate limit as a policy.
+#
+# That round removed two entries this list used to ship:
+# https://www.reuters.com/ answers 401 and https://stackoverflow.com/questions
+# answers 403 to a non-browser client, so 2 of the previous 12 targets had been
+# generating refusals rather than cover. A refusal is a short, uniform response,
+# which is weaker cover than a real page and is itself a small pattern.
+#
+# A 000 IS WORSE THAN A REFUSAL AND IS THE ONE `check` ROW YOU MUST NOT IGNORE.
+# 000 means no HTTP response at all: DNS, TCP or TLS never completed, so the
+# worker blocks for the FULL REQUEST_TIMEOUT below on every draw of that target.
+# https://www.gnu.org/ was dropped for exactly this on 2026-08-29: its host
+# 209.51.188.116 stopped answering ICMP and TCP 80/443 entirely, while
+# https://www.fsf.org/ (same organisation, already in this table) kept answering
+# 200, so it was the target and not the network. `check`'s REPLACE rows are not
+# cosmetic.
+#
+# DIVERSITY, STATED BY LAYER, because one number here would overstate it:
+# 93 URLs, 92 distinct SNI hostnames, 87 distinct registrable domains, and about
+# a third of the rotation terminating at just two CDN operators (Fastly and
+# Cloudflare). Name-layer diversity is what mostly matters for cover, but an
+# observer correlating by flow endpoint sees far fewer than 93 destinations.
+# Prefer replacements that are NOT behind those two operators.
+#
+# Re-measure with `kodachi-decoy-traffic check` before editing this list. A
+# target that starts refusing is not an outage, it is a target to replace.
+#
+# THREE RULES GOVERN WHAT MAY BE ADDED, and they are the reason this is a fixed
+# table and not a crawl:
+#   1. Nothing adult, gambling, extremist, pirated, or otherwise embarrassing to
+#      have in a connection log the user did not choose to create.
+#   2. NO DESTINATION WHOSE MERE VISIT IS ITSELF A DISCLOSURE. Privacy tooling
+#      is the obvious case and is deliberately absent: fetching torproject.org
+#      or a VPN vendor as "cover" advertises exactly the interest the cover
+#      exists to hide, which inverts the purpose of the feature. The rule is
+#      wider than that, and is written as a class on purpose so nobody extends
+#      the list wrongly later. Activism, health, legal, immigration and
+#      financial-distress destinations are all excluded by it.
+#
+#      THE TABLE ONCE VIOLATED THIS RULE AND THE VIOLATION SURVIVED REVIEW.
+#      An earlier revision shipped https://www.who.int/ and
+#      https://www.ncbi.nlm.nih.gov/ while this very paragraph named health as
+#      an excluded class. NCBI is PubMed, the most identifiable
+#      biomedical-literature destination there is. Both were removed on
+#      2026-08-29. Recorded here rather than quietly fixed, because a rule
+#      contradicted by its own table is WEAKER than no rule: the next
+#      maintainer reads the entries, not the prose.
+#
+#   2b. THE LIMIT OF RULE 2, STATED RATHER THAN GLOSSED. Rule 2 rests on the
+#      claim that a visit to a mainstream news site is deniable. THAT CLAIM IS
+#      JURISDICTIONAL, and it fails for exactly the user a privacy OS exists
+#      for. This table ships al Jazeera, Deutsche Welle, the BBC, the Guardian,
+#      NPR, CBC and Euronews; some of those are banned or blocked in some
+#      countries. Cover traffic is INVOLUNTARY: the user did not choose these
+#      destinations, so in such a jurisdiction the generator manufactures
+#      precisely the association Rule 2 exists to prevent. A weaker version of
+#      the same shape applies to the six US federal URLs here, five distinct
+#      .gov domains (nasa, noaa, nps, usgs, weather), which form a recognisable
+#      cluster. Counted rather than estimated: an earlier revision of this
+#      paragraph said seven, which was wrong under every reading, and a file
+#      this precise about its own numbers cannot be loose about that one.
+#
+#      This is an ACCEPTED, DOCUMENTED RISK and not an oversight, because the
+#      alternative (a table with no news in it) is poor cover for ordinary
+#      browsing, which is the whole point. The mitigation is that this is a
+#      plain, editable table: a user in an affected jurisdiction should delete
+#      the entries that are sensitive where they are. Anyone localising Kodachi
+#      should treat this paragraph as the first thing to revisit.
+#
+#      BE HONEST ABOUT WHO CAN ACTUALLY APPLY THAT MITIGATION. This file is
+#      root-owned under /usr/local/libexec, and the dock exposes only start,
+#      stop, status and watch. So editing the table is available to a
+#      MAINTAINER, and to a user willing to edit a root-owned file by hand. It
+#      is NOT available through any Kodachi interface, which means that for the
+#      user rule 2b is written for it is a theoretical mitigation today. Saying
+#      so is the point: a documented risk whose mitigation nobody can reach is
+#      an undocumented risk with extra words.
+#   3. Large and stable enough that one more request is unremarkable to the
+#      operator of the site as well as to an observer of the user.
+readonly TARGETS=(
+    # Reference and libraries
+    "https://www.wikipedia.org/"
+    "https://en.wikipedia.org/wiki/Main_Page"
+    "https://commons.wikimedia.org/wiki/Main_Page"
+    "https://www.wiktionary.org/"
+    "https://archive.org/"
+    "https://openlibrary.org/"
+    "https://www.gutenberg.org/"
+    "https://www.bl.uk/"
+    "https://www.openstreetmap.org/"
+
+    # Mainstream international news
+    "https://www.bbc.com/news"
+    "https://apnews.com/"
+    "https://www.theguardian.com/international"
+    "https://www.aljazeera.com/"
+    "https://www.npr.org/"
+    "https://www.cbc.ca/news"
+    "https://www.euronews.com/"
+    "https://www.dw.com/en/top-stories/s-9097"
+
+    # Operating systems and free software projects
+    "https://www.debian.org/"
+    "https://www.kernel.org/"
+    "https://www.kernel.org/doc/html/latest/"
+    "https://www.fsf.org/"
+    "https://ubuntu.com/"
+    "https://archlinux.org/"
+    "https://linuxmint.com/"
+    "https://fedoraproject.org/"
+    "https://www.centos.org/"
+    "https://kde.org/"
+    "https://www.gnome.org/"
+    "https://www.linuxfoundation.org/"
+
+    # Developer and technical reference
+    "https://www.python.org/"
+    "https://go.dev/"
+    "https://nodejs.org/en"
+    "https://www.php.net/"
+    "https://www.ruby-lang.org/en/"
+    "https://www.postgresql.org/"
+    "https://httpd.apache.org/"
+    "https://www.apache.org/"
+    "https://kubernetes.io/"
+    "https://www.docker.com/"
+    "https://developer.mozilla.org/en-US/"
+    "https://www.mozilla.org/en-US/"
+    "https://news.ycombinator.com/"
+    "https://gitlab.com/explore"
+
+    # Standards bodies
+    "https://www.w3.org/"
+    "https://www.ietf.org/"
+    "https://www.rfc-editor.org/"
+    "https://standards.ieee.org/"
+    "https://www.iana.org/"
+    "https://home.unicode.org/"
+    "https://opensource.org/"
+    "https://creativecommons.org/"
+
+    # Desktop applications
+    "https://www.libreoffice.org/"
+    "https://www.videolan.org/"
+    "https://www.blender.org/"
+    "https://www.gimp.org/"
+
+    # Science, space and research
+    "https://www.nasa.gov/"
+    "https://www.jpl.nasa.gov/"
+    "https://www.esa.int/"
+    "https://www.eso.org/public/"
+    "https://home.cern/"
+    "https://arxiv.org/"
+    "https://phys.org/"
+    "https://www.scientificamerican.com/"
+    "https://www.sciencedaily.com/"
+    "https://www.usgs.gov/"
+    "https://www.noaa.gov/"
+    "https://www.antarctica.gov.au/"
+
+    # Education
+    "https://www.mit.edu/"
+    "https://ocw.mit.edu/"
+    "https://www.stanford.edu/"
+    "https://www.cam.ac.uk/"
+    "https://www.maths.ox.ac.uk/"
+    "https://www.khanacademy.org/"
+    "https://www.coursera.org/"
+
+    # Public institutions
+    "https://www.un.org/en/"
+    "https://www.worldbank.org/ext/en/home"
+    "https://european-union.europa.eu/index_en"
+    "https://www.nps.gov/index.htm"
+
+    # Weather
+    "https://www.weather.gov/"
+    "https://weather.com/"
+    "https://www.metoffice.gov.uk/"
+    "https://www.bom.gov.au/"
+    "https://www.bbc.co.uk/weather"
+
+    # Culture, museums and general interest
+    "https://www.si.edu/"
+    "https://www.smithsonianmag.com/"
+    "https://www.nationalgeographic.com/"
+    "https://www.moma.org/"
+    "https://www.rijksmuseum.nl/en"
+    "https://www.louvre.fr/en"
+    "https://www.nationalgallery.org.uk/"
+    "https://www.goodreads.com/"
+    "https://arstechnica.com/"
+    "https://www.zdnet.com/"
+)
+
+# ── Session shape: WHAT WAS MISSING, and only that ────────────────────────────
+#
+# Two properties this generator did not have, both taken from a survey of what
+# else exists (2026-08-29). Nothing else from that survey was adopted: the
+# alternatives that forge tracking cookies, rotate their own proxies or
+# randomise DNT per request were rejected, the first two because they change
+# what leaves the machine and the third because randomising a header every real
+# browser holds constant makes a client MORE identifiable, not less.
+#
+# (a) INTEREST CLUSTERING. A uniform draw across 93 unrelated hosts does not
+#     look like a person. People read AROUND a subject: two to four pages in one
+#     area, then they move on. The table is already grouped, so a session picks a
+#     CATEGORY, spends a few requests inside it, then switches to a different
+#     one.
+#
+# (b) DIURNAL RHYTHM. The old loop ran at the same rate at 04:00 as at 14:00.
+#     A flat 24-hour profile is itself a signature, and it is the one an
+#     always-on generator cannot help emitting. Delays are now scaled by local
+#     hour: slow overnight, fastest in the evening.
+#
+# Both are SHAPE ONLY. No new destination, no new dependency, no change to what
+# is sent, no change to the verbs or to the JSON the Identity switch reads.
+
+# Category spans in the DECLARATION ORDER of TARGETS above. Stored as sizes
+# rather than as a 93-entry parallel array, because a parallel array silently
+# drifts when somebody inserts one URL, whereas a wrong size here is caught by
+# the assertion in category_span_guard below and refuses to run.
+readonly TARGET_CATEGORY_NAMES=(
+    "Reference and books"
+    "International news"
+    "Operating systems"
+    "Developer reference"
+    "Standards bodies"
+    "Desktop applications"
+    "Science and space"
+    "Education"
+    "Public institutions"
+    "Weather"
+    "Culture and museums"
+)
+readonly TARGET_CATEGORY_SIZES=(9 8 12 14 8 4 12 7 4 5 10)
+
+# ANTI-VACUITY. If the sizes stop summing to the table, the clustering would
+# quietly address the wrong rows, or index past the end and request an empty
+# URL. Both fail silently, so this refuses to start instead. Called from
+# worker_loop and from every verb that reports the shape.
+category_span_guard() {
+    local total=0 n
+    for n in "${TARGET_CATEGORY_SIZES[@]}"; do
+        # EACH SIZE MUST BE AT LEAST ONE. A zero still sums to the table total,
+        # so the sum check passes, and then `RANDOM % cat_size` divides by zero
+        # on the FIRST draw of that category. The `cat_size -gt 1` guard in the
+        # loop protects the re-draw, not the first draw.
+        if ! [[ "$n" =~ ^[0-9]+$ ]] || [[ "$n" -lt 1 ]]; then
+            printf 'decoy: category size %s is not a positive integer\n' "$n" >&2
+            return 1
+        fi
+        total=$((total + n))
+    done
+    if [[ "${#TARGET_CATEGORY_NAMES[@]}" -ne "${#TARGET_CATEGORY_SIZES[@]}" ]]; then
+        printf 'decoy: %d category names but %d sizes\n' \
+            "${#TARGET_CATEGORY_NAMES[@]}" "${#TARGET_CATEGORY_SIZES[@]}" >&2
+        return 1
+    fi
+    if [[ "$total" -ne "${#TARGETS[@]}" ]]; then
+        printf 'decoy: category sizes sum to %d but the table holds %d targets\n' \
+            "$total" "${#TARGETS[@]}" >&2
+        return 1
+    fi
+    return 0
+}
+
+# First index of category $1.
+category_start() {
+    local want="$1" i start=0
+    for ((i = 0; i < want; i++)); do
+        start=$((start + TARGET_CATEGORY_SIZES[i]))
+    done
+    printf '%d\n' "$start"
+}
+
+# Delay multiplier as a PERCENTAGE of the base interval, by LOCAL hour. Local,
+# not UTC, on purpose: the point is to match the rhythm of the person at the
+# keyboard, and a UTC curve would put the quiet period in the middle of their
+# afternoon.
+#
+# Set KODACHI_DECOY_DIURNAL=0 to pin this at 100, which exists so the timing
+# can be tested deterministically. It is not a documented user setting.
+diurnal_percent() {
+    if [[ "${KODACHI_DECOY_DIURNAL:-1}" == "0" ]]; then
+        printf '100\n'
+        return 0
+    fi
+    local h
+    h="$(date +%-H)"
+    if   [[ "$h" -le 5 ]];  then printf '260\n'   # 00-05 asleep
+    elif [[ "$h" -le 7 ]];  then printf '150\n'   # 06-07 waking
+    elif [[ "$h" -le 11 ]]; then printf '95\n'    # 08-11 morning
+    elif [[ "$h" -le 17 ]]; then printf '85\n'    # 12-17 afternoon
+    elif [[ "$h" -le 22 ]]; then printf '80\n'    # 18-22 evening, busiest
+    else                         printf '160\n'   # 23 winding down
+    fi
+}
+
+# ── Helpers ───────────────────────────────────────────────────
+
+require_curl() {
+    if ! command -v curl >/dev/null 2>&1; then
+        printf 'curl is not installed.\n' >&2
+        exit 1
+    fi
+}
+
+running_pid() {
+    [[ -r "$PID_FILE" ]] || return 1
+    local pid
+    pid="$(cat "$PID_FILE" 2>/dev/null)"
+    [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+    # Confirm the PID is still OUR WORKER and not a recycled number. The old
+    # form grepped for the script NAME alone, which is an argv SUBSTRING match:
+    # it is satisfied by any process that merely mentions the name, including
+    # the user's own `watch` window, an editor holding the path, or a shell
+    # whose command line contains it. That is not identity, and `verb_stop`
+    # kills whatever it returns.
+    #
+    # This is the same defect shape that cost this lane a verification round
+    # when a `pkill -f` pattern matched its own ssh shell. Requiring the
+    # `--worker` token, which only the background generator carries, makes it
+    # an identity check rather than a mention check. Read with tr because
+    # /proc cmdline is NUL separated, so a plain grep cannot see argument
+    # boundaries.
+    local argv
+    argv="$(tr '\0' ' ' <"/proc/${pid}/cmdline" 2>/dev/null)" || return 1
+    #
+    # MATCH OUR OWN BASENAME, NOT A HARDCODED ONE. An inspector proved by
+    # accident that a hardcoded literal makes this rename-fragile in a way that
+    # fails SILENTLY: running the script under any other filename made every
+    # start report "failed to start" while the worker was genuinely running,
+    # and stop could never reach it. An orphan generator with no
+    # operator-visible handle. Not reachable in production, because the path is
+    # fixed at /usr/local/libexec/kodachi/kodachi-decoy-traffic, but a future
+    # wrapper or rename would convert it into exactly that, and nothing would
+    # say so. Deriving the name keeps the identity check strict without the
+    # footgun.
+    local self
+    self="$(basename -- "$0")"
+    [[ -n "$self" ]] || return 1
+    [[ "$argv" == *"${self} --worker "* ]] || return 1
+    printf '%s\n' "$pid"
+}
+
+random_between() {
+    local low="$1" high="$2" span
+    span=$((high - low + 1))
+    printf '%d\n' $((low + RANDOM % span))
+}
+
+# ── Generator Loop ────────────────────────────────────────────
+# Runs in the background. `--worker` is internal and is not part of the
+# documented interface.
+
+# Runs from the TERM/INT trap: stop the pending sleep and drop the PID file so
+# `status` never reports a generator that is on its way out.
+cleanup_worker() {
+    [[ -n "${SLEEP_PID:-}" ]] && kill "$SLEEP_PID" 2>/dev/null
+    rm -f "$PID_FILE" 2>/dev/null
+    exit 0
+}
+
+worker_loop() {
+    local deadline="${1:-0}"
+    local target delay index last_target=""
+    local session_cat=-1 session_left=0 cat_start cat_size
+    local req_count=0 byte_count=0 started_at
+    started_at="$(date +%s)"
+
+    # Refuse to run on a mis-declared table rather than addressing the wrong
+    # rows or indexing past the end, both of which fail silently.
+    if ! category_span_guard; then
+        printf '[%s] refusing to start: category spans do not match the table\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$LOG_FILE"
+        rm -f "$PID_FILE"
+        exit 1
+    fi
+
+    # The worker records its OWN pid. verb_start cannot do it: it launches this
+    # through setsid, so its $! is the short-lived setsid process, not the
+    # worker. Recording that pid left running_pid() permanently false and let a
+    # second click start a second generator.
+    printf '%d\n' "$$" >"$PID_FILE"
+    SLEEP_PID=""
+    trap 'cleanup_worker' TERM INT
+
+    printf '[%s] decoy traffic started (pid %d, deadline %s)\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$$" \
+        "$([[ "$deadline" -eq 0 ]] && printf 'none' || date -u -d "@${deadline}" +%H:%M:%SZ)" \
+        >>"$LOG_FILE"
+
+    while true; do
+        if [[ "$deadline" -ne 0 && "$(date +%s)" -ge "$deadline" ]]; then
+            printf '[%s] deadline reached, stopping\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$LOG_FILE"
+            break
+        fi
+
+        # INTEREST CLUSTERING. Start a new session when the last one is spent:
+        # a category, then two to four requests inside it, then somewhere else.
+        # The next category is never the current one, so a session boundary is
+        # always a visible change of subject.
+        if [[ "$session_left" -le 0 ]]; then
+            local newcat=$((RANDOM % ${#TARGET_CATEGORY_SIZES[@]}))
+            if [[ "$newcat" -eq "$session_cat" && "${#TARGET_CATEGORY_SIZES[@]}" -gt 1 ]]; then
+                newcat=$(((newcat + 1 + RANDOM % (${#TARGET_CATEGORY_SIZES[@]} - 1)) \
+                          % ${#TARGET_CATEGORY_SIZES[@]}))
+            fi
+            session_cat="$newcat"
+            session_left=$((2 + RANDOM % 3))
+        fi
+        cat_start="$(category_start "$session_cat")"
+        cat_size="${TARGET_CATEGORY_SIZES[$session_cat]}"
+
+        # Never send the same target twice in a row. The re-draw stays INSIDE
+        # the session's category, so avoiding a repeat cannot silently break
+        # the clustering it sits inside. Guarded on size, because a
+        # single-entry category has nothing to move to and the modulo below
+        # would divide by zero.
+        index=$((cat_start + RANDOM % cat_size))
+        if [[ "${TARGETS[$index]}" == "${last_target:-}" && "$cat_size" -gt 1 ]]; then
+            index=$((cat_start + ((index - cat_start + 1 + RANDOM % (cat_size - 1)) % cat_size)))
+        fi
+        target="${TARGETS[$index]}"
+        last_target="$target"
+        session_left=$((session_left - 1))
+
+        # --output /dev/null: the body is cover traffic, never content we keep.
+        # --max-redirs 0 makes limit 1 ENFORCED rather than merely implicit in
+        # the absence of --location. Relying on an absent flag means any later
+        # edit that adds --location for a plausible reason silently deletes the
+        # guarantee, and nothing would fail. curl refuses the redirect outright
+        # with an explicit cap, so the property is stated in the command that
+        # has to honour it.
+        # BOUND THE REQUEST, NOT ONLY THE SLEEP. Clamping the inter-request
+        # sleep fixed the common case but left the real worst case at
+        # REQUEST_TIMEOUT: the deadline is tested at the top of this loop, so a
+        # request that starts one second before it may still run the full 20
+        # seconds past it. Two measured runs stopping 1s and 0s late were
+        # SAMPLES, not the bound, and reporting them as the bound overstated
+        # the fix. Capping curl's own --max-time to the time remaining makes
+        # the deadline an actual guarantee rather than a typical outcome.
+        local budget="$REQUEST_TIMEOUT"
+        if [[ "$deadline" -ne 0 ]]; then
+            local left=$((deadline - $(date +%s)))
+            [[ "$left" -le 0 ]] && break
+            [[ "$left" -lt "$budget" ]] && budget="$left"
+        fi
+        # --write-out on stdout gives the dashboard real numbers (status, bytes,
+        # seconds) at zero extra cost, because curl already has them. stderr
+        # still goes to the log, so a failure is still visible as text. The
+        # BODY is still discarded: size_download is a count of bytes that went
+        # to /dev/null, never bytes kept.
+        local meta code bytes secs
+        meta="$(curl --silent --show-error \
+            --max-time "$budget" \
+            --max-redirs 0 \
+            --user-agent "$USER_AGENT" \
+            --output /dev/null \
+            --write-out '%{http_code} %{size_download} %{time_total}' \
+            "$target" 2>>"$LOG_FILE")"
+        code="${meta%% *}"; meta="${meta#* }"
+        bytes="${meta%% *}"; secs="${meta##* }"
+        [[ "$code" =~ ^[0-9]+$ ]] || code="000"
+        [[ "$bytes" =~ ^[0-9]+$ ]] || bytes=0
+
+        req_count=$((req_count + 1))
+        byte_count=$((byte_count + bytes))
+
+        printf '[%s] %-22s %s %s %sB %ss\n' "$(date -u +%H:%M:%SZ)" \
+            "${TARGET_CATEGORY_NAMES[$session_cat]:0:22}" "$target" \
+            "$code" "$bytes" "$secs" >>"$LOG_FILE"
+
+        # A foreground `sleep N` defers the TERM trap until it returns, so a
+        # stop request would wait up to MAX_DELAY seconds and then be SIGKILLed
+        # by verb_stop's 10s deadline. With a mean delay of ~26s that made a
+        # hard kill the usual outcome. Backgrounding the sleep and waiting on it
+        # lets bash run the trap the moment the signal arrives.
+        delay="$(random_between "$MIN_DELAY" "$MAX_DELAY")"
+
+        # DIURNAL RHYTHM. Scale the interval by local hour so the stream is
+        # slow overnight and busiest in the evening. A generator running at one
+        # flat rate around the clock emits a signature of its own, and it is
+        # the one signature an always-on tool cannot avoid by choosing better
+        # destinations.
+        #
+        # The floor is deliberate: a fast hour must never drive this below 4s,
+        # because the point is cover traffic and not load. MIN_DELAY and
+        # MAX_DELAY remain the BASE interval and are still what status reports,
+        # with the multiplier reported beside them.
+        local pct
+        pct="$(diurnal_percent)"
+        delay=$((delay * pct / 100))
+        [[ "$delay" -lt 4 ]] && delay=4
+
+        # NEVER SLEEP PAST THE DEADLINE. The deadline is only tested at the top
+        # of this loop, so an unclamped sleep keeps the process alive, and the
+        # Identity switch reporting RUNNING, for up to MAX_DELAY seconds after
+        # the run was supposed to end. MEASURED 2026-08-29 before this clamp: a
+        # `--minutes 1` run stopped at 16:37:12 against a 16:36:39 deadline, 33
+        # seconds late on a 60 second run. The dock's "Decoy Traffic 5 Minutes"
+        # cell had the same overshoot in absolute terms.
+        #
+        # Clamping here rather than shortening MAX_DELAY keeps the request
+        # spacing untouched for the normal run-until-stopped case, which is what
+        # makes the traffic look unscheduled.
+        if [[ "$deadline" -ne 0 ]]; then
+            local remaining=$((deadline - $(date +%s)))
+            if [[ "$remaining" -le 0 ]]; then
+                printf '[%s] deadline reached, stopping\n' \
+                    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$LOG_FILE"
+                break
+            fi
+            [[ "$delay" -gt "$remaining" ]] && delay="$remaining"
+        fi
+
+        write_stats "$started_at" "$req_count" "$byte_count" \
+            "${TARGET_CATEGORY_NAMES[$session_cat]}" "$session_left" \
+            "$delay" "$pct" "$deadline"
+
+        sleep "$delay" &
+        SLEEP_PID=$!
+        wait "$SLEEP_PID" 2>/dev/null || true
+        SLEEP_PID=""
+    done
+
+    rm -f "$PID_FILE"
+}
+
+# ── Live numbers for the terminal view ───────────────────────────────────────
+#
+# The operator asked for the terminal view to show real gauges and numbers
+# rather than a bare log tail. Everything below is READ-ONLY instrumentation:
+# it changes no request, adds no dependency (bash, coreutils and /proc only)
+# and cannot alter what leaves the machine.
+#
+# Counters live in a small key=value file rather than being parsed back out of
+# the log, because parsing your own log is how a display and the thing it
+# describes drift apart. Written to a temp and renamed, so a reader mid-write
+# sees the previous complete file rather than half of the new one.
+write_stats() {
+    local tmp="${STATS_FILE}.$$"
+    {
+        printf 'started_at=%s\n' "$1"
+        printf 'requests=%s\n'   "$2"
+        printf 'bytes=%s\n'      "$3"
+        printf 'category=%s\n'   "$4"
+        printf 'session_left=%s\n' "$5"
+        printf 'delay=%s\n'      "$6"
+        printf 'diurnal_pct=%s\n' "$7"
+        printf 'deadline=%s\n'   "$8"
+        printf 'next_at=%s\n'    "$(( $(date +%s) + $6 ))"
+    } >"$tmp" 2>/dev/null && mv -f "$tmp" "$STATS_FILE" 2>/dev/null
+}
+
+# READ AND VALIDATE IN ONE PLACE. `stat_value X || printf '0'` only covers a
+# MISSING key; it does nothing about a key present with a non-numeric value, and
+# under `set -u` the very next arithmetic test aborts the whole panel. Hardening
+# gauge() and human_bytes() did not help, because `[[ "$dl" -gt 0 ]]` in the
+# render loop fires before either is called.
+#
+# That was fixing the two instances I had been shown instead of the class. This
+# is the class: every numeric field goes through here, once, and a corrupt or
+# half-written stats file degrades the panel to zeros rather than killing it.
+stat_num() {
+    local v
+    v="$(stat_value "$1" || printf '%s' "${2:-0}")"
+    [[ "$v" =~ ^-?[0-9]+$ ]] || v="${2:-0}"
+    printf '%s\n' "$v"
+}
+
+stat_value() {
+    local key="$1" line
+    [[ -r "$STATS_FILE" ]] || return 1
+    while IFS= read -r line; do
+        if [[ "$line" == "${key}="* ]]; then
+            printf '%s\n' "${line#*=}"
+            return 0
+        fi
+    done <"$STATS_FILE"
+    return 1
+}
+
+# A bar, not a spinner: the reader should be able to read a VALUE off it.
+# width is fixed so columns line up between refreshes.
+gauge() {
+    local value="${1:-0}" max="${2:-1}" width="${3:-24}" filled i out=""
+    # A corrupt or partially written stats file must degrade the panel, never
+    # kill it. Under `set -u` an arithmetic test on a non-numeric string aborts
+    # the shell, so the dashboard would exit rather than draw a wrong bar.
+    [[ "$value" =~ ^-?[0-9]+$ ]] || value=0
+    [[ "$max" =~ ^-?[0-9]+$ ]] || max=1
+    [[ "$width" =~ ^[0-9]+$ ]] || width=24
+    [[ "$width" -gt 0 ]] || width=24
+    [[ "$max" -gt 0 ]] || max=1
+    [[ "$value" -lt 0 ]] && value=0
+    [[ "$value" -gt "$max" ]] && value="$max"
+    filled=$((value * width / max))
+    for ((i = 0; i < width; i++)); do
+        if [[ "$i" -lt "$filled" ]]; then out="${out}#"; else out="${out}."; fi
+    done
+    printf '[%s]' "$out"
+}
+
+# ONLY UNHIDE WHAT WE HID. --once never hides the cursor, so emitting the show
+# sequence there wrote ESC[?25h into piped output and contaminated the very
+# capture mode that exists to make this view testable.
+restore_cursor() {
+    [[ -t 1 ]] && printf '\033[?25h'
+    return 0
+}
+
+# Sweep our own leftovers. A failed rename in write_stats leaves a
+# .stats.<pid> behind, and the start lock was never removed at all, so the
+# state directory grew a file per crashed run forever.
+sweep_state_dir() {
+    local f
+    for f in "${STATS_FILE}".*; do
+        [[ -e "$f" ]] || continue
+        [[ "$f" == "$STATS_FILE" ]] && continue
+        rm -f "$f" 2>/dev/null || true
+    done
+}
+
+human_bytes() {
+    local b="${1:-0}"
+    # Same reason as gauge(): never abort the panel on unexpected input.
+    [[ "$b" =~ ^[0-9]+$ ]] || b=0
+    if   [[ "$b" -ge 1073741824 ]]; then printf '%s.%s GB' $((b/1073741824)) $(((b%1073741824)*10/1073741824))
+    elif [[ "$b" -ge 1048576 ]];    then printf '%s.%s MB' $((b/1048576)) $(((b%1048576)*10/1048576))
+    elif [[ "$b" -ge 1024 ]];       then printf '%s.%s KB' $((b/1024)) $(((b%1024)*10/1024))
+    else printf '%s B' "$b"; fi
+}
+
+human_time() {
+    local t="${1:-0}"
+    # Third member of the same family as gauge() and human_bytes(), and the one
+    # I missed when I fixed those two by name rather than by class.
+    [[ "$t" =~ ^[0-9]+$ ]] || t=0
+    printf '%02d:%02d:%02d' $((t/3600)) $(((t%3600)/60)) $((t%60))
+}
+
+# SYSTEM totals from /proc/net/dev, loopback excluded. This is the whole box,
+# not just this generator, which is the point: it lets the reader see how small
+# the decoy share is against real traffic. No dependency, and /proc cannot be
+# intercepted by a pipeline the way a wrapped command can.
+net_totals() {
+    local rx=0 tx=0 iface r t line
+    while IFS= read -r line; do
+        case "$line" in
+            *:*) : ;;
+            *) continue ;;
+        esac
+        iface="${line%%:*}"
+        iface="${iface// /}"
+        [[ "$iface" == "lo" || -z "$iface" ]] && continue
+        # shellcheck disable=SC2086
+        set -- ${line#*:}
+        r="$1"; t="$9"
+        [[ "$r" =~ ^[0-9]+$ ]] || continue
+        [[ "$t" =~ ^[0-9]+$ ]] || continue
+        rx=$((rx + r)); tx=$((tx + t))
+    done </proc/net/dev
+    printf '%s %s\n' "$rx" "$tx"
+}
+
+# ── Verbs ─────────────────────────────────────────────────────
+
+verb_start() {
+    local minutes=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --minutes)
+                # REQUIRE THE VALUE. `--minutes` with nothing after it used to
+                # fall back to 0, which is the sentinel for "run until stopped",
+                # so a truncated dock cell would silently start an UNBOUNDED
+                # generator. `--minutes abc` and `--minutes -3` were both
+                # rejected, so the missing value was the one case treated more
+                # leniently than a wrong one.
+                if [[ $# -lt 2 ]]; then
+                    printf -- '--minutes requires a value in whole minutes\n' >&2
+                    return 1
+                fi
+                shift
+                minutes="$1"
+                if ! [[ "$minutes" =~ ^[0-9]+$ ]]; then
+                    printf 'Invalid value for --minutes: %s\n' "$minutes" >&2
+                    return 1
+                fi
+                ;;
+            *)
+                printf 'Unknown option: %s\n' "$1" >&2
+                return 1
+                ;;
+        esac
+        shift
+    done
+
+    require_curl
+    mkdir -p "$STATE_DIR"
+
+    # Serialise starts. The dock's own single-flight lock is per ACTION, and
+    # "Decoy Traffic Start" and "Decoy Traffic 5 Minutes" are two actions, so
+    # without this lock clicking both would start two generators.
+    exec 8>"${STATE_DIR}/decoy-traffic.startlock"
+    if ! flock -w 5 8; then
+        # Losing this race means another cell is starting the same generator.
+        # "Decoy Traffic Start" and "Decoy Traffic 5 Minutes" are two cells for
+        # one daemon, so this is normal use. Exit successfully; returning 1 here
+        # made the dock raise a red critical notification for a non-problem.
+        printf 'Decoy traffic is already being started.\n'
+        return 0
+    fi
+
+    local existing
+    if existing="$(running_pid)"; then
+        printf 'Decoy traffic is already running (pid %s).\n' "$existing"
+        return 0
+    fi
+
+    local deadline=0
+    if [[ "$minutes" -gt 0 ]]; then
+        deadline=$(($(date +%s) + minutes * 60))
+    fi
+
+    : >"$LOG_FILE"
+    rm -f "$PID_FILE"
+    # CLEAR THE COUNTERS TOO, NOT JUST THE LOG. worker_loop does not call
+    # write_stats until after its FIRST request returns, so between start and
+    # that moment the dashboard read the PREVIOUS run's stats file and showed
+    # its request count, its byte totals and its deadline, which by then is in
+    # the past, as though they were live. The window is up to REQUEST_TIMEOUT,
+    # and longer on a target that burns the whole timeout.
+    #
+    # The existing guard zeroes the counters when the state is STOPPED, and it
+    # could never fire here because the state is genuinely RUNNING. Same rule,
+    # the other arm of it: stale counters that look current are worse than no
+    # counters. Every reader already falls back to 0 on a missing file.
+    # SEED THE COUNTERS, DO NOT JUST DELETE THEM. Deleting removed the previous
+    # run's stale numbers, which was the point, but it replaced a false PAST
+    # deadline with a false PRESENT one: with no file to read, the panel fell
+    # back to deadline 0 and printed "runs until stopped" for a run that is
+    # bounded, until the first request landed and the worker wrote real stats.
+    # That is the same defect one level down, and it is still the panel making
+    # a positive claim about state that is untrue.
+    #
+    # Writing zeros plus the REAL deadline here fixes both: the counters are
+    # honest from t+0 and so is the end time. Strictly better than the deletion
+    # it replaces.
+    write_stats "$(date +%s)" 0 0 "-" 0 0 "$(diurnal_percent)" "$deadline"
+    # 8>&- keeps the start lock out of the worker. bash does not set FD_CLOEXEC
+    # on `exec 8>`, so without this the worker inherits the lock and holds it
+    # for its entire lifetime, making every later start wait the full 5s.
+    setsid "$0" --worker "$deadline" >/dev/null 2>&1 8>&- &
+    disown 2>/dev/null || true
+
+    # Wait for the worker to publish its own pid rather than guessing it, so the
+    # caller never reports a start that did not actually happen.
+    local waited=0 pid=""
+    while [[ $waited -lt 50 ]]; do
+        if pid="$(running_pid)"; then
+            break
+        fi
+        sleep 0.1
+        waited=$((waited + 1))
+    done
+
+    if [[ -z "$pid" ]]; then
+        printf 'Decoy traffic failed to start.\n' >&2
+        return 1
+    fi
+
+    if [[ "$minutes" -gt 0 ]]; then
+        printf 'Decoy traffic started for %d minute(s) (pid %s).\n' "$minutes" "$pid"
+    else
+        printf 'Decoy traffic started, running until stopped (pid %s).\n' "$pid"
+    fi
+}
+
+verb_stop() {
+    if [[ $# -gt 0 ]]; then
+        printf 'stop takes no options (got: %s)\n' "$1" >&2
+        return 1
+    fi
+    local pid
+    if ! pid="$(running_pid)"; then
+        rm -f "$PID_FILE"
+        printf 'Decoy traffic is not running.\n'
+        return 0
+    fi
+
+    # Kill by exact PID, verified above to be our own worker. Never pkill -f,
+    # which would match any shell that merely mentions this script's name.
+    kill "$pid" 2>/dev/null || true
+
+    # The wait MUST exceed REQUEST_TIMEOUT. Backgrounding the inter-request
+    # sleep fixed the dominant case, but curl is still a foreground child, and
+    # bash defers the TERM trap until the foreground child returns. A 10s
+    # deadline against a 20s curl meant a stop landing mid-request was still a
+    # SIGKILL. Derive the deadline from the timeout instead of hardcoding it, so
+    # the two cannot drift apart again.
+    local deadline=$((REQUEST_TIMEOUT + 5))
+    local waited=0
+    while [[ $waited -lt $deadline ]] && kill -0 "$pid" 2>/dev/null; do
+        sleep 1
+        waited=$((waited + 1))
+    done
+    kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null
+
+    rm -f "$PID_FILE" "${STATE_DIR}/decoy-traffic.startlock"
+    sweep_state_dir
+    printf 'Decoy traffic stopped (pid %s).\n' "$pid"
+}
+
+# ── JSON, because the GTK switch cannot read prose ────────────────────────────
+#
+# The Identity window drew this row as "unreadable" and could never remember its
+# position, which the operator reported on 2026-08-23 together with "nothing
+# happens when you enable it". Both halves are the same cause.
+#
+# kodachi-command-window read_switch() resolves the row's check command, appends
+# `--json`, and reads a boolean out of `payload["data"]`, accepting the names
+# is_enabled / enabled / is_active / active / is_running / running. It
+# DELIBERATELY refuses to sniff prose: an earlier version did, and "Decoy
+# traffic: STOPPED" versus "not running" is exactly the kind of sentence that
+# reads backwards to a substring test. So a status verb with no --json is not a
+# cosmetic gap, it is the reason the control cannot show the state that IS.
+#
+# `is_running` is the honest key here: this is a process, not a persisted
+# setting, and the switch is claiming only that the generator is up.
+json_escape() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    printf '%s' "$s"
+}
+
+status_json() {
+    local pid line first=1
+    if pid="$(running_pid)"; then
+        printf '{"status":"success","message":"Decoy traffic is running","data":{'
+        printf '"is_running":true,"pid":%s,' "$pid"
+    else
+        printf '{"status":"success","message":"Decoy traffic is not running","data":{'
+        printf '"is_running":false,"pid":null,'
+    fi
+    printf '"targets":%d,"min_delay_seconds":%d,"max_delay_seconds":%d,' \
+        "${#TARGETS[@]}" "$MIN_DELAY" "$MAX_DELAY"
+    printf '"log_file":"%s","recent":[' "$(json_escape "$LOG_FILE")"
+    # Control bytes become SPACES rather than being deleted: curl --show-error can
+    # put anything on this stream, and a raw control byte inside a JSON string is
+    # invalid, which would turn a readable switch back into "unreadable". Deleting
+    # them was the first version and it glued words together across a tab, so the
+    # repair damaged the text it was protecting.
+    while IFS= read -r line; do
+        line="$(printf '%s' "$line" | tr '\000-\037' ' ')"
+        [[ $first -eq 1 ]] || printf ','
+        first=0
+        printf '"%s"' "$(json_escape "$line")"
+    done < <(tail -n 8 "$LOG_FILE" 2>/dev/null)
+    printf ']},"timestamp":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+
+# ── The live view the operator asked for ─────────────────────────────────────
+#
+# "this should show the terminal window and show the decoy traffic while its
+# working" , 2026-08-23. `status` tails eight lines once and exits, which tells
+# you the generator is up and nothing about what it is doing. This follows the
+# log until the window is closed.
+#
+# `tail -F`, not `-f`: verb_start truncates the log with `: >"$LOG_FILE"`, and
+# plain `-f` holds the old offset and then prints nothing for the rest of the
+# session, which would reproduce the exact "nothing happens" complaint one level
+# down.
+verb_watch() {
+    mkdir -p "$STATE_DIR"
+    : >>"$LOG_FILE"
+
+    # Non-interactive callers (a pipe, a test harness, a capture) get ONE frame
+    # and exit rather than an endless stream of redraws. A dashboard that only
+    # works on a tty is a dashboard nobody can test.
+    # THE VERB I MISSED. Every other verb rejects an argument it does not
+    # understand; this one silently ignored anything, so `watch --bogus` and
+    # `watch --once extra` both exited 0. I hardened the verbs I had listed and
+    # then published "7 of 7 rejection cases exit 1" without testing this one.
+    if [[ $# -gt 1 || ( $# -eq 1 && "${1:-}" != "--once" ) ]]; then
+        printf 'Unknown option: %s\n' "${2:-${1:-}}" >&2
+        return 1
+    fi
+    local once=0
+    [[ -t 1 ]] || once=1
+    [[ "${1:-}" == "--once" ]] && once=1
+
+    local prev_rx=0 prev_tx=0 first=1
+    local rx tx d_rx d_tx
+    read -r prev_rx prev_tx < <(net_totals)
+
+    # A RATE NEEDS TWO SAMPLES. In the redraw loop the second one arrives on
+    # the next frame, but --once has no next frame, so it printed a structural
+    # 0 B/s that reads exactly like a real measurement of an idle link. Take
+    # the second sample here instead. One second is the same window the loop
+    # uses, so the two modes report the same quantity.
+    if [[ "$once" -eq 1 ]]; then
+        sleep 1
+        first=0
+    fi
+
+    # Restore the cursor whichever way this window is closed.
+    # HUP as well as INT and TERM: closing the terminal window sends HUP, and
+    # that is the ordinary way this view ends. Only `watch` needs this; the
+    # worker is setsid-detached and has its own trap.
+    trap 'restore_cursor; exit 0' INT TERM HUP
+    [[ "$once" -eq 0 ]] && printf '\033[?25l'
+
+    while true; do
+        local pid state started reqs bytes cat sleft delay pct dl next now up
+        local rate avg remain
+        if pid="$(running_pid)"; then state="RUNNING"; else state="STOPPED"; pid="-"; fi
+
+        started="$(stat_num started_at 0)"
+        reqs="$(stat_num requests 0)"
+        bytes="$(stat_num bytes 0)"
+        cat="$(stat_value category || printf '-')"
+        [[ -n "$cat" ]] || cat="-"
+        sleft="$(stat_num session_left 0)"
+        delay="$(stat_num delay 0)"
+        pct="$(stat_num diurnal_pct 100)"
+        dl="$(stat_num deadline 0)"
+        next="$(stat_num next_at 0)"
+        now="$(date +%s)"
+
+        # A STOPPED generator must not show the last run's numbers as if they
+        # were live. Stale counters that look current are worse than no
+        # counters, because nothing on screen says they are old.
+        if [[ "$state" == "STOPPED" ]]; then
+            reqs=0; bytes=0; cat="-"; delay=0; next=0; started=0
+        fi
+
+        up=0
+        [[ "$started" -gt 0 ]] && up=$((now - started))
+        rate=0
+        [[ "$up" -gt 0 ]] && rate=$((bytes / up))
+        avg=0
+        [[ "$reqs" -gt 0 ]] && avg=$((bytes / reqs))
+        remain=0
+        [[ "$next" -gt "$now" ]] && remain=$((next - now))
+
+        read -r rx tx < <(net_totals)
+        d_rx=$((rx - prev_rx)); d_tx=$((tx - prev_tx))
+        [[ "$d_rx" -lt 0 ]] && d_rx=0
+        [[ "$d_tx" -lt 0 ]] && d_tx=0
+        [[ "$first" -eq 1 ]] && { d_rx=0; d_tx=0; first=0; }
+        prev_rx="$rx"; prev_tx="$tx"
+
+        # COMPOSE THE WHOLE FRAME, THEN WRITE IT ONCE. The previous form
+        # cleared the screen and then printed thirty lines one at a time, so
+        # anything looking at the terminal between the clear and the last line
+        # saw a half-drawn panel. Measured 2026-08-29 on the test VM: a
+        # screenshot caught a frame holding 3 of its 8 recent rows, while four
+        # consecutive --once renders all produced 8. The reader sees the same
+        # thing as a flash of blank every second.
+        #
+        # Home the cursor rather than clearing, emit the frame in a single
+        # write, then erase from the cursor to the end of the screen. Nothing
+        # is ever blank, and a partial frame cannot be observed.
+        local frame
+        frame="$(
+        printf '  KODACHI DECOY TRAFFIC , LIVE\n'
+        printf '  ============================================================\n'
+        printf '  State      %-10s  pid %-8s  uptime %s\n' \
+            "$state" "$pid" "$(human_time "$up")"
+        if [[ "$dl" -gt 0 && "$state" == "RUNNING" ]]; then
+            printf '  Ends       %s local\n' "$(date -d "@$dl" +%H:%M:%S 2>/dev/null)"
+        else
+            printf '  Ends       runs until stopped\n'
+        fi
+        printf '\n'
+        printf '  Requests   %-8s %s\n' "$reqs" "$(gauge "$reqs" 200 30)"
+        printf '  Decoy data %-10s   avg %s per request\n' \
+            "$(human_bytes "$bytes")" "$(human_bytes "$avg")"
+        printf '  Decoy rate %-10s   %s\n' \
+            "$(human_bytes "$rate")/s" "$(gauge "$rate" 65536 30)"
+        printf '\n'
+        printf '  Interface traffic, whole system, this second\n'
+        printf '    down     %-12s %s\n' "$(human_bytes "$d_rx")/s" "$(gauge "$d_rx" 2097152 30)"
+        printf '    up       %-12s %s\n' "$(human_bytes "$d_tx")/s" "$(gauge "$d_tx" 524288 30)"
+        printf '\n'
+        printf '  Subject    %-38s\n' "$cat"
+        if [[ "$sleft" -le 0 ]]; then
+            printf '  Session    next request moves to a new subject\n'
+        else
+            printf '  Session    %s more in this subject\n' "$sleft"
+        fi
+        printf '  Pace       %s%% of base, %s to %ss base interval\n' \
+            "$pct" "$MIN_DELAY" "$MAX_DELAY"
+        printf '  Next in    %-4s s %s\n' "$remain" "$(gauge $((delay - remain)) "${delay:-1}" 30)"
+        printf '  Targets    %s in rotation across %s subjects\n' \
+            "${#TARGETS[@]}" "${#TARGET_CATEGORY_NAMES[@]}"
+        printf '\n'
+        printf '  Recent\n'
+        if [[ -s "$LOG_FILE" ]]; then
+            # FIT THE TERMINAL, do not assume one. A fixed 100-char cut plus
+            # the 4-space indent is 104 columns, and the dock opens this window
+            # at 100, so every long line wrapped and the panel lost its shape.
+            # Measured on the test VM 2026-08-29: the longest log line is 99
+            # characters, so it wrapped by exactly the indent.
+            local cols
+            cols="$(tput cols 2>/dev/null || printf '%s' "${COLUMNS:-100}")"
+            [[ "$cols" =~ ^[0-9]+$ ]] || cols=100
+            local room=$((cols - 5))
+            [[ "$room" -lt 20 ]] && room=20
+            tail -n 8 "$LOG_FILE" 2>/dev/null | while IFS= read -r line; do
+                printf '    %s\n' "${line:0:room}"
+            done
+        else
+            printf '    (nothing yet)\n'
+        fi
+        printf '\n'
+        if [[ "$state" == "STOPPED" ]]; then
+            printf '  Start it from the Identity window, or run: %s start\n' \
+                "$(basename "$0")"
+        else
+            printf '  Closing this window does NOT stop the generator.\n'
+        fi
+
+        )"
+        if [[ "$once" -eq 1 ]]; then
+            printf '%s\n' "$frame"
+            break
+        fi
+        # ERASE TO END OF EACH LINE, not just to end of screen. Homing without
+        # clearing removed the flicker but left the TAIL of any line that got
+        # shorter than the frame before it. Measured on the test VM: the
+        # session row alternates between "next request moves to a new subject"
+        # and "1 more in this subject", and the short form rendered as
+        # "1 more in this subjecta new subject". The closing line also appeared
+        # twice, left over from a taller previous frame.
+        #
+        # \033[K after every line clears that line's remainder; the trailing
+        # \033[J clears any leftover lines below. Together they make a shorter
+        # frame fully replace a taller one with no clear and so no flash.
+        printf '\033[H%s\033[K\n\033[J' "${frame//$'\n'/$'\033[K'$'\n'}"
+        sleep 1
+    done
+    restore_cursor
+}
+
+# ── Inspecting the rotation ──────────────────────────────────────────────────
+
+verb_targets() {
+    if [[ $# -gt 1 || ( $# -eq 1 && "${1:-}" != "--json" ) ]]; then
+        printf 'Unknown option: %s\n' "${2:-$1}" >&2
+        return 1
+    fi
+    if [[ "${1:-}" == "--json" ]]; then
+        local first=1
+        printf '{"status":"success","message":"Decoy traffic targets","data":{"count":%d,"targets":[' \
+            "${#TARGETS[@]}"
+        local t
+        for t in "${TARGETS[@]}"; do
+            [[ $first -eq 1 ]] || printf ','
+            first=0
+            printf '"%s"' "$(json_escape "$t")"
+        done
+        printf ']},"timestamp":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        return 0
+    fi
+    printf 'Decoy traffic rotation: %d targets\n\n' "${#TARGETS[@]}"
+    printf '%s\n' "${TARGETS[@]}"
+}
+
+# Re-measure the table. This is the command the comment above TARGETS points a
+# maintainer at, and it is the ONLY honest way to edit that list: a target that
+# has started refusing looks identical to a healthy one from the source.
+#
+# IT REPORTS, IT NEVER EDITS. A generator that silently dropped targets it could
+# not reach would shrink its own cover on a captive portal or a transient
+# outage, and would do it invisibly. Deciding what ships is a maintainer's job.
+#
+# Requests go out exactly as the worker sends them, including --max-redirs 0, so
+# a target that only answers 200 after a redirect is reported as the 3xx the
+# worker will actually receive rather than as a false green.
+verb_check() {
+    # `check --json` used to be accepted and then launch the full sweep while
+    # producing no JSON at all, which is the worst of both answers.
+    if [[ $# -gt 0 ]]; then
+        printf 'check takes no options (got: %s)\n' "$1" >&2
+        return 1
+    fi
+    require_curl
+    local target code ok=0 bad=0
+    printf 'Checking %d targets (timeout %ds, no redirects, worker user agent)\n\n' \
+        "${#TARGETS[@]}" "$REQUEST_TIMEOUT"
+    for target in "${TARGETS[@]}"; do
+        # RETRY A NON-200 TWICE, SPACED, BEFORE CONDEMNING IT. This verb fires
+        # one request per target back to back from a single address, so against
+        # a rate-limiting CDN it can MANUFACTURE the very REPLACE rows it
+        # exists to report. Measured 2026-08-29: apnews.com answered 200 three
+        # times in isolation, then 403 twice, and 403 inside a full sweep,
+        # purely from request rate. Without this loop `check` blames the target
+        # for a limit the check itself caused, and its exit code means nothing.
+        #
+        # The header tells a human reading the output that a single refusal is
+        # as likely to be a rate limit as a policy. That rule belongs IN the
+        # verb, not only in a comment a human may not read: an instrument that
+        # states a caveat it does not itself apply is an instrument you cannot
+        # act on.
+        local attempt
+        for attempt in 1 2 3; do
+            code="$(curl --silent --show-error \
+                --output /dev/null \
+                --max-time "$REQUEST_TIMEOUT" \
+                --max-redirs 0 \
+                --user-agent "$USER_AGENT" \
+                --write-out '%{http_code}' \
+                "$target" 2>/dev/null)"
+            # An empty code means curl never got an HTTP response at all (DNS,
+            # connect or TLS). Render it as 000 rather than as a blank column,
+            # so a dead target can never read as a passing one.
+            [[ -n "$code" ]] || code="000"
+            [[ "$code" == "200" ]] && break
+            # Do not retry a 000: that is a connect-level failure which already
+            # cost REQUEST_TIMEOUT, and three of them is a minute of stall for
+            # a target that is plainly unreachable.
+            [[ "$code" == "000" ]] && break
+            [[ "$attempt" -lt 3 ]] && sleep 3
+        done
+        if [[ "$code" == "200" ]]; then
+            ok=$((ok + 1))
+            printf '  %-5s OK       %s\n' "$code" "$target"
+        else
+            bad=$((bad + 1))
+            printf '  %-5s REPLACE  %s\n' "$code" "$target"
+        fi
+    done
+    printf '\n%d of %d answered 200. %d need replacing.\n' \
+        "$ok" "${#TARGETS[@]}" "$bad"
+    # Non-zero only when something needs a maintainer. Note this exit code is
+    # about the TABLE, not about the generator, and nothing in the dock calls
+    # it: `check` is a maintenance verb, never a health probe for the switch.
+    [[ "$bad" -eq 0 ]]
+}
+
+verb_status() {
+    # REJECT WHAT WE DO NOT UNDERSTAND. Every verb but `start` used to ignore a
+    # trailing argument silently and exit 0, so a typo such as `status --jsonn`
+    # printed prose and returned success, and a caller parsing JSON got none
+    # with nothing to indicate why.
+    if [[ "${1:-}" == "--json" ]]; then
+        if [[ $# -gt 1 ]]; then
+            printf 'Unknown option: %s\n' "$2" >&2
+            return 1
+        fi
+        status_json
+        return 0
+    fi
+    if [[ $# -gt 0 ]]; then
+        printf 'Unknown option: %s\n' "$1" >&2
+        return 1
+    fi
+    local pid
+    if pid="$(running_pid)"; then
+        printf 'Decoy traffic: RUNNING (pid %s)\n' "$pid"
+        local started
+        started="$(ps -o lstart= -p "$pid" 2>/dev/null | sed 's/^ *//')"
+        [[ -n "$started" ]] && printf 'Started: %s\n' "$started"
+        printf 'Targets in rotation: %d\n' "${#TARGETS[@]}"
+        printf 'Request interval: %d to %d seconds\n\n' "$MIN_DELAY" "$MAX_DELAY"
+        printf 'Recent requests:\n'
+        tail -n 8 "$LOG_FILE" 2>/dev/null || printf '(no log yet)\n'
+        printf '\nWatch it live:  %s watch\n' "$(basename "$0")"
+    else
+        printf 'Decoy traffic: STOPPED\n'
+        printf 'Targets in rotation: %d\n' "${#TARGETS[@]}"
+    fi
+}
+
+# ── Usage ─────────────────────────────────────────────────────
+
+show_usage() {
+    cat <<'USAGE'
+Kodachi Dock Control - Decoy Traffic Generator
+
+Usage:
+  kodachi-decoy-traffic start                Run until stopped
+  kodachi-decoy-traffic start --minutes <N>  Run for N minutes, then stop
+  kodachi-decoy-traffic stop                 Stop the running generator
+  kodachi-decoy-traffic status               Show state and recent requests
+  kodachi-decoy-traffic status --json        The same state as a JSON envelope
+  kodachi-decoy-traffic watch                Live gauges and counters until Ctrl+C
+  kodachi-decoy-traffic watch --once         Render one frame and exit
+  kodachi-decoy-traffic targets              List every site in the rotation
+  kodachi-decoy-traffic targets --json       The same list as a JSON envelope
+  kodachi-decoy-traffic check                Re-measure every target, report only
+
+Cover traffic follows whatever routing is currently active. It never sets its
+own proxy, never follows redirects or links, and never writes a response body
+to disk.
+USAGE
+}
+
+# ── Entry Point ───────────────────────────────────────────────
+
+main() {
+    case "${1:-}" in
+        --worker)
+            shift
+            worker_loop "${1:-0}"
+            ;;
+        start)
+            shift
+            verb_start "$@"
+            ;;
+        stop)
+            shift
+            verb_stop "$@"
+            ;;
+        status)
+            shift
+            verb_status "$@"
+            ;;
+        watch)
+            shift
+            verb_watch "$@"
+            ;;
+        targets)
+            shift
+            verb_targets "$@"
+            ;;
+        check)
+            shift
+            verb_check "$@"
+            ;;
+        "" | -h | --help)
+            show_usage
+            ;;
+        *)
+            printf 'Unknown verb: %s\n\n' "$1" >&2
+            show_usage >&2
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"
