@@ -217,14 +217,14 @@ Fixes #(issue number)
 
 - **No spaces** in directory or file names
 - Use hyphens for word separation: `my-feature-name`
-- Version directories: `Kodachi-9`, not `Kodachi 9`
+- Version directories: `Kodachi-OS-9-stable`, not `Kodachi 9`
 - Descriptive names that indicate purpose
 
 ### Organization
 
 ```
 Linux-Kodachi/
-├── Kodachi-9/           # Current version (no spaces!)
+├── Kodachi-OS-9-stable/           # Current version (no spaces!)
 ├── Kodachi-8.27-legacy/ # Legacy version (clear marking)
 ├── docs/                # Documentation
 ├── scripts/             # Utility scripts

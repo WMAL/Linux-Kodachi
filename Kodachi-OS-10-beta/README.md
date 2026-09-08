@@ -1,4 +1,4 @@
-# Kodachi 10
+# Kodachi OS 10 (beta)
 
 The current Kodachi line. Published in **beta** while Kodachi 9 remains the stable release.
 

@@ -1,17 +1,17 @@
-# Kodachi 8.27 , legacy archive (END OF LIFE)
+# Kodachi OS 8.27 (END OF LIFE)
 
 The archived source of Kodachi 8.27, the last release of the 8 line. **End of life: it
 receives no updates and no security fixes, and it should not be deployed.** It is kept as a
 historical record, and because the shell and Gambas sources show how Kodachi worked before
 the Rust rewrite.
 
-For a system you can actually run, see **[../Kodachi-9](../Kodachi-9)** (stable) or
-**[../Kodachi-10](../Kodachi-10)** (current, beta).
+For a system you can actually run, see **[../Kodachi-OS-9-stable](../Kodachi-OS-9-stable)** (stable) or
+**[../Kodachi-OS-10-beta](../Kodachi-OS-10-beta)** (current, beta).
 
 ## Directory Structure
 
 ```
-Kodachi-8.27-legacy-EOL/
+Kodachi-OS-8-EOL/
 ├── README.md          This overview
 ├── LICENSE            The licence in force for the 8.27 release
 ├── open/              The archived source, laid out as it sat on the system

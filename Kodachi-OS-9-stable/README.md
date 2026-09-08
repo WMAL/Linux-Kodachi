@@ -1,16 +1,16 @@
-# Kodachi 9
+# Kodachi OS 9 (stable)
 
 The **current stable release**. Kodachi 9 is finished, released and production-ready: every
 component ships, from the standalone binaries and the terminal server edition to the desktop
 edition, the dashboard GUI, the AI layer and the cloud platform.
 
-The next line, Kodachi 10, is published in beta at **[../Kodachi-10](../Kodachi-10)**.
-The retired 8 line is archived at **[../Kodachi-8.27-legacy-EOL](../Kodachi-8.27-legacy-EOL)**.
+The next line, Kodachi 10, is published in beta at **[../Kodachi-OS-10-beta](../Kodachi-OS-10-beta)**.
+The retired 8 line is archived at **[../Kodachi-OS-8-EOL](../Kodachi-OS-8-EOL)**.
 
 ## What is in this folder
 
 ```
-Kodachi-9/
+Kodachi-OS-9-stable/
 ├── README.md                     This file: the 9 development roadmap and release record
 ├── open/
 │   └── installers/               The 5 shell scripts as they shipped for the 9 line
@@ -26,7 +26,7 @@ Kodachi-9/
 
 These installer scripts are the **Kodachi 9 versions**, kept as the historical record of
 that line. The current ones live in
-**[../Kodachi-10/open/installers/](../Kodachi-10/open/installers)**.
+**[../Kodachi-OS-10-beta/open/installers/](../Kodachi-OS-10-beta/open/installers)**.
 
 ---
 
@@ -152,7 +152,7 @@ All five scripts live in **[open/installers/](open/installers)**:
 - **[kodachi-debug-collector.sh](open/installers/kodachi-debug-collector.sh)** - Collects a redacted diagnostic bundle for support
 
 These are the Kodachi 9 versions, kept as the historical record of that line. The
-current versions are in **[../Kodachi-10/open/installers/](../Kodachi-10/open/installers)**.
+current versions are in **[../Kodachi-OS-10-beta/open/installers/](../Kodachi-OS-10-beta/open/installers)**.
 
 ---
 

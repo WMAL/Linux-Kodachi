@@ -63,8 +63,8 @@ The beta **Desktop (XFCE) ISO** and the beta **packages** are both live now: dow
 | | |
 |---|---|
 | Live changelog | [kodachi.cloud/docs/changelog.html](https://kodachi.cloud/docs/changelog.html) ([raw](https://kodachi.cloud/apps/os/CHANGELOG.md)) |
-| Install and shell scripts | [Kodachi-10](Kodachi-10) , the five current scripts, kept in step with the source of truth |
-| R&D history | [Kodachi-9/v9-behind-scenes-progress](Kodachi-9/v9-behind-scenes-progress) |
+| Install and shell scripts | [Kodachi-OS-10-beta](Kodachi-OS-10-beta) , the five current scripts, kept in step with the source of truth |
+| R&D history | [Kodachi-OS-9-stable/v9-behind-scenes-progress](Kodachi-OS-9-stable/v9-behind-scenes-progress) |
 
 ---
 
@@ -110,9 +110,9 @@ Included with **[Kodachi Premium](https://kodachi.cloud/docs/support.html)**:
 
 Kodachi 9 is finished, released and production-ready. Every component ships: standalone binaries, terminal server edition, desktop edition, the Tauri dashboard GUI, the AI layer (KAICS), and the cloud platform.
 
-The full Kodachi 9 record, the component-by-component roadmap, the release phases, the development timeline and the historical update log, lives in **[Kodachi-9/README.md](Kodachi-9/README.md)**.
+The full Kodachi 9 record, the component-by-component roadmap, the release phases, the development timeline and the historical update log, lives in **[Kodachi-OS-9-stable/README.md](Kodachi-OS-9-stable/README.md)**.
 
-Kodachi 8.27 reached end of life and is archived in **[Kodachi-8.27-legacy-EOL](Kodachi-8.27-legacy-EOL)**.
+Kodachi 8.27 reached end of life and is archived in **[Kodachi-OS-8-EOL](Kodachi-OS-8-EOL)**.
 
 ---
 
