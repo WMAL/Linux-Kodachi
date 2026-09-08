@@ -19,11 +19,13 @@ Failover VPN, Tor routing, DNSCrypt, a kill switch and anti-forensic tooling, pr
 ---
 
 > [!IMPORTANT]
-> **Kodachi 10 beta is out. Give it a try.**
+> **Kodachi 10 beta is out, and the beta ISO has landed. Give it a try.**
 >
 > The 10.x line is published on the **beta channel** and open for public testing, while Kodachi 9 stays the stable release. Beta gets new work first, including the AmneziaWG and OpenVPN over Cloak transports, and is rebuilt often, so expect rough edges and report what you find.
 >
-> **There is no beta ISO.** Beta is a package channel, not a separate system image. Install a current ISO, or use a Debian-family system you already run, then point APT at the beta repository:
+> **Beta ISO, the fastest way in.** The Kodachi 10 beta **Desktop (XFCE)** live ISO is published and downloadable now. Boot it, run the whole system live, or install it, with the same SHA-256 / SHA-512 / MD5 checksums, detached RSA-4096 signature and release manifest as every other Kodachi image. Grab it from the **[Downloads Center, beta track](https://kodachi.cloud/downloads/?track=beta#desktop)**. It is rebuilt often, so pull a fresh copy rather than reusing an old one. The Terminal / Server ISO stays on Kodachi 9 for now.
+>
+> **Or keep the system you already have.** Beta is also a package channel. Install a current ISO, or use a Debian-family system you already run, then point APT at the beta repository:
 >
 > ```bash
 > curl -fsSL https://kodachi.cloud/repo-beta/setup.sh | sudo sh
@@ -40,7 +42,7 @@ Three editions, one security core. Pick by how you want to run it.
 
 | Edition | What it is | Get it |
 |---|---|---|
-| **Desktop (Debian XFCE)** | The full experience: graphical dashboard, every security binary pre-integrated. | [ISO](https://kodachi.cloud/downloads/#desktop) &middot; [Guide](https://kodachi.cloud/docs/desktop-debian.html) |
+| **Desktop (Debian XFCE)** | The full experience: graphical dashboard, every security binary pre-integrated. | [Stable ISO](https://kodachi.cloud/downloads/#desktop) &middot; [Kodachi 10 beta ISO](https://kodachi.cloud/downloads/?track=beta#desktop) &middot; [Guide](https://kodachi.cloud/docs/desktop-debian.html) |
 | **Terminal Server** | Lightweight ISO, all binaries pre-configured, no desktop. For servers and headless boxes. | [ISO](https://kodachi.cloud/downloads/#terminal) &middot; [Guide](https://kodachi.cloud/docs/terminal-version.html) |
 | **Standalone binaries** | Add Kodachi's tools to a Debian-based system you already run. Ships with the dashboard GUI. | [Download + install instructions](https://kodachi.cloud/downloads/#binaries) |
 
@@ -54,7 +56,7 @@ Everything lives on the **[Downloads Center](https://kodachi.cloud/downloads/)**
 
 Kodachi 10 is the next major release, built on the Kodachi 9 foundation: new capabilities, wider feature coverage, and performance and security work across the whole stack (binaries, terminal edition, desktop edition, AI layer, cloud platform).
 
-The packages are live now, on the beta channel; the banner at the top of this page has the two commands. There is no fixed date for the **stable** Kodachi 10 release. Roadmap items, previews and changelogs are published here and on the [landing page](https://kodachi.cloud/) as they land.
+The beta **Desktop (XFCE) ISO** and the beta **packages** are both live now: download the ISO from the [Downloads Center, beta track](https://kodachi.cloud/downloads/?track=beta#desktop), or move a system you already run onto the beta channel with the two commands in the banner at the top of this page. There is no fixed date for the **stable** Kodachi 10 release. Roadmap items, previews and changelogs are published here and on the [landing page](https://kodachi.cloud/) as they land.
 
 **Feature requests and feedback shape what ships**, and a bug report from a beta tester is the most useful thing anyone can send right now. Open an [issue](https://github.com/WMAL/kodachios/issues) or bring it to [Discord](https://discord.gg/KEFErEx).
 
